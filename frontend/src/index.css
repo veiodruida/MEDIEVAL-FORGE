@@ -1,0 +1,8 @@
+/* Radix Themes CSS MUST come before Tailwind (RESEARCH.md Pitfall 7). */
+@import "@radix-ui/themes/styles.css";
+@import "tailwindcss";
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+}
