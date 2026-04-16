@@ -14,8 +14,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database import AsyncSessionLocal, get_db
 from ..models import Project
+import asyncio
+
 from ..services.generator import GENERATED_FILE_WHITELIST, run_generation
 from ..services.paths import is_valid_uuid, project_dir
+from ..services.render_modern import render_modern_map
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/projects", tags=["generate"])
@@ -66,8 +69,15 @@ async def trigger_generate(
             detail="project is already generating; wait for that to finish",
         )
 
-    # Compose config: project.generator_config overlaid with the request body.
-    merged: dict = dict(project.generator_config or {})
+    # Compose config: project bbox → project.generator_config → request body
+    merged: dict = {}
+    # Injetar bbox do projeto no RegionConfig (evita usar bounds padrão incorretos)
+    if project.bbox_lon_min is not None:
+        merged["lon_min"] = project.bbox_lon_min
+        merged["lon_max"] = project.bbox_lon_max
+        merged["lat_min"] = project.bbox_lat_min
+        merged["lat_max"] = project.bbox_lat_max
+    merged.update(project.generator_config or {})
     if body:
         merged.update(body)
     if "territory_data" not in merged:
@@ -85,6 +95,49 @@ async def trigger_generate(
 
     background_tasks.add_task(_run_and_update_status, project_id, merged)
     return {"project_id": project_id, "status": "generating"}
+
+
+@router.post("/{project_id}/render-modern")
+async def trigger_render_modern(
+    project_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Renderiza um mapa visual simples dos polígonos ingeridos (validação geográfica).
+
+    Este endpoint NÃO precisa de territory_data — apenas pinta cada município
+    com uma cor única para o utilizador validar que a ingestão está correta
+    antes de tentar a geração medieval completa.
+    """
+    if not is_valid_uuid(project_id):
+        raise HTTPException(status_code=400, detail="project_id must be a valid UUID")
+    project = await db.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="project not found")
+
+    if project.bbox_lon_min is None or project.bbox_lat_min is None \
+            or project.bbox_lon_max is None or project.bbox_lat_max is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Projeto sem bounding box definida. Edite o projeto e defina o bbox primeiro.",
+        )
+
+    bbox = (
+        float(project.bbox_lon_min), float(project.bbox_lat_min),
+        float(project.bbox_lon_max), float(project.bbox_lat_max),
+    )
+    try:
+        result = await asyncio.to_thread(render_modern_map, project_id, bbox)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    except Exception as exc:
+        logger.exception("render_modern failed for %s", project_id)
+        raise HTTPException(status_code=500, detail=f"Falha ao renderizar: {exc}")
+
+    return {
+        "project_id": project_id,
+        "map_file": result["map"].name,
+        "colors_file": result["colors"].name,
+    }
 
 
 @router.get("/{project_id}/preview/{filename}")

@@ -41,13 +41,18 @@ async def run_ingest(
     country: str,
     queue: asyncio.Queue[str | None],
     db_session_factory: async_sessionmaker | None = None,
+    bbox: tuple[float, float, float, float] | None = None,
 ) -> None:
-    """Producer task. ALWAYS puts None sentinel before returning."""
+    """Producer task. ALWAYS puts None sentinel before returning.
+
+    bbox: (lat_min, lon_min, lat_max, lon_max) — quando fornecido, OSM usa query
+    por bounding box em vez de por país (muito mais rápido).
+    """
     factory = db_session_factory or AsyncSessionLocal
     try:
         await queue.put(
-            f"data: Starting {source} ingest for project {project_id} "
-            f"(country={country})...\n\n"
+            f"data: Iniciando ingestão {source} para projeto {project_id} "
+            f"(país={country})...\n\n"
         )
         dirs = ensure_project_dirs(project_id)
         raw_path = dirs["raw"] / "municipalities.geojson"
@@ -55,7 +60,7 @@ async def run_ingest(
         if source == "wikidata":
             payload = await ingest_wikidata.fetch_municipalities(country, queue)
         elif source == "osm":
-            payload = await ingest_osm.fetch_municipalities(country, queue)
+            payload = await ingest_osm.fetch_municipalities(country, queue, bbox=bbox)
         else:
             raise ValueError(f"unknown source: {source!r}")
 

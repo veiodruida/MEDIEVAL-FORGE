@@ -16,7 +16,35 @@ from ..models import Project
 from ..schemas import ProjectCreate, ProjectResponse, ProjectUpdate
 from ..services.paths import ensure_project_dirs, is_valid_uuid, project_dir
 
+import json as _json
+from pathlib import Path as _Path
+
+from ..services.countries import PRESETS
+
 router = APIRouter(prefix="/projects", tags=["projects"])
+
+_TERRITORY_TEMPLATES_DIR = _Path(__file__).parent.parent / "services"
+
+
+@router.get("/presets")
+async def list_presets() -> list[dict]:
+    """Retorna presets de regiões/países com bounding box pré-definida."""
+    return PRESETS
+
+
+@router.get("/territory-template/{region}")
+async def territory_template(region: str) -> dict:
+    """Retorna dados de território de exemplo para uma região.
+
+    Regiões disponíveis: iberia
+    """
+    allowed = {"iberia"}
+    if region not in allowed:
+        raise HTTPException(status_code=404, detail=f"Template '{region}' não encontrado. Disponíveis: {allowed}")
+    path = _TERRITORY_TEMPLATES_DIR / f"territory_{region}.json"
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Ficheiro de template não encontrado")
+    return _json.loads(path.read_text(encoding="utf-8"))
 
 
 def _validate_project_id(project_id: str) -> None:

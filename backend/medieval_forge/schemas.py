@@ -1,27 +1,17 @@
 """Pydantic v2 request/response schemas for the projects API."""
 from __future__ import annotations
 
-import re
 from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-_QID_RE = re.compile(r"^Q\d+$")
+from .services.countries import resolve_to_qid
 
 
-class _CountryQidValidator:
-    @field_validator("country_qid")
-    @classmethod
-    def _validate_qid(cls, v: str) -> str:
-        if not _QID_RE.match(v):
-            raise ValueError("country_qid must match pattern ^Q\\d+$")
-        return v
-
-
-class ProjectCreate(_CountryQidValidator, BaseModel):
+class ProjectCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
-    country_qid: str
+    country_qid: str  # aceita nome, ISO ou QID — resolvido pelo validator
     period_start: int
     period_end: int
     bbox_lon_min: float | None = None
@@ -29,6 +19,14 @@ class ProjectCreate(_CountryQidValidator, BaseModel):
     bbox_lat_min: float | None = None
     bbox_lat_max: float | None = None
     generator_config: dict[str, Any] | None = None
+
+    @field_validator("country_qid")
+    @classmethod
+    def _resolve_country(cls, v: str) -> str:
+        try:
+            return resolve_to_qid(v)
+        except ValueError as exc:
+            raise ValueError(str(exc)) from exc
 
 
 class ProjectUpdate(BaseModel):
@@ -45,10 +43,13 @@ class ProjectUpdate(BaseModel):
 
     @field_validator("country_qid")
     @classmethod
-    def _validate_qid_optional(cls, v: str | None) -> str | None:
-        if v is not None and not _QID_RE.match(v):
-            raise ValueError("country_qid must match pattern ^Q\\d+$")
-        return v
+    def _resolve_country_optional(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        try:
+            return resolve_to_qid(v)
+        except ValueError as exc:
+            raise ValueError(str(exc)) from exc
 
 
 class ProjectResponse(BaseModel):

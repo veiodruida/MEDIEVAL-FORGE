@@ -53,6 +53,50 @@ async function jsonFetch<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>
 }
 
+export interface Preset {
+  label: string
+  country: string
+  country_qid: string
+  bbox: { lon_min: number; lat_min: number; lon_max: number; lat_max: number }
+  period_example: [number, number]
+}
+
+export interface IngestStatus {
+  has_data: boolean
+  feature_count: number
+  polygon_count: number
+  point_count: number
+  size_bytes: number
+  last_modified: string | null
+  has_polygons: boolean
+}
+
+export function useTerritoryTemplate(region: string | null): UseQueryResult<Record<string, unknown>> {
+  return useQuery({
+    queryKey: ['territory-template', region],
+    queryFn: () => jsonFetch<Record<string, unknown>>(`/api/projects/territory-template/${region}`),
+    enabled: Boolean(region),
+    staleTime: Infinity,
+  })
+}
+
+export function useIngestStatus(projectId: string | undefined): UseQueryResult<IngestStatus> {
+  return useQuery({
+    queryKey: ['ingest-status', projectId],
+    queryFn: () => jsonFetch<IngestStatus>(`/api/projects/${projectId}/ingest-status`),
+    enabled: Boolean(projectId),
+    staleTime: 10_000,
+  })
+}
+
+export function usePresets(): UseQueryResult<Preset[]> {
+  return useQuery({
+    queryKey: ['presets'],
+    queryFn: () => jsonFetch<Preset[]>('/api/projects/presets'),
+    staleTime: Infinity, // presets são estáticos
+  })
+}
+
 export function useProjects(): UseQueryResult<Project[]> {
   return useQuery({
     queryKey: ['projects'],
@@ -109,6 +153,17 @@ export function useDeleteProject() {
     mutationFn: (id: string) =>
       jsonFetch<void>(`/api/projects/${id}`, { method: 'DELETE' }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['projects'] }),
+  })
+}
+
+export function useRenderModern(projectId: string | undefined) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => jsonFetch<{ map_file: string; colors_file: string }>(
+      `/api/projects/${projectId}/render-modern`,
+      { method: 'POST' },
+    ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['projects', projectId] }),
   })
 }
 

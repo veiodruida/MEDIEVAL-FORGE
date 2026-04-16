@@ -298,10 +298,13 @@ def build_land_mask(pt_data, es_municipalities, cfg: RegionConfig,
                 draw.polygon(pts, fill=255)
     
     land = np.array(land_img) > 0
-    
+
     # Remove tiny disconnected islands
     labeled, n = nd_label(land)
     sizes = np.bincount(labeled.ravel())
+    if len(sizes) <= 1:
+        # Nenhum pixel de terra encontrado — retorna máscara vazia
+        return land
     main_lbl = np.argmax(sizes[1:]) + 1
     for lbl in range(1, n + 1):
         if lbl != main_lbl and sizes[lbl] < cfg.island_min_px * (w / cfg.map_w):

@@ -50,8 +50,14 @@ _PREVIEW_ALIASES: dict[str, str] = {
     "borders.png": "lookup_condado.png",
 }
 
+# Ficheiros adicionais gerados por outros renderizadores (ex: render_modern)
+_AUXILIARY_OUTPUTS: tuple[str, ...] = (
+    "modern_map.png",
+    "modern_map_colors.json",
+)
+
 GENERATED_FILE_WHITELIST: frozenset[str] = frozenset(
-    list(_GENERATOR_OUTPUTS) + list(_PREVIEW_ALIASES.keys())
+    list(_GENERATOR_OUTPUTS) + list(_PREVIEW_ALIASES.keys()) + list(_AUXILIARY_OUTPUTS)
 )
 
 
@@ -105,22 +111,82 @@ def _cleanup_territory_module(name: str) -> None:
 
 
 def _build_region_config(generated_dir: Path, config: dict[str, Any]) -> Any:
-    """Construct a RegionConfig from caller-supplied overrides, defaulting output_dir."""
+    """Construct a RegionConfig from caller-supplied overrides, defaulting output_dir.
+
+    Se existir municipalities.geojson ingerido no projeto, aponta automaticamente
+    municipality_pt_geojson para esse arquivo — necessário para construir a land mask.
+    """
     valid_fields = set(map_generator.RegionConfig.__dataclass_fields__.keys())
     kwargs: dict[str, Any] = {"output_dir": str(generated_dir)}
     for k, v in config.items():
         if k in valid_fields and k != "output_dir":
             kwargs[k] = v
+
+    # Apontar municipality_pt_geojson para o GeoJSON ingerido se não foi
+    # fornecido explicitamente e o arquivo existir
+    if "municipality_pt_geojson" not in kwargs:
+        raw_geojson = generated_dir.parent / "raw" / "municipalities.geojson"
+        if raw_geojson.exists():
+            kwargs["municipality_pt_geojson"] = str(raw_geojson)
+
     return map_generator.RegionConfig(**kwargs)
 
 
 def _materialise_aliases(generated_dir: Path) -> None:
-    """Copy underlying generator outputs to their alias names (terrain.png etc)."""
+    """Copy underlying generator outputs to their alias names (terrain.png etc).
+
+    Se o arquivo fonte não existir (ex: mountains_mask.png quando não há dados de
+    montanha), cria uma imagem preta como placeholder para que o alias exista.
+    """
     for alias, source_name in _PREVIEW_ALIASES.items():
         source = generated_dir / source_name
         target = generated_dir / alias
         if source.exists():
             shutil.copyfile(source, target)
+        elif alias == "terrain.png":
+            # Gerar placeholder preto (sem terreno) para que o preview não quebre
+            from PIL import Image as _PIL_Image
+            import numpy as _np
+            placeholder = _PIL_Image.fromarray(_np.zeros((1080, 1920), dtype=_np.uint8))
+            placeholder.save(str(target))
+
+
+def _validate_municipalities(raw_geojson_path: Path) -> None:
+    """Verifica se o GeoJSON contém polígonos suficientes para gerar o mapa.
+
+    Lança ValueError com mensagem amigável se os dados forem inadequados.
+    """
+    import json as _json
+    if not raw_geojson_path.exists():
+        raise ValueError(
+            "Nenhum dado geográfico encontrado.\n"
+            "Execute 'Ingerir via OSM' antes de gerar o mapa."
+        )
+    with raw_geojson_path.open(encoding="utf-8") as f:
+        data = _json.load(f)
+    features = data.get("features", [])
+    if not features:
+        raise ValueError(
+            "O arquivo de municípios está vazio.\n"
+            "Execute 'Ingerir via OSM' novamente."
+        )
+    polygon_types = {"Polygon", "MultiPolygon"}
+    n_polygons = sum(
+        1 for feat in features
+        if feat.get("geometry", {}).get("type") in polygon_types
+    )
+    n_points = len(features) - n_polygons
+    if n_polygons == 0:
+        raise ValueError(
+            f"Os dados ingeridos contêm apenas {n_points} pontos (centroides do Wikidata) "
+            "e nenhum polígono de fronteira.\n"
+            "O gerador precisa de polígonos para construir a máscara de terra — "
+            "o resultado seria um ecrã azul (oceano).\n\n"
+            "Solução: execute 'Ingerir via OSM' (botão 1b) para obter dados com polígonos reais."
+        )
+    logger.info(
+        "municipalities validation OK: %d polygons, %d points", n_polygons, n_points
+    )
 
 
 def _run_pipeline_sync(
@@ -133,6 +199,10 @@ def _run_pipeline_sync(
         raise ValueError(
             "config['territory_data'] must be a dict with keys {kingdoms, duchies, condados}"
         )
+    # Validar dados geográficos ANTES de iniciar o pipeline
+    raw_geojson = generated_dir.parent / "raw" / "municipalities.geojson"
+    _validate_municipalities(raw_geojson)
+
     module_name = f"_mf_territory_{project_id.replace('-', '_')}"
     _inject_territory_module(module_name, territory_data)
     try:

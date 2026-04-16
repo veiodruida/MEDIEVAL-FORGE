@@ -9,14 +9,18 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+import json
+import os
+from datetime import datetime, timezone
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database import AsyncSessionLocal, get_db
 from ..models import Project
 from ..services.ingest_runner import run_ingest
-from ..services.paths import is_valid_uuid
+from ..services.paths import is_valid_uuid, project_dir
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/projects", tags=["ingest"])
@@ -27,10 +31,11 @@ async def _sse_generator(
     source: str,
     country: str,
     session_factory,
+    bbox: tuple[float, float, float, float] | None = None,
 ):
     queue: asyncio.Queue[str | None] = asyncio.Queue()
     task = asyncio.create_task(
-        run_ingest(project_id, source, country, queue, session_factory)
+        run_ingest(project_id, source, country, queue, session_factory, bbox=bbox)
     )
     try:
         while True:
@@ -46,6 +51,44 @@ async def _sse_generator(
                 await task
             except (asyncio.CancelledError, Exception):  # noqa: BLE001
                 pass
+
+
+@router.get("/{project_id}/ingest-status")
+async def ingest_status(
+    project_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Retorna informação sobre os dados geográficos já ingeridos neste projeto."""
+    if not is_valid_uuid(project_id):
+        raise HTTPException(status_code=400, detail="project_id must be a valid UUID")
+    project = await db.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="project not found")
+
+    geojson_path = project_dir(project_id) / "raw" / "municipalities.geojson"
+    if not geojson_path.exists():
+        return {"has_data": False, "feature_count": 0, "polygon_count": 0,
+                "point_count": 0, "size_bytes": 0, "last_modified": None}
+
+    stat = geojson_path.stat()
+    with geojson_path.open(encoding="utf-8") as f:
+        data = json.load(f)
+
+    features = data.get("features", [])
+    polygon_types = {"Polygon", "MultiPolygon"}
+    polygon_count = sum(1 for ft in features if ft.get("geometry", {}).get("type") in polygon_types)
+    point_count = len(features) - polygon_count
+    last_mod = datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat()
+
+    return {
+        "has_data": True,
+        "feature_count": len(features),
+        "polygon_count": polygon_count,
+        "point_count": point_count,
+        "size_bytes": stat.st_size,
+        "last_modified": last_mod,
+        "has_polygons": polygon_count > 0,
+    }
 
 
 @router.post("/{project_id}/ingest")
@@ -72,10 +115,35 @@ async def trigger_ingest(
             detail="project is currently generating; wait for that to finish",
         )
 
-    effective_country = country or project.country_qid
+    if country:
+        effective_country = country
+    elif source == "osm":
+        # OSM precisa de código ISO alpha-2; converte QID do projeto
+        from ..services.countries import qid_to_iso
+        try:
+            effective_country = qid_to_iso(project.country_qid)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+    else:
+        effective_country = project.country_qid
+
+    # Passar bbox do projeto para OSM (query por bbox é muito mais rápida)
+    bbox: tuple[float, float, float, float] | None = None
+    if source == "osm" and all(
+        v is not None for v in [
+            project.bbox_lat_min, project.bbox_lon_min,
+            project.bbox_lat_max, project.bbox_lon_max,
+        ]
+    ):
+        bbox = (
+            project.bbox_lat_min,   # type: ignore[arg-type]
+            project.bbox_lon_min,   # type: ignore[arg-type]
+            project.bbox_lat_max,   # type: ignore[arg-type]
+            project.bbox_lon_max,   # type: ignore[arg-type]
+        )
 
     return StreamingResponse(
-        _sse_generator(project_id, source, effective_country, AsyncSessionLocal),
+        _sse_generator(project_id, source, effective_country, AsyncSessionLocal, bbox=bbox),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
