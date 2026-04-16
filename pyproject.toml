@@ -1,0 +1,55 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "medieval-forge"
+version = "0.1.0"
+description = "Local web tool for Game Designers that automates creation of historically-accurate medieval maps."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Medieval Forge" }]
+dependencies = [
+    "fastapi>=0.115,<0.140",
+    "uvicorn[standard]>=0.30,<0.50",
+    "sqlalchemy>=2.0,<2.1",
+    "aiosqlite>=0.20,<0.22",
+    "alembic>=1.13,<2.0",
+    "pydantic>=2.7,<3.0",
+    "httpx>=0.27,<0.30",
+    "click>=8.1,<9.0",
+    "psutil>=5.9,<7.0",
+    "scipy>=1.13,<2.0",
+    "shapely>=2.0,<3.0",
+    "numpy>=1.26,<3.0",
+    "Pillow>=10.0,<13.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0,<9.0",
+    "pytest-asyncio>=0.23,<1.0",
+    "build>=1.2,<2.0",
+]
+
+[project.scripts]
+medieval-forge = "medieval_forge.cli:cli"
+
+[tool.setuptools]
+package-dir = { "" = "backend" }
+
+[tool.setuptools.packages.find]
+where = ["backend"]
+include = ["medieval_forge*"]
+
+[tool.setuptools.package-data]
+medieval_forge = ["static/**/*", "static/index.html", "lib/*.py"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["backend/tests"]
+pythonpath = ["backend"]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+]
