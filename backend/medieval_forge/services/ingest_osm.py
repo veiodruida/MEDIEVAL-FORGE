@@ -1,4 +1,4 @@
-"""INGEST-02: OSM Overpass municipality fetcher (admin_level=8).
+"""INGEST-02: OSM Overpass municipality fetcher (admin_level=6 — concelhos/municípios).
 
 Estratégia de query:
 - Se bbox fornecida: query por bounding box (muito mais rápido, evita timeout 504)
@@ -37,7 +37,7 @@ def validate_iso_country(value: str) -> str:
 
 def _build_bbox_query(
     lat_min: float, lon_min: float, lat_max: float, lon_max: float,
-    admin_level: int = 8,
+    admin_level: int = 6,
 ) -> str:
     """Query por bounding box — mais rápida e confiável que por país.
 
@@ -54,7 +54,7 @@ def _build_bbox_query(
     )
 
 
-def _build_country_query(country_iso: str, admin_level: int = 8) -> str:
+def _build_country_query(country_iso: str, admin_level: int = 6) -> str:
     """Query por código de país ISO — fallback quando não há bbox."""
     return (
         f'[out:json][timeout:160];\n'

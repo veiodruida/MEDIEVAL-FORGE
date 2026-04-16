@@ -1,0 +1,1046 @@
+{
+  "region": "iberia",
+  "map_size": [
+    3840,
+    2160
+  ],
+  "bounds": {
+    "lon_min": -9.5,
+    "lon_max": -6.2,
+    "lat_min": 36.9,
+    "lat_max": 42.2
+  },
+  "kingdoms": {
+    "asturias": "Reino das Astúrias",
+    "pamplona": "Reino de Pamplona",
+    "marca_hispanica": "Marca Hispânica",
+    "emirato": "Emirato de Córdoba"
+  },
+  "duchies": {
+    "d_asturias": {
+      "kingdom": "asturias",
+      "name": "Ducado de Astúrias"
+    },
+    "d_galiza": {
+      "kingdom": "asturias",
+      "name": "Ducado de Galiza"
+    },
+    "d_portucale": {
+      "kingdom": "asturias",
+      "name": "Condado de Portucale"
+    },
+    "d_leon": {
+      "kingdom": "asturias",
+      "name": "Ducado de Leão"
+    },
+    "d_castela": {
+      "kingdom": "asturias",
+      "name": "Condado de Castela"
+    },
+    "d_vasconia_ast": {
+      "kingdom": "asturias",
+      "name": "Territórios Vasconços"
+    },
+    "d_fronteira": {
+      "kingdom": "emirato",
+      "name": "Zona de Expansão / Deserto do Douro"
+    },
+    "d_navarra": {
+      "kingdom": "pamplona",
+      "name": "Navarra Própria"
+    },
+    "d_vizcaya": {
+      "kingdom": "pamplona",
+      "name": "Vizcaya"
+    },
+    "d_aragon": {
+      "kingdom": "marca_hispanica",
+      "name": "Condado de Aragão"
+    },
+    "d_barcelona": {
+      "kingdom": "marca_hispanica",
+      "name": "Condados sob Bernardo"
+    },
+    "d_urgell": {
+      "kingdom": "marca_hispanica",
+      "name": "Condados sob Guifré"
+    },
+    "d_cat_indep": {
+      "kingdom": "marca_hispanica",
+      "name": "Condados Independentes"
+    },
+    "d_marca_sup": {
+      "kingdom": "emirato",
+      "name": "Marca Superior"
+    },
+    "d_marca_med": {
+      "kingdom": "emirato",
+      "name": "Marca Média"
+    },
+    "d_marca_inf": {
+      "kingdom": "emirato",
+      "name": "Marca Inferior"
+    },
+    "d_gharb": {
+      "kingdom": "emirato",
+      "name": "Gharb al-Andalus"
+    },
+    "d_cordoba": {
+      "kingdom": "emirato",
+      "name": "Kura Central"
+    },
+    "d_sevilla": {
+      "kingdom": "emirato",
+      "name": "Kura de Sevilha"
+    },
+    "d_jaen": {
+      "kingdom": "emirato",
+      "name": "Kura de Jaén"
+    },
+    "d_granada": {
+      "kingdom": "emirato",
+      "name": "Kura de Granada"
+    },
+    "d_malaga": {
+      "kingdom": "emirato",
+      "name": "Kura de Málaga"
+    },
+    "d_almeria": {
+      "kingdom": "emirato",
+      "name": "Kura de Almería"
+    },
+    "d_tudmir": {
+      "kingdom": "emirato",
+      "name": "Kura de Tudmir"
+    },
+    "d_valencia": {
+      "kingdom": "emirato",
+      "name": "Kura de Valência"
+    },
+    "d_baleares": {
+      "kingdom": "emirato",
+      "name": "Baleares"
+    }
+  },
+  "condados": [
+    {
+      "id": "ourense",
+      "name": "Ourense",
+      "lon": -7.86,
+      "lat": 42.34,
+      "duchy": "d_galiza",
+      "kingdom": "asturias",
+      "pixel_center": [
+        1265,
+        102
+      ],
+      "pixel_count": 3769,
+      "baronies": [
+        "Ourense",
+        "Celanova",
+        "Verín"
+      ]
+    },
+    {
+      "id": "porto",
+      "name": "Porto",
+      "lon": -8.61,
+      "lat": 41.15,
+      "duchy": "d_portucale",
+      "kingdom": "asturias",
+      "pixel_center": [
+        491,
+        193
+      ],
+      "pixel_count": 2538,
+      "baronies": [
+        "Porto",
+        "Maia",
+        "Matosinhos",
+        "Vila do Conde"
+      ]
+    },
+    {
+      "id": "braga",
+      "name": "Braga",
+      "lon": -8.43,
+      "lat": 41.55,
+      "duchy": "d_portucale",
+      "kingdom": "asturias",
+      "pixel_center": [
+        680,
+        163
+      ],
+      "pixel_count": 16235,
+      "baronies": [
+        "Braga",
+        "Guimarães",
+        "Barcelos",
+        "Famalicão"
+      ]
+    },
+    {
+      "id": "viana",
+      "name": "Viana",
+      "lon": -8.83,
+      "lat": 41.69,
+      "duchy": "d_portucale",
+      "kingdom": "asturias",
+      "pixel_center": [
+        501,
+        95
+      ],
+      "pixel_count": 3061,
+      "baronies": [
+        "Viana do Castelo",
+        "Ponte de Lima",
+        "Caminha"
+      ]
+    },
+    {
+      "id": "chaves",
+      "name": "Chaves",
+      "lon": -7.47,
+      "lat": 41.74,
+      "duchy": "d_portucale",
+      "kingdom": "asturias",
+      "pixel_center": [
+        1088,
+        140
+      ],
+      "pixel_count": 5814,
+      "baronies": [
+        "Chaves",
+        "Montalegre",
+        "Vila Pouca",
+        "Vila Real"
+      ]
+    },
+    {
+      "id": "braganca",
+      "name": "Bragança",
+      "lon": -6.76,
+      "lat": 41.81,
+      "duchy": "d_portucale",
+      "kingdom": "asturias",
+      "pixel_center": [
+        1621,
+        151
+      ],
+      "pixel_count": 15976,
+      "baronies": [
+        "Bragança",
+        "Miranda do Douro",
+        "Vimioso",
+        "Mogadouro"
+      ]
+    },
+    {
+      "id": "astorga",
+      "name": "Astorga",
+      "lon": -6.05,
+      "lat": 42.46,
+      "duchy": "d_leon",
+      "kingdom": "asturias",
+      "pixel_center": [
+        1707,
+        20
+      ],
+      "pixel_count": 2230,
+      "baronies": [
+        "Astorga",
+        "Ponferrada",
+        "Bembibre"
+      ]
+    },
+    {
+      "id": "salamanca",
+      "name": "Salamanca",
+      "lon": -5.66,
+      "lat": 40.97,
+      "duchy": "d_leon",
+      "kingdom": "asturias",
+      "pixel_center": [
+        1711,
+        343
+      ],
+      "pixel_count": 6281,
+      "baronies": [
+        "Salamanca",
+        "Ciudad Rodrigo",
+        "Alba de Tormes"
+      ]
+    },
+    {
+      "id": "lamego",
+      "name": "Lamego",
+      "lon": -7.81,
+      "lat": 41.1,
+      "duchy": "d_fronteira",
+      "kingdom": "emirato",
+      "pixel_center": [
+        959,
+        191
+      ],
+      "pixel_count": 9179,
+      "baronies": [
+        "Lamego",
+        "Resende",
+        "Tarouca",
+        "S.J.Pesqueira"
+      ]
+    },
+    {
+      "id": "viseu",
+      "name": "Viseu",
+      "lon": -7.91,
+      "lat": 40.66,
+      "duchy": "d_fronteira",
+      "kingdom": "emirato",
+      "pixel_center": [
+        850,
+        354
+      ],
+      "pixel_count": 12272,
+      "baronies": [
+        "Viseu",
+        "Mangualde",
+        "Tondela",
+        "Aveiro"
+      ]
+    },
+    {
+      "id": "coimbra",
+      "name": "Coimbra",
+      "lon": -8.43,
+      "lat": 40.21,
+      "duchy": "d_fronteira",
+      "kingdom": "emirato",
+      "pixel_center": [
+        576,
+        344
+      ],
+      "pixel_count": 7937,
+      "baronies": [
+        "Coimbra",
+        "Montemor-o-Velho",
+        "Figueira da Foz",
+        "Ovar"
+      ]
+    },
+    {
+      "id": "leiria",
+      "name": "Leiria",
+      "lon": -8.81,
+      "lat": 39.74,
+      "duchy": "d_fronteira",
+      "kingdom": "emirato",
+      "pixel_center": [
+        353,
+        539
+      ],
+      "pixel_count": 9324,
+      "baronies": [
+        "Leiria",
+        "Pombal",
+        "Óbidos"
+      ]
+    },
+    {
+      "id": "idanha",
+      "name": "Idanha",
+      "lon": -7.24,
+      "lat": 39.92,
+      "duchy": "d_fronteira",
+      "kingdom": "emirato",
+      "pixel_center": [
+        1224,
+        402
+      ],
+      "pixel_count": 26497,
+      "baronies": [
+        "Idanha-a-Nova",
+        "Guarda",
+        "Covilhã"
+      ]
+    },
+    {
+      "id": "merida",
+      "name": "Marida",
+      "lon": -6.34,
+      "lat": 38.92,
+      "duchy": "d_marca_inf",
+      "kingdom": "emirato",
+      "pixel_center": [
+        1796,
+        699
+      ],
+      "pixel_count": 7973,
+      "baronies": [
+        "Mérida",
+        "Medellín"
+      ]
+    },
+    {
+      "id": "badajoz",
+      "name": "Batalyaws",
+      "lon": -6.97,
+      "lat": 38.88,
+      "duchy": "d_marca_inf",
+      "kingdom": "emirato",
+      "pixel_center": [
+        1523,
+        635
+      ],
+      "pixel_count": 21402,
+      "baronies": [
+        "Badajoz",
+        "Olivenza",
+        "Alburquerque"
+      ]
+    },
+    {
+      "id": "caceres",
+      "name": "Qasr",
+      "lon": -6.37,
+      "lat": 39.47,
+      "duchy": "d_marca_inf",
+      "kingdom": "emirato",
+      "pixel_center": [
+        1799,
+        499
+      ],
+      "pixel_count": 11451,
+      "baronies": [
+        "Cáceres",
+        "Trujillo",
+        "Plasencia"
+      ]
+    },
+    {
+      "id": "lisboa",
+      "name": "al-Ushbuna",
+      "lon": -9.14,
+      "lat": 38.72,
+      "duchy": "d_gharb",
+      "kingdom": "emirato",
+      "pixel_center": [
+        158,
+        679
+      ],
+      "pixel_count": 8182,
+      "baronies": [
+        "Lisboa",
+        "Sintra",
+        "Almada"
+      ]
+    },
+    {
+      "id": "santarem",
+      "name": "Shantarin",
+      "lon": -8.69,
+      "lat": 39.24,
+      "duchy": "d_gharb",
+      "kingdom": "emirato",
+      "pixel_center": [
+        684,
+        549
+      ],
+      "pixel_count": 19353,
+      "baronies": [
+        "Santarém",
+        "Abrantes",
+        "Tomar"
+      ]
+    },
+    {
+      "id": "alcacer",
+      "name": "al-Qasr",
+      "lon": -8.51,
+      "lat": 38.37,
+      "duchy": "d_gharb",
+      "kingdom": "emirato",
+      "pixel_center": [
+        504,
+        793
+      ],
+      "pixel_count": 9070,
+      "baronies": [
+        "Alcácer do Sal",
+        "Setúbal",
+        "Grândola"
+      ]
+    },
+    {
+      "id": "evora",
+      "name": "Yabura",
+      "lon": -7.91,
+      "lat": 38.57,
+      "duchy": "d_gharb",
+      "kingdom": "emirato",
+      "pixel_center": [
+        993,
+        692
+      ],
+      "pixel_count": 24615,
+      "baronies": [
+        "Évora",
+        "Estremoz",
+        "Montemor-o-Novo",
+        "Elvas"
+      ]
+    },
+    {
+      "id": "beja",
+      "name": "Baja",
+      "lon": -7.86,
+      "lat": 38.02,
+      "duchy": "d_gharb",
+      "kingdom": "emirato",
+      "pixel_center": [
+        1092,
+        858
+      ],
+      "pixel_count": 13121,
+      "baronies": [
+        "Beja",
+        "Serpa",
+        "Moura",
+        "Mértola"
+      ]
+    },
+    {
+      "id": "silves",
+      "name": "Shilb",
+      "lon": -8.44,
+      "lat": 37.19,
+      "duchy": "d_gharb",
+      "kingdom": "emirato",
+      "pixel_center": [
+        764,
+        970
+      ],
+      "pixel_count": 16579,
+      "baronies": [
+        "Silves",
+        "Faro",
+        "Tavira",
+        "Lagos"
+      ]
+    },
+    {
+      "id": "sevilla",
+      "name": "Ishbiliyya",
+      "lon": -5.99,
+      "lat": 37.39,
+      "duchy": "d_sevilla",
+      "kingdom": "emirato",
+      "pixel_center": [
+        1871,
+        880
+      ],
+      "pixel_count": 1087,
+      "baronies": [
+        "Sevilha",
+        "Carmona",
+        "Alcalá de Guadaíra"
+      ]
+    },
+    {
+      "id": "niebla",
+      "name": "Labla",
+      "lon": -6.67,
+      "lat": 37.36,
+      "duchy": "d_sevilla",
+      "kingdom": "emirato",
+      "pixel_center": [
+        1556,
+        927
+      ],
+      "pixel_count": 17462,
+      "baronies": [
+        "Niebla",
+        "Huelva",
+        "Moguer",
+        "Lepe"
+      ]
+    },
+    {
+      "id": "cadiz",
+      "name": "Shadhuna",
+      "lon": -6.13,
+      "lat": 36.69,
+      "duchy": "d_sevilla",
+      "kingdom": "emirato",
+      "pixel_center": [
+        1832,
+        999
+      ],
+      "pixel_count": 6282,
+      "baronies": [
+        "Jerez",
+        "Cádiz",
+        "Medina Sidonia",
+        "Sanlúcar"
+      ]
+    }
+  ],
+  "baronies": [
+    {
+      "name": "Celanova",
+      "condado_idx": 7,
+      "duchy": "d_galiza",
+      "pixel_count": 516
+    },
+    {
+      "name": "Verín",
+      "condado_idx": 7,
+      "duchy": "d_galiza",
+      "pixel_count": 3253
+    },
+    {
+      "name": "Porto",
+      "condado_idx": 9,
+      "duchy": "d_portucale",
+      "pixel_count": 209
+    },
+    {
+      "name": "Maia",
+      "condado_idx": 9,
+      "duchy": "d_portucale",
+      "pixel_count": 853
+    },
+    {
+      "name": "Matosinhos",
+      "condado_idx": 9,
+      "duchy": "d_portucale",
+      "pixel_count": 309
+    },
+    {
+      "name": "Vila do Conde",
+      "condado_idx": 9,
+      "duchy": "d_portucale",
+      "pixel_count": 1167
+    },
+    {
+      "name": "Braga",
+      "condado_idx": 10,
+      "duchy": "d_portucale",
+      "pixel_count": 1544
+    },
+    {
+      "name": "Guimarães",
+      "condado_idx": 10,
+      "duchy": "d_portucale",
+      "pixel_count": 11068
+    },
+    {
+      "name": "Barcelos",
+      "condado_idx": 10,
+      "duchy": "d_portucale",
+      "pixel_count": 382
+    },
+    {
+      "name": "Famalicão",
+      "condado_idx": 10,
+      "duchy": "d_portucale",
+      "pixel_count": 3241
+    },
+    {
+      "name": "Viana do Castelo",
+      "condado_idx": 11,
+      "duchy": "d_portucale",
+      "pixel_count": 333
+    },
+    {
+      "name": "Ponte de Lima",
+      "condado_idx": 11,
+      "duchy": "d_portucale",
+      "pixel_count": 1858
+    },
+    {
+      "name": "Caminha",
+      "condado_idx": 11,
+      "duchy": "d_portucale",
+      "pixel_count": 870
+    },
+    {
+      "name": "Chaves",
+      "condado_idx": 12,
+      "duchy": "d_portucale",
+      "pixel_count": 1102
+    },
+    {
+      "name": "Montalegre",
+      "condado_idx": 12,
+      "duchy": "d_portucale",
+      "pixel_count": 830
+    },
+    {
+      "name": "Vila Pouca",
+      "condado_idx": 12,
+      "duchy": "d_portucale",
+      "pixel_count": 1448
+    },
+    {
+      "name": "Vila Real",
+      "condado_idx": 12,
+      "duchy": "d_portucale",
+      "pixel_count": 2434
+    },
+    {
+      "name": "Bragança",
+      "condado_idx": 13,
+      "duchy": "d_portucale",
+      "pixel_count": 3245
+    },
+    {
+      "name": "Miranda do Douro",
+      "condado_idx": 13,
+      "duchy": "d_portucale",
+      "pixel_count": 2204
+    },
+    {
+      "name": "Vimioso",
+      "condado_idx": 13,
+      "duchy": "d_portucale",
+      "pixel_count": 4200
+    },
+    {
+      "name": "Mogadouro",
+      "condado_idx": 13,
+      "duchy": "d_portucale",
+      "pixel_count": 6327
+    },
+    {
+      "name": "Ponferrada",
+      "condado_idx": 15,
+      "duchy": "d_leon",
+      "pixel_count": 1524
+    },
+    {
+      "name": "Bembibre",
+      "condado_idx": 15,
+      "duchy": "d_leon",
+      "pixel_count": 706
+    },
+    {
+      "name": "Ciudad Rodrigo",
+      "condado_idx": 18,
+      "duchy": "d_leon",
+      "pixel_count": 6281
+    },
+    {
+      "name": "Lamego",
+      "condado_idx": 27,
+      "duchy": "d_fronteira",
+      "pixel_count": 1511
+    },
+    {
+      "name": "Resende",
+      "condado_idx": 27,
+      "duchy": "d_fronteira",
+      "pixel_count": 4388
+    },
+    {
+      "name": "Tarouca",
+      "condado_idx": 27,
+      "duchy": "d_fronteira",
+      "pixel_count": 1791
+    },
+    {
+      "name": "S.J.Pesqueira",
+      "condado_idx": 27,
+      "duchy": "d_fronteira",
+      "pixel_count": 1489
+    },
+    {
+      "name": "Viseu",
+      "condado_idx": 28,
+      "duchy": "d_fronteira",
+      "pixel_count": 5327
+    },
+    {
+      "name": "Mangualde",
+      "condado_idx": 28,
+      "duchy": "d_fronteira",
+      "pixel_count": 1269
+    },
+    {
+      "name": "Tondela",
+      "condado_idx": 28,
+      "duchy": "d_fronteira",
+      "pixel_count": 4798
+    },
+    {
+      "name": "Aveiro",
+      "condado_idx": 28,
+      "duchy": "d_fronteira",
+      "pixel_count": 878
+    },
+    {
+      "name": "Coimbra",
+      "condado_idx": 29,
+      "duchy": "d_fronteira",
+      "pixel_count": 3999
+    },
+    {
+      "name": "Montemor-o-Velho",
+      "condado_idx": 29,
+      "duchy": "d_fronteira",
+      "pixel_count": 844
+    },
+    {
+      "name": "Figueira da Foz",
+      "condado_idx": 29,
+      "duchy": "d_fronteira",
+      "pixel_count": 406
+    },
+    {
+      "name": "Ovar",
+      "condado_idx": 29,
+      "duchy": "d_fronteira",
+      "pixel_count": 2688
+    },
+    {
+      "name": "Leiria",
+      "condado_idx": 30,
+      "duchy": "d_fronteira",
+      "pixel_count": 2640
+    },
+    {
+      "name": "Pombal",
+      "condado_idx": 30,
+      "duchy": "d_fronteira",
+      "pixel_count": 2524
+    },
+    {
+      "name": "Óbidos",
+      "condado_idx": 30,
+      "duchy": "d_fronteira",
+      "pixel_count": 4160
+    },
+    {
+      "name": "Idanha-a-Nova",
+      "condado_idx": 31,
+      "duchy": "d_fronteira",
+      "pixel_count": 8861
+    },
+    {
+      "name": "Guarda",
+      "condado_idx": 31,
+      "duchy": "d_fronteira",
+      "pixel_count": 9592
+    },
+    {
+      "name": "Covilhã",
+      "condado_idx": 31,
+      "duchy": "d_fronteira",
+      "pixel_count": 8044
+    },
+    {
+      "name": "Mérida",
+      "condado_idx": 57,
+      "duchy": "d_marca_inf",
+      "pixel_count": 7973
+    },
+    {
+      "name": "Badajoz",
+      "condado_idx": 58,
+      "duchy": "d_marca_inf",
+      "pixel_count": 2990
+    },
+    {
+      "name": "Olivenza",
+      "condado_idx": 58,
+      "duchy": "d_marca_inf",
+      "pixel_count": 6236
+    },
+    {
+      "name": "Alburquerque",
+      "condado_idx": 58,
+      "duchy": "d_marca_inf",
+      "pixel_count": 12176
+    },
+    {
+      "name": "Cáceres",
+      "condado_idx": 59,
+      "duchy": "d_marca_inf",
+      "pixel_count": 11062
+    },
+    {
+      "name": "Plasencia",
+      "condado_idx": 59,
+      "duchy": "d_marca_inf",
+      "pixel_count": 389
+    },
+    {
+      "name": "Lisboa",
+      "condado_idx": 60,
+      "duchy": "d_gharb",
+      "pixel_count": 2693
+    },
+    {
+      "name": "Sintra",
+      "condado_idx": 60,
+      "duchy": "d_gharb",
+      "pixel_count": 3575
+    },
+    {
+      "name": "Almada",
+      "condado_idx": 60,
+      "duchy": "d_gharb",
+      "pixel_count": 1914
+    },
+    {
+      "name": "Santarém",
+      "condado_idx": 61,
+      "duchy": "d_gharb",
+      "pixel_count": 4615
+    },
+    {
+      "name": "Abrantes",
+      "condado_idx": 61,
+      "duchy": "d_gharb",
+      "pixel_count": 7982
+    },
+    {
+      "name": "Tomar",
+      "condado_idx": 61,
+      "duchy": "d_gharb",
+      "pixel_count": 6756
+    },
+    {
+      "name": "Alcácer do Sal",
+      "condado_idx": 62,
+      "duchy": "d_gharb",
+      "pixel_count": 2684
+    },
+    {
+      "name": "Setúbal",
+      "condado_idx": 62,
+      "duchy": "d_gharb",
+      "pixel_count": 3451
+    },
+    {
+      "name": "Grândola",
+      "condado_idx": 62,
+      "duchy": "d_gharb",
+      "pixel_count": 2935
+    },
+    {
+      "name": "Évora",
+      "condado_idx": 63,
+      "duchy": "d_gharb",
+      "pixel_count": 4100
+    },
+    {
+      "name": "Estremoz",
+      "condado_idx": 63,
+      "duchy": "d_gharb",
+      "pixel_count": 7029
+    },
+    {
+      "name": "Montemor-o-Novo",
+      "condado_idx": 63,
+      "duchy": "d_gharb",
+      "pixel_count": 6609
+    },
+    {
+      "name": "Elvas",
+      "condado_idx": 63,
+      "duchy": "d_gharb",
+      "pixel_count": 6877
+    },
+    {
+      "name": "Beja",
+      "condado_idx": 64,
+      "duchy": "d_gharb",
+      "pixel_count": 4326
+    },
+    {
+      "name": "Serpa",
+      "condado_idx": 64,
+      "duchy": "d_gharb",
+      "pixel_count": 1616
+    },
+    {
+      "name": "Moura",
+      "condado_idx": 64,
+      "duchy": "d_gharb",
+      "pixel_count": 5200
+    },
+    {
+      "name": "Mértola",
+      "condado_idx": 64,
+      "duchy": "d_gharb",
+      "pixel_count": 1979
+    },
+    {
+      "name": "Silves",
+      "condado_idx": 65,
+      "duchy": "d_gharb",
+      "pixel_count": 5824
+    },
+    {
+      "name": "Faro",
+      "condado_idx": 65,
+      "duchy": "d_gharb",
+      "pixel_count": 3616
+    },
+    {
+      "name": "Tavira",
+      "condado_idx": 65,
+      "duchy": "d_gharb",
+      "pixel_count": 3156
+    },
+    {
+      "name": "Lagos",
+      "condado_idx": 65,
+      "duchy": "d_gharb",
+      "pixel_count": 3983
+    },
+    {
+      "name": "Sevilha",
+      "condado_idx": 69,
+      "duchy": "d_sevilla",
+      "pixel_count": 1087
+    },
+    {
+      "name": "Niebla",
+      "condado_idx": 70,
+      "duchy": "d_sevilla",
+      "pixel_count": 9050
+    },
+    {
+      "name": "Huelva",
+      "condado_idx": 70,
+      "duchy": "d_sevilla",
+      "pixel_count": 599
+    },
+    {
+      "name": "Moguer",
+      "condado_idx": 70,
+      "duchy": "d_sevilla",
+      "pixel_count": 2396
+    },
+    {
+      "name": "Lepe",
+      "condado_idx": 70,
+      "duchy": "d_sevilla",
+      "pixel_count": 5417
+    },
+    {
+      "name": "Jerez",
+      "condado_idx": 71,
+      "duchy": "d_sevilla",
+      "pixel_count": 879
+    },
+    {
+      "name": "Sanlúcar",
+      "condado_idx": 71,
+      "duchy": "d_sevilla",
+      "pixel_count": 5403
+    }
+  ]
+}

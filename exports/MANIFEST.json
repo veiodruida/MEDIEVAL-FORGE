@@ -1,0 +1,69 @@
+{
+  "project_id": "d39628b0-0331-4975-a331-723521c036fe",
+  "exported_at_utc": "20260416-210126",
+  "spec_version": 1,
+  "phase": 1,
+  "note": "Phase 1 export \u2014 'placeholder' files are stubs that Phase 6 (EXPORT-03/04) will replace with real content.",
+  "files": [
+    {
+      "name": "lookup_barony.png",
+      "source": "generated",
+      "size_bytes": 129094
+    },
+    {
+      "name": "lookup_condado.png",
+      "source": "generated",
+      "size_bytes": 121416
+    },
+    {
+      "name": "lookup_barony_colors.json",
+      "source": "generated",
+      "size_bytes": 1620
+    },
+    {
+      "name": "lookup_condado_colors.json",
+      "source": "generated",
+      "size_bytes": 516
+    },
+    {
+      "name": "terrain_lookup.png",
+      "source": "placeholder",
+      "size_bytes": 67
+    },
+    {
+      "name": "terrain_types.json",
+      "source": "placeholder",
+      "size_bytes": 3
+    },
+    {
+      "name": "territory_metadata.json",
+      "source": "generated",
+      "size_bytes": 21192
+    },
+    {
+      "name": "mountains_mask.png",
+      "source": "placeholder",
+      "size_bytes": 67
+    },
+    {
+      "name": "rivers_overlay.png",
+      "source": "placeholder",
+      "size_bytes": 67
+    },
+    {
+      "name": "visual_barony.png",
+      "source": "generated",
+      "size_bytes": 878890
+    },
+    {
+      "name": "visual_condado.png",
+      "source": "generated",
+      "size_bytes": 871524
+    },
+    {
+      "name": "mountain_river_data.json",
+      "source": "placeholder",
+      "size_bytes": 3
+    }
+  ]
+}

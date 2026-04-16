@@ -194,7 +194,13 @@ export function ProjectNew() {
           <Box>
             <Flex justify="between" align="baseline" mb="1">
               <Text as="label" size="2" weight="medium">Área do mapa — Bounding Box</Text>
-              <a href="https://bboxfinder.com" target="_blank" rel="noreferrer"
+              <a
+                href={
+                  bbox.lat_min && bbox.lon_min && bbox.lat_max && bbox.lon_max
+                    ? `https://bboxfinder.com/#${bbox.lat_min},${bbox.lon_min},${bbox.lat_max},${bbox.lon_max}`
+                    : 'https://bboxfinder.com'
+                }
+                target="_blank" rel="noreferrer"
                 style={{ fontSize: 12, color: 'var(--accent-9)' }}>
                 Consultar no bboxfinder.com ↗
               </a>

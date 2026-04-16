@@ -110,16 +110,106 @@ def _cleanup_territory_module(name: str) -> None:
     sys.modules.pop(name, None)
 
 
+def _compute_padded_bbox(
+    config: dict[str, Any],
+    padding_pct: float = 0.15,
+) -> dict[str, float]:
+    """Compute a render bbox that:
+
+    1. Covers all territory centroid coordinates from territory_data (so no
+       condado/barony falls outside the canvas).
+    2. Adds a symmetric padding margin (default 15 %) around that envelope so
+       the territory is framed by visible ocean on all sides — matching the
+       visual style of the reference map.
+
+    If the caller already supplied explicit lon/lat bounds in *config* AND
+    those bounds already encompass every centroid, they are respected as-is
+    (after padding expansion if needed).  The project-level bbox is used only
+    as a *starting* hint, never as a hard ceiling.
+    """
+    td = config.get("territory_data") or {}
+    condados: list = td.get("condados", [])
+
+    # Collect all centroid coordinates from condados and baronies.
+    lons: list[float] = []
+    lats: list[float] = []
+    for c in condados:
+        # condado tuple: (id, name, lon, lat, duchy_id, [(barony, lon, lat), ...])
+        if isinstance(c, (list, tuple)) and len(c) >= 4:
+            lons.append(float(c[2]))
+            lats.append(float(c[3]))
+            for b in (c[5] if len(c) > 5 else []):
+                if isinstance(b, (list, tuple)) and len(b) >= 3:
+                    lons.append(float(b[1]))
+                    lats.append(float(b[2]))
+
+    # Determine the caller-supplied bbox (may come from project.bbox_* via the
+    # API layer, or from generator_config overrides).
+    cfg_lon_min = config.get("lon_min")
+    cfg_lon_max = config.get("lon_max")
+    cfg_lat_min = config.get("lat_min")
+    cfg_lat_max = config.get("lat_max")
+
+    if lons and lats:
+        data_lon_min = min(lons)
+        data_lon_max = max(lons)
+        data_lat_min = min(lats)
+        data_lat_max = max(lats)
+
+        # Expand the caller-supplied bbox to contain all centroids.
+        lon_min = min(cfg_lon_min, data_lon_min) if cfg_lon_min is not None else data_lon_min
+        lon_max = max(cfg_lon_max, data_lon_max) if cfg_lon_max is not None else data_lon_max
+        lat_min = min(cfg_lat_min, data_lat_min) if cfg_lat_min is not None else data_lat_min
+        lat_max = max(cfg_lat_max, data_lat_max) if cfg_lat_max is not None else data_lat_max
+    else:
+        # No territory data — fall back to caller-supplied values (may be None,
+        # in which case RegionConfig defaults apply).
+        return {}
+
+    # Apply symmetric padding so there is visible ocean around the territory.
+    lon_span = lon_max - lon_min
+    lat_span = lat_max - lat_min
+    pad_lon = lon_span * padding_pct
+    pad_lat = lat_span * padding_pct
+
+    return {
+        "lon_min": lon_min - pad_lon,
+        "lon_max": lon_max + pad_lon,
+        "lat_min": lat_min - pad_lat,
+        "lat_max": lat_max + pad_lat,
+    }
+
+
 def _build_region_config(generated_dir: Path, config: dict[str, Any]) -> Any:
     """Construct a RegionConfig from caller-supplied overrides, defaulting output_dir.
+
+    Bbox handling (in order of precedence):
+      1. Explicit lon/lat fields in *config* (caller override) — used as the
+         *minimum* canvas; may be expanded to fit all territory centroids.
+      2. Auto-expansion to cover all condado/barony centroids in territory_data.
+      3. 15 % ocean-framing padding added around the expanded envelope.
 
     Se existir municipalities.geojson ingerido no projeto, aponta automaticamente
     municipality_pt_geojson para esse arquivo — necessário para construir a land mask.
     """
     valid_fields = set(map_generator.RegionConfig.__dataclass_fields__.keys())
+
+    # Compute padded bbox that covers all territory centroids.
+    padded = _compute_padded_bbox(config)
+
     kwargs: dict[str, Any] = {"output_dir": str(generated_dir)}
+
+    # Start with padded bbox so it can be overridden below only if the caller
+    # explicitly supplied tighter/different bounds AND we want to respect them.
+    # Actually we ALWAYS want the padded bbox to win (it already incorporates
+    # the caller's values as a minimum envelope), so apply it first.
+    kwargs.update(padded)
+
+    # Apply all other valid RegionConfig fields from config (skip bbox keys —
+    # they were already handled above via padded bbox logic).
+    _bbox_keys = {"lon_min", "lon_max", "lat_min", "lat_max"}
     for k, v in config.items():
-        if k in valid_fields and k != "output_dir":
+        if k in valid_fields and k not in _bbox_keys and k != "output_dir":
             kwargs[k] = v
 
     # Apontar municipality_pt_geojson para o GeoJSON ingerido se não foi
