@@ -1,7 +1,6 @@
 """Tests for GEN-01..04, T-PATH preview guard, T-DOS overlap guard."""
 from __future__ import annotations
 
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -113,9 +112,9 @@ async def test_preview_rejects_non_whitelisted_filename(client):
     # Single-segment non-whitelisted filenames hit our route and get 400.
     for bad in ["secrets.txt", "wat.png", "arbitrary.png"]:
         resp = await client.get(f"/api/projects/{pid}/preview/{bad}")
-        assert resp.status_code == 400, f"{bad}: {resp.status_code} — {resp.text}"
+        assert resp.status_code == 400, f"{bad}: {resp.status_code} -- {resp.text}"
     # Path traversal: ASGI normalises these before they reach the route.
-    # They are intercepted by the URL router (never reach our handler) — acceptable
+    # They are intercepted by the URL router (never reach our handler) -- acceptable
     # since the whitelist guard at the route layer still blocks them if they do.
     for traversal in ["../../etc/passwd"]:
         resp = await client.get(f"/api/projects/{pid}/preview/{traversal}")
@@ -125,13 +124,141 @@ async def test_preview_rejects_non_whitelisted_filename(client):
     assert resp.status_code == 400
 
 
+# ---------- SLOW: real map_generator integration ----------
+
+def _minimal_territory_data() -> dict:
+    """Synthetic minimal territory hierarchy matching map_generator's expected schema.
+
+    KINGDOMS: {kingdom_id: kingdom_name_string}
+    DUCHIES:  {duchy_id: (kingdom_id, duchy_name_string)}  -- tuple format required
+    CONDADOS: list of (id, name, lon, lat, duchy_id, [(barony_name, lon, lat), ...])
+    """
+    return {
+        "kingdoms": {
+            "K_TEST": "Test Kingdom",
+        },
+        "duchies": {
+            "D_TEST": ("K_TEST", "Test Duchy"),
+        },
+        "condados": [
+            (
+                "C_NORTH",
+                "North County",
+                -3.0, 41.0,
+                "D_TEST",
+                [("North Barony", -3.0, 41.0), ("Mid Barony", -3.5, 41.2)],
+            ),
+            (
+                "C_SOUTH",
+                "South County",
+                -3.0, 39.0,
+                "D_TEST",
+                [("South Barony", -3.0, 39.0), ("Coast Barony", -3.2, 38.8)],
+            ),
+        ],
+    }
+
+
+def _write_minimal_geojson(path) -> str:
+    """Write a minimal PT-format GeoJSON covering the test barony region.
+
+    build_land_mask filters polygon points to cfg.lon_min-1 <= lo <= cfg.lon_max+1
+    and cfg.lat_min-1 <= la <= cfg.lat_max+1 (default: lon [-14.2,9.2] lat [34.4,45.6]).
+    Points outside these bounds are dropped before Pillow draws the polygon,
+    so the polygon coords MUST be well inside the region bounds to retain >= 3 pts.
+
+    We use a large rectangle at the 4 cardinal extremes of the barony KD-tree seeds
+    so the land mask has a fully filled rectangle and the KD-tree can assign every
+    pixel to a barony.
+    """
+    import json
+    import pathlib
+    geojson = {
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [[
+                        # Rectangle well inside default RegionConfig bounds
+                        # (lon_min=-13.2 lon_max=8.2 lat_min=35.4 lat_max=44.6)
+                        # so all 5 points survive the bound-filter in build_land_mask.
+                        [-12.0, 36.0],
+                        [7.0, 36.0],
+                        [7.0, 44.0],
+                        [-12.0, 44.0],
+                        [-12.0, 36.0],
+                    ]],
+                },
+                "properties": {"name": "test-region"},
+            }
+        ],
+    }
+    p = pathlib.Path(path)
+    p.write_text(json.dumps(geojson))
+    return str(p)
+
+
+def _make_test_config(geojson_path: str) -> dict:
+    """Config dict for run_generation: territory data + small map size + GeoJSON path."""
+    return {
+        "territory_data": _minimal_territory_data(),
+        # Use a small map resolution so the pipeline runs quickly.
+        "map_w": 192,
+        "map_h": 108,
+        "upscale": 1,
+        "municipality_pt_geojson": geojson_path,
+    }
+
+
 @pytest.mark.slow
-@pytest.mark.skip(reason="Implemented by Plan 01-04 Task 5 (slow integration with real map_generator)")
 async def test_png_outputs(client, tmp_path):
-    pass
+    """GEN-02: real generator produces the headline PNG outputs."""
+    from medieval_forge.services import paths as paths_mod
+    from medieval_forge.services.generator import run_generation
+
+    # Reuse the autouse _isolated_projects_root fake_root.
+    fake_root = paths_mod.PROJECTS_ROOT
+    created = await _create_project(client)
+    pid = created["id"]
+
+    geojson_path = _write_minimal_geojson(tmp_path / "test_region.geojson")
+    config = _make_test_config(geojson_path)
+    manifest = await run_generation(pid, config)
+
+    gen_dir = fake_root / pid / "generated"
+    # Files that must always exist (independent of optional mountain/river data).
+    always_required = [
+        "visual_condado.png",
+        "lookup_condado.png",
+        "lookup_condado_colors.json",
+        "territory_metadata.json",
+        "territories.png",  # alias for visual_condado.png
+    ]
+    for required in always_required:
+        p = gen_dir / required
+        assert p.exists(), f"missing required output: {required}"
+        if required.endswith(".png"):
+            assert p.stat().st_size > 100, f"{required} suspiciously small"
+    # Manifest reports at least the required files.
+    assert "territories.png" in manifest
 
 
 @pytest.mark.slow
-@pytest.mark.skip(reason="Implemented by Plan 01-04 Task 5 (GEN-04 performance assertion)")
 async def test_generation_time(client, tmp_path):
-    pass
+    """GEN-04: generation completes in <60s for the minimal example."""
+    import time
+    from medieval_forge.services.generator import run_generation
+
+    created = await _create_project(client)
+    pid = created["id"]
+
+    geojson_path = _write_minimal_geojson(tmp_path / "test_region.geojson")
+    config = _make_test_config(geojson_path)
+
+    t0 = time.monotonic()
+    await run_generation(pid, config)
+    elapsed = time.monotonic() - t0
+
+    assert elapsed < 60.0, f"generation took {elapsed:.1f}s, exceeds GEN-04 budget"

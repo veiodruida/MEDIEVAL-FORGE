@@ -4,14 +4,23 @@ D-04: map_generator is treated as a vendored black box. We do NOT modify it.
 D-05: synchronous pipeline runs in asyncio.to_thread.
 Pitfall 6 mitigation: territory data is injected via sys.modules patching
                        before generate_maps invokes load_territory_data.
+
+Reload mitigation: load_territory_data calls importlib.reload(mod) after
+import_module. For a synthetic module (no file on disk), _find_spec returns
+None and reload raises ModuleNotFoundError. We patch importlib.reload in the
+map_generator module's own namespace for the duration of the pipeline call so
+that reload on our synthetic module is a no-op. Real modules are unaffected.
 """
 from __future__ import annotations
 
 import asyncio
+import importlib
+import io
 import logging
 import shutil
 import sys
 import types
+from contextlib import contextmanager, redirect_stdout
 from pathlib import Path
 from typing import Any
 
@@ -60,6 +69,41 @@ def _cleanup_territory_module(name: str) -> None:
     sys.modules.pop(name, None)
 
 
+@contextmanager
+def _patch_reload_for_synthetic(synthetic_module_name: str):
+    """Patch importlib.reload in map_generator's namespace to be a no-op for
+    our synthetic module only.
+
+    load_territory_data does:
+        mod = importlib.import_module(name)
+        importlib.reload(mod)
+
+    For a synthetic module (no backing .py file), Python's reload calls
+    _bootstrap._find_spec which returns None, raising ModuleNotFoundError.
+    We intercept reload *only* for our synthetic module; real modules are
+    reloaded normally.
+    """
+    _real_reload = importlib.reload
+
+    def _safe_reload(module: types.ModuleType) -> types.ModuleType:
+        if getattr(module, "__name__", None) == synthetic_module_name:
+            return module  # no-op for our synthetic module
+        return _real_reload(module)
+
+    # Patch in map_generator's importlib reference (the module uses
+    # `import importlib` at the top, so we patch via its module dict).
+    import importlib as _importlib_mod
+    _importlib_mod.reload = _safe_reload  # type: ignore[method-assign]
+    try:
+        yield
+    finally:
+        _importlib_mod.reload = _real_reload  # type: ignore[method-assign]
+
+
+def _cleanup_territory_module(name: str) -> None:
+    sys.modules.pop(name, None)
+
+
 def _build_region_config(generated_dir: Path, config: dict[str, Any]) -> Any:
     """Construct a RegionConfig from caller-supplied overrides, defaulting output_dir."""
     valid_fields = set(map_generator.RegionConfig.__dataclass_fields__.keys())
@@ -93,11 +137,18 @@ def _run_pipeline_sync(
     _inject_territory_module(module_name, territory_data)
     try:
         region_cfg = _build_region_config(generated_dir, config)
-        map_generator.generate_maps(
-            region_cfg,
-            territory_module=module_name,
-            draw_names=False,
-        )
+        # Redirect map_generator's progress prints to a UTF-8 StringIO buffer.
+        # map_generator uses Unicode characters (→, —) in its print statements
+        # that fail on Windows cp1252 console encoding when running as a
+        # background thread. The captured output is logged at DEBUG level.
+        _buf = io.StringIO()
+        with _patch_reload_for_synthetic(module_name), redirect_stdout(_buf):
+            map_generator.generate_maps(
+                region_cfg,
+                territory_module=module_name,
+                draw_names=False,
+            )
+        logger.debug("map_generator output for %s:\n%s", project_id, _buf.getvalue())
         _materialise_aliases(generated_dir)
     finally:
         _cleanup_territory_module(module_name)
