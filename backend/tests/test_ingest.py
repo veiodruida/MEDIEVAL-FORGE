@@ -146,9 +146,63 @@ async def test_osm_fallback():
 
 # ---------- Tasks 3 and 4 tests (stubs until implemented) ----------
 
-@pytest.mark.skip(reason="Implemented by Plan 01-03 Task 3")
-async def test_geojson_written(client, tmp_path):
-    pass
+async def test_geojson_written(tmp_path, monkeypatch):
+    """run_ingest writes raw/municipalities.geojson and updates project.status (INGEST-03)."""
+    import sqlalchemy as sa
+    from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
+
+    from medieval_forge.models import Base, Project
+    from medieval_forge.services import ingest_runner, ingest_wikidata
+    from medieval_forge.services import paths as paths_mod
+
+    # Redirect PROJECTS_ROOT to tmp_path.
+    fake_root = tmp_path / "projects"
+    monkeypatch.setattr(paths_mod, "PROJECTS_ROOT", fake_root)
+
+    # Build a dedicated in-memory DB for this test.
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    sf = async_sessionmaker(engine, expire_on_commit=False)
+
+    # Insert a project row.
+    pid = "12345678-1234-4234-8234-123456789abc"
+    async with sf() as session:
+        session.add(Project(
+            id=pid, name="ingest-test", country_qid="Q29",
+            period_start=800, period_end=1000, status="created",
+        ))
+        await session.commit()
+
+    # Stub the wikidata fetcher to avoid network calls.
+    async def fake_fetch(country_qid, queue, page_size=500, *, client_factory=None):
+        await queue.put("data: stub fetching...\n\n")
+        return {
+            "type": "FeatureCollection",
+            "features": [{
+                "type": "Feature",
+                "properties": {"qid": "Q1", "label": "Stub"},
+                "geometry": {"type": "Point", "coordinates": [0.0, 0.0]},
+            }],
+        }
+    monkeypatch.setattr(ingest_wikidata, "fetch_municipalities", fake_fetch)
+
+    queue: asyncio.Queue[str | None] = asyncio.Queue()
+    await ingest_runner.run_ingest(pid, "wikidata", "Q29", queue, db_session_factory=sf)
+
+    # Verify file written.
+    geojson_path = fake_root / pid / "raw" / "municipalities.geojson"
+    assert geojson_path.exists()
+    data = json.loads(geojson_path.read_text(encoding="utf-8"))
+    assert data["type"] == "FeatureCollection"
+    assert len(data["features"]) == 1
+
+    # Verify status updated in the dedicated engine.
+    async with sf() as session:
+        proj = await session.get(Project, pid)
+        assert proj.status == "ingested"
+
+    await engine.dispose()
 
 
 @pytest.mark.skip(reason="Implemented by Plan 01-03 Task 4")
