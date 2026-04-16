@@ -205,11 +205,45 @@ async def test_geojson_written(tmp_path, monkeypatch):
     await engine.dispose()
 
 
-@pytest.mark.skip(reason="Implemented by Plan 01-03 Task 4")
-async def test_sse_stream(client):
-    pass
-
-
-@pytest.mark.skip(reason="Implemented by Plan 01-03 Task 4")
 async def test_sse_stream_invalid_uuid_returns_400(client):
-    pass
+    resp = await client.post("/api/projects/not-a-uuid/ingest?source=wikidata")
+    assert resp.status_code == 400
+
+
+async def test_sse_stream(client, tmp_path, monkeypatch):
+    """Endpoint streams SSE messages from the runner queue end-to-end."""
+    from medieval_forge.services import ingest_wikidata
+    from medieval_forge.services import paths as paths_mod
+
+    # Isolate filesystem.
+    fake_root = tmp_path / "projects"
+    monkeypatch.setattr(paths_mod, "PROJECTS_ROOT", fake_root)
+
+    # Stub the network fetch.
+    async def fake_fetch(country_qid, queue, page_size=500, *, client_factory=None):
+        await queue.put("data: stub page 1\n\n")
+        await queue.put("data: stub page 2\n\n")
+        return {"type": "FeatureCollection", "features": []}
+    monkeypatch.setattr(ingest_wikidata, "fetch_municipalities", fake_fetch)
+
+    created = (await client.post("/api/projects", json={
+        "name": "sse",
+        "country_qid": "Q29",
+        "period_start": 800,
+        "period_end": 1000,
+    })).json()
+    pid = created["id"]
+
+    # Stream the SSE response and collect events.
+    async with client.stream("POST", f"/api/projects/{pid}/ingest?source=wikidata") as resp:
+        assert resp.status_code == 200
+        assert resp.headers["content-type"].startswith("text/event-stream")
+        body_chunks: list[str] = []
+        async for chunk in resp.aiter_text():
+            body_chunks.append(chunk)
+    full_body = "".join(body_chunks)
+    # Verify expected event substrings (the producer emits Starting, stub page 1/2, Wrote, DONE).
+    assert "Starting wikidata ingest" in full_body
+    assert "stub page 1" in full_body
+    assert "stub page 2" in full_body
+    assert "DONE" in full_body

@@ -39,8 +39,10 @@ app = FastAPI(
 )
 
 from .api.projects import router as projects_router  # noqa: E402
+from .api.ingest import router as ingest_router  # noqa: E402
 
 app.include_router(projects_router, prefix="/api")
+app.include_router(ingest_router, prefix="/api")
 
 # /assets/* — JS/CSS bundles. Only mount if directory exists (frontend may
 # not be built yet during early development).
