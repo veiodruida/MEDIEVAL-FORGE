@@ -65,6 +65,14 @@ export function useProject(id: string | undefined) {
     queryKey: ['projects', id],
     queryFn: () => jsonFetch<Project>(`/api/projects/${id}`),
     enabled: Boolean(id),
+    // Poll every 2s while the project is in a transient processing state.
+    refetchInterval: (query) => {
+      const data = query.state.data as Project | undefined
+      if (data && (data.status === 'generating' || data.status.startsWith('ingesting'))) {
+        return 2000
+      }
+      return false
+    },
   })
 }
 
@@ -101,6 +109,24 @@ export function useDeleteProject() {
     mutationFn: (id: string) =>
       jsonFetch<void>(`/api/projects/${id}`, { method: 'DELETE' }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['projects'] }),
+  })
+}
+
+export function useGenerate(projectId: string | undefined) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (territoryData?: Record<string, unknown>) => {
+      const body: Record<string, unknown> = {}
+      if (territoryData) body.territory_data = territoryData
+      return jsonFetch<{ project_id: string; status: string }>(
+        `/api/projects/${projectId}/generate`,
+        { method: 'POST', body: JSON.stringify(body) },
+      )
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['projects', projectId] })
+      qc.invalidateQueries({ queryKey: ['projects'] })
+    },
   })
 }
 

@@ -1,15 +1,30 @@
 import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { Box, Button, Card, Flex, Heading, Text, TextField } from '@radix-ui/themes'
-import { useProject, useUpdateProject, useIngestStream } from '../api/client'
+import { Box, Button, Card, Flex, Heading, Text, TextArea, TextField } from '@radix-ui/themes'
+import { useProject, useUpdateProject, useIngestStream, useGenerate } from '../api/client'
 
 export function ProjectDetail() {
   const { id } = useParams<{ id: string }>()
   const { data: project, isLoading, error } = useProject(id)
   const update = useUpdateProject(id || '')
   const ingest = useIngestStream(id)
+  const generate = useGenerate(id)
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState({ name: '', period_start: 0, period_end: 0 })
+  const [territoryJson, setTerritoryJson] = useState<string>(
+    JSON.stringify(
+      {
+        kingdoms: { K_TEST: 'Test Kingdom' },
+        duchies: { D_TEST: ['K_TEST', 'Test Duchy'] },
+        condados: [
+          ['C_NORTH', 'North', -3.0, 41.0, 'D_TEST', [['North Barony', -3.0, 41.0]]],
+          ['C_SOUTH', 'South', -3.0, 39.0, 'D_TEST', [['South Barony', -3.0, 39.0]]],
+        ],
+      },
+      null,
+      2,
+    ),
+  )
 
   if (isLoading) return <Box p="6"><Text>Loading…</Text></Box>
   if (error) return <Box p="6"><Text color="red">{(error as Error).message}</Text></Box>
@@ -31,6 +46,15 @@ export function ProjectDetail() {
       period_end: Number(draft.period_end),
     })
     setEditing(false)
+  }
+
+  const handleGenerate = () => {
+    try {
+      const data = JSON.parse(territoryJson)
+      generate.mutate(data)
+    } catch (e) {
+      alert(`territory_data JSON parse error: ${(e as Error).message}`)
+    }
   }
 
   return (
@@ -100,12 +124,40 @@ export function ProjectDetail() {
           >
             Ingest from OSM
           </Button>
-          <Button disabled title="Will be wired by Plan 1.4 (map generation)">Generate (Plan 1.4)</Button>
+          <Button
+            onClick={handleGenerate}
+            disabled={project.status === 'generating' || generate.isPending}
+          >
+            {project.status === 'generating' ? 'Generating…' : 'Generate'}
+          </Button>
           <Button disabled title="Will be wired by Plan 1.5 (Unity export)">Export ZIP (Plan 1.5)</Button>
         </Flex>
         {ingest.error && (
           <Text color="red" size="2">Ingest error: {ingest.error.message}</Text>
         )}
+
+        {/* Territory data JSON input for generation */}
+        <Box mb="3">
+          <Text size="2" weight="medium">Territory data (JSON)</Text>
+          <TextArea
+            value={territoryJson}
+            onChange={(e) => setTerritoryJson(e.target.value)}
+            rows={10}
+            style={{ fontFamily: 'monospace', fontSize: 12 }}
+          />
+          {generate.error && (
+            <Text color="red" size="2">
+              Generate error: {(generate.error as Error).message}
+            </Text>
+          )}
+          {project.status === 'error_generating' &&
+            Boolean(project.generator_config?.last_error) && (
+              <Text color="red" size="2">
+                Last generation error: {String(project.generator_config?.last_error ?? '')}
+              </Text>
+            )}
+        </Box>
+
         <Box>
           <Text size="2" color="gray">Ingestion log:</Text>
           <pre
@@ -125,6 +177,34 @@ export function ProjectDetail() {
           </pre>
         </Box>
       </Card>
+
+      {/* Preview images — rendered only when generation has completed. */}
+      {project.status === 'generated' && (
+        <Card mt="4">
+          <Heading size="3" mb="2">Previews</Heading>
+          <Flex gap="3" wrap="wrap">
+            {(['territories.png', 'borders.png', 'terrain.png'] as const).map((fname) => (
+              <Box key={fname}>
+                <Text size="2" weight="medium">{fname}</Text>
+                <img
+                  src={`/api/projects/${project.id}/preview/${fname}`}
+                  alt={fname}
+                  style={{
+                    display: 'block',
+                    maxWidth: 360,
+                    border: '1px solid #ddd',
+                    borderRadius: 4,
+                    marginTop: 4,
+                  }}
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).style.opacity = '0.3'
+                  }}
+                />
+              </Box>
+            ))}
+          </Flex>
+        </Card>
+      )}
     </Box>
   )
 }
