@@ -1,12 +1,13 @@
 import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { Box, Button, Card, Flex, Heading, Text, TextField } from '@radix-ui/themes'
-import { useProject, useUpdateProject } from '../api/client'
+import { useProject, useUpdateProject, useIngestStream } from '../api/client'
 
 export function ProjectDetail() {
   const { id } = useParams<{ id: string }>()
   const { data: project, isLoading, error } = useProject(id)
   const update = useUpdateProject(id || '')
+  const ingest = useIngestStream(id)
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState({ name: '', period_start: 0, period_end: 0 })
 
@@ -82,16 +83,31 @@ export function ProjectDetail() {
         </Card>
       )}
 
-      {/* Placeholder action surface for Plans 03/04/05 (D-09 SSE log lives here too). */}
+      {/* Pipeline action surface (D-09 SSE log lives here). */}
       <Card>
         <Heading size="3" mb="2">Pipeline actions</Heading>
-        <Flex gap="2" mb="3">
-          <Button disabled title="Will be wired by Plan 1.3 (data ingestion)">Ingest (Plan 1.3)</Button>
+        <Flex gap="2" mb="3" wrap="wrap">
+          <Button
+            onClick={() => ingest.start('wikidata')}
+            disabled={ingest.isStreaming}
+          >
+            {ingest.isStreaming ? 'Ingesting…' : 'Ingest from Wikidata'}
+          </Button>
+          <Button
+            variant="soft"
+            onClick={() => ingest.start('osm')}
+            disabled={ingest.isStreaming}
+          >
+            Ingest from OSM
+          </Button>
           <Button disabled title="Will be wired by Plan 1.4 (map generation)">Generate (Plan 1.4)</Button>
           <Button disabled title="Will be wired by Plan 1.5 (Unity export)">Export ZIP (Plan 1.5)</Button>
         </Flex>
+        {ingest.error && (
+          <Text color="red" size="2">Ingest error: {ingest.error.message}</Text>
+        )}
         <Box>
-          <Text size="2" color="gray">Ingestion log (populated by Plan 1.3):</Text>
+          <Text size="2" color="gray">Ingestion log:</Text>
           <pre
             id="ingest-log"
             style={{
@@ -102,8 +118,11 @@ export function ProjectDetail() {
               maxHeight: 240,
               overflow: 'auto',
               fontSize: 12,
+              whiteSpace: 'pre-wrap',
             }}
-          />
+          >
+            {ingest.lines.join('')}
+          </pre>
         </Box>
       </Card>
     </Box>

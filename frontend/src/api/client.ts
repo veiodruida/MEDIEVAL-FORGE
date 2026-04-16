@@ -103,3 +103,68 @@ export function useDeleteProject() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['projects'] }),
   })
 }
+
+// ---------- INGEST-04: SSE streaming hook (D-09) ----------
+
+import { useCallback, useState } from 'react'
+
+export interface IngestStreamHandle {
+  lines: string[]
+  start: (source: 'wikidata' | 'osm') => Promise<void>
+  isStreaming: boolean
+  error: Error | null
+}
+
+export function useIngestStream(projectId: string | undefined): IngestStreamHandle {
+  const qc = useQueryClient()
+  const [lines, setLines] = useState<string[]>([])
+  const [isStreaming, setStreaming] = useState(false)
+  const [error, setError] = useState<Error | null>(null)
+
+  const start = useCallback(
+    async (source: 'wikidata' | 'osm') => {
+      if (!projectId) return
+      setLines([])
+      setError(null)
+      setStreaming(true)
+      try {
+        const res = await fetch(
+          `/api/projects/${projectId}/ingest?source=${source}`,
+          { method: 'POST' },
+        )
+        if (!res.ok || !res.body) {
+          throw new Error(`HTTP ${res.status}`)
+        }
+        const reader = res.body.getReader()
+        const decoder = new TextDecoder()
+        let buf = ''
+        while (true) {
+          const { value, done } = await reader.read()
+          if (done) break
+          buf += decoder.decode(value, { stream: true })
+          // SSE events are separated by blank lines (\n\n).
+          let idx
+          while ((idx = buf.indexOf('\n\n')) !== -1) {
+            const eventBlock = buf.slice(0, idx)
+            buf = buf.slice(idx + 2)
+            // Strip the "data: " prefix from each line in the block.
+            const text = eventBlock
+              .split('\n')
+              .map((l) => (l.startsWith('data: ') ? l.slice(6) : l))
+              .join('\n')
+            setLines((prev) => [...prev, text + '\n'])
+          }
+        }
+      } catch (e) {
+        setError(e as Error)
+      } finally {
+        setStreaming(false)
+        qc.invalidateQueries({ queryKey: ['projects', projectId] })
+        qc.invalidateQueries({ queryKey: ['projects'] })
+      }
+    },
+    [projectId, qc],
+  )
+
+  return { lines, start, isStreaming, error }
+}
