@@ -1,0 +1,79 @@
+# Project State
+
+## Project Reference
+
+See: .planning/PROJECT.md (updated 2026-04-16)
+
+**Core value:** A Game Designer can go from "country + historical period" to a validated, Unity-ready map package without manual pixel editing or blind iteration.
+**Current focus:** Phase 1 — Data Pipeline + Backend Scaffold
+
+## Current Position
+
+Phase: 1 of 6 (Data Pipeline + Backend Scaffold)
+Plan: 0 of 5 in current phase
+Status: Ready to plan
+Last activity: 2026-04-16 — Roadmap created, STATE.md initialized
+
+Progress: [░░░░░░░░░░] 0%
+
+## Performance Metrics
+
+**Velocity:**
+- Total plans completed: 0
+- Average duration: —
+- Total execution time: 0 hours
+
+**By Phase:**
+
+| Phase | Plans | Total | Avg/Plan |
+|-------|-------|-------|----------|
+| 1. Data Pipeline + Backend Scaffold | 0/5 | — | — |
+| 2. Read-Only Canvas Viewer | 0/3 | — | — |
+| 3. LLM Research Integration | 0/3 | — | — |
+| 4. Canvas Editing — Basic | 0/4 | — | — |
+| 5. Canvas Editing — Advanced | 0/2 | — | — |
+| 6. Validation Gate + Export Polish | 0/3 | — | — |
+
+**Recent Trend:**
+- Last 5 plans: —
+- Trend: —
+
+*Updated after each plan completion*
+
+## Accumulated Context
+
+### Decisions
+
+Decisions are logged in PROJECT.md Key Decisions table.
+Recent decisions affecting current work:
+
+- [Initialization]: React 19 + react-konva 19.2.x (not React 18 — peer-dep alignment)
+- [Initialization]: Vite 6 (not v5 — two majors behind, migration is smooth)
+- [Initialization]: zundo 2.3.0 (not v3 — does not exist on npm; v2 uses `temporal` middleware)
+- [Initialization]: rasterio pinned `>=1.4,<1.5` (1.5+ requires Python 3.12; project targets 3.11)
+- [Initialization]: aiosqlite pinned `>=0.20,<0.22` (v0.22.0 hanging thread regression — issue #13039)
+- [Initialization]: Tailwind v4 CSS-first config (`@theme` in CSS, no `tailwind.config.js`; Radix CSS must import before Tailwind `@import`)
+- [Initialization]: Phase 3 (LLM) has no canvas dependency — can run in parallel with Phase 2 if bandwidth allows
+- [Initialization]: EXPORT-01/02 delivered headlessly in Phase 1; EXPORT-03/04 (polish + dialog) deferred to Phase 6
+
+### Pending Todos
+
+None yet.
+
+### Blockers/Concerns
+
+**Pre-Phase 1 items to verify immediately:**
+- `map_generator.py` importability: must confirm it has `if __name__ == "__main__"` guards before building `services/generator.py` wrapper
+- Tailwind v4 + Radix UI transparency bug (GitHub #17137): plan a UI component smoke-test early in Phase 2
+
+**Phase 4 research flag:**
+- zundo partialize+diff at real scale: spike with real Iberia GeoJSON (~91 territories) to measure actual snapshot size before committing to diff strategy
+
+**Phase 6 research flag:**
+- Unity 12-file spec: verify against current Unity 6 grand strategy community practice during Phase 6 planning
+
+## Session Continuity
+
+Last session: 2026-04-16
+Stopped at: Roadmap created. No plans written yet. Ready to run `/gsd-plan-phase 1`.
+Resume file: None

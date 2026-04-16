@@ -95,14 +95,53 @@
 
 ## Traceability
 
-| REQ-ID | Phase | Notes |
-|--------|-------|-------|
-| PROJ-01..05 | Phase 1 | Core project CRUD before anything else |
-| INGEST-01..04 | Phase 1 | Data pipeline foundation |
-| GEN-01..04 | Phase 1 | Headless generation pipeline |
-| PKG-01..05 | Phase 1 | Installable package from day 1 |
-| CANVAS-01..06 | Phase 2 | Read-only canvas before editing |
-| RESEARCH-01..05 | Phase 3 | LLM integration (parallel with Phase 2) |
-| EDIT-01..08 | Phase 4+5 | Editing after canvas foundation is solid |
-| VALIDATE-01..07 | Phase 6 | Validation gate before export polish |
-| EXPORT-01..04 | Phase 1+6 | Basic export in Phase 1, polished in Phase 6 |
+| REQ-ID | Phase | Status | Notes |
+|--------|-------|--------|-------|
+| PROJ-01 | Phase 1 | Pending | Core project CRUD before anything else |
+| PROJ-02 | Phase 1 | Pending | Core project CRUD before anything else |
+| PROJ-03 | Phase 1 | Pending | Core project CRUD before anything else |
+| PROJ-04 | Phase 1 | Pending | Core project CRUD before anything else |
+| PROJ-05 | Phase 1 | Pending | Core project CRUD before anything else |
+| INGEST-01 | Phase 1 | Pending | Data pipeline foundation — Wikidata paginated |
+| INGEST-02 | Phase 1 | Pending | Data pipeline foundation — OSM fallback |
+| INGEST-03 | Phase 1 | Pending | Data pipeline foundation — GeoJSON storage |
+| INGEST-04 | Phase 1 | Pending | Data pipeline foundation — SSE progress |
+| GEN-01 | Phase 1 | Pending | Headless generation pipeline |
+| GEN-02 | Phase 1 | Pending | Headless generation pipeline — PNG output |
+| GEN-03 | Phase 1 | Pending | Headless generation pipeline — browser preview |
+| GEN-04 | Phase 1 | Pending | Headless generation pipeline — <60s target |
+| PKG-01 | Phase 1 | Pending | Installable package from day 1 |
+| PKG-02 | Phase 1 | Pending | CLI start with browser open |
+| PKG-03 | Phase 1 | Pending | CLI start --no-browser |
+| PKG-04 | Phase 1 | Pending | CLI stop via PID file |
+| PKG-05 | Phase 1 | Pending | Frontend bundled in wheel via package_data |
+| EXPORT-01 | Phase 1 | Pending | Headless ZIP assembly (polished in Phase 6) |
+| EXPORT-02 | Phase 1 | Pending | 12-file ZIP content spec (polished in Phase 6) |
+| CANVAS-01 | Phase 2 | Pending | Read-only canvas before editing |
+| CANVAS-02 | Phase 2 | Pending | Pan + zoom |
+| CANVAS-03 | Phase 2 | Pending | Click-to-inspect sidebar |
+| CANVAS-04 | Phase 2 | Pending | Layer toggle panel |
+| CANVAS-05 | Phase 2 | Pending | Labels at zoom threshold |
+| CANVAS-06 | Phase 2 | Pending | Fit-to-view reset |
+| RESEARCH-01 | Phase 3 | Pending | Claude API streaming |
+| RESEARCH-02 | Phase 3 | Pending | Ollama local LLM adapter |
+| RESEARCH-03 | Phase 3 | Pending | Pydantic schema validation + 3-retry |
+| RESEARCH-04 | Phase 3 | Pending | Per-project cache |
+| RESEARCH-05 | Phase 3 | Pending | Progress spinner / SSE stream UI |
+| EDIT-01 | Phase 4 | Pending | Capital drag + Voronoi recalc <500ms |
+| EDIT-02 | Phase 4 | Pending | Border vertex drag |
+| EDIT-03 | Phase 4 | Pending | Territory merge |
+| EDIT-04 | Phase 4 | Pending | Territory split by cut line |
+| EDIT-07 | Phase 4 | Pending | Undo/redo Ctrl+Z/Y 50-step |
+| EDIT-08 | Phase 4 | Pending | Compound undo step grouping |
+| EDIT-05 | Phase 5 | Pending | Terrain paint brush with land mask |
+| EDIT-06 | Phase 5 | Pending | Reference overlay + opacity slider |
+| VALIDATE-01 | Phase 6 | Pending | Orphan barony detection |
+| VALIDATE-02 | Phase 6 | Pending | Dark ocean pixel detection |
+| VALIDATE-03 | Phase 6 | Pending | Missing capital detection |
+| VALIDATE-04 | Phase 6 | Pending | Undersized territory detection |
+| VALIDATE-05 | Phase 6 | Pending | Hierarchy integrity check |
+| VALIDATE-06 | Phase 6 | Pending | Validation UI with severity + territory highlight |
+| VALIDATE-07 | Phase 6 | Pending | Export blocked on errors, warn-override on warnings |
+| EXPORT-03 | Phase 6 | Pending | Final PNG regeneration before ZIP packaging |
+| EXPORT-04 | Phase 6 | Pending | Export dialog with validation summary + file sizes |
