@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { Box, Button, Card, Flex, Heading, Text, TextArea, TextField } from '@radix-ui/themes'
-import { useProject, useUpdateProject, useIngestStream, useGenerate } from '../api/client'
+import { useProject, useUpdateProject, useIngestStream, useGenerate, useExport } from '../api/client'
 
 export function ProjectDetail() {
   const { id } = useParams<{ id: string }>()
@@ -9,6 +9,7 @@ export function ProjectDetail() {
   const update = useUpdateProject(id || '')
   const ingest = useIngestStream(id)
   const generate = useGenerate(id)
+  const exportZip = useExport(id)
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState({ name: '', period_start: 0, period_end: 0 })
   const [territoryJson, setTerritoryJson] = useState<string>(
@@ -130,8 +131,26 @@ export function ProjectDetail() {
           >
             {project.status === 'generating' ? 'Generating…' : 'Generate'}
           </Button>
-          <Button disabled title="Will be wired by Plan 1.5 (Unity export)">Export ZIP (Plan 1.5)</Button>
+          <Button
+            variant="soft"
+            color="green"
+            onClick={() => exportZip.mutate()}
+            disabled={
+              exportZip.isPending ||
+              (project.status !== 'generated' && project.status !== 'exported')
+            }
+            title={
+              project.status === 'generated' || project.status === 'exported'
+                ? 'Build and download Unity ZIP'
+                : 'Generate maps first (status must be generated or exported)'
+            }
+          >
+            {exportZip.isPending ? 'Building ZIP…' : 'Export ZIP'}
+          </Button>
         </Flex>
+        {exportZip.error && (
+          <Text color="red" size="2">Export error: {(exportZip.error as Error).message}</Text>
+        )}
         {ingest.error && (
           <Text color="red" size="2">Ingest error: {ingest.error.message}</Text>
         )}
@@ -178,8 +197,8 @@ export function ProjectDetail() {
         </Box>
       </Card>
 
-      {/* Preview images — rendered only when generation has completed. */}
-      {project.status === 'generated' && (
+      {/* Preview images — rendered when generation has completed or exported. */}
+      {(project.status === 'generated' || project.status === 'exported') && (
         <Card mt="4">
           <Heading size="3" mb="2">Previews</Heading>
           <Flex gap="3" wrap="wrap">

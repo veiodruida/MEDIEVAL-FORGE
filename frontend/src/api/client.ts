@@ -194,3 +194,35 @@ export function useIngestStream(projectId: string | undefined): IngestStreamHand
 
   return { lines, start, isStreaming, error }
 }
+
+// ---------- EXPORT-01/02: ZIP export hook ----------
+
+export interface ExportResponse {
+  project_id: string
+  zip_filename: string
+  size_bytes: number
+  download_url: string
+}
+
+export function useExport(projectId: string | undefined) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async () => {
+      return jsonFetch<ExportResponse>(
+        `/api/projects/${projectId}/export`,
+        { method: 'POST' },
+      )
+    },
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ['projects', projectId] })
+      qc.invalidateQueries({ queryKey: ['projects'] })
+      // Trigger browser download via a hidden anchor — avoids losing SPA route state.
+      const a = document.createElement('a')
+      a.href = data.download_url
+      a.download = data.zip_filename
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+    },
+  })
+}
