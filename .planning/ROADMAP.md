@@ -20,6 +20,7 @@ Six phases take Medieval Forge from zero to a fully validated, Unity-ready map p
 **Depends on**: Nothing (first phase)
 **Requirements**: PROJ-01, PROJ-02, PROJ-03, PROJ-04, PROJ-05, INGEST-01, INGEST-02, INGEST-03, INGEST-04, GEN-01, GEN-02, GEN-03, GEN-04, PKG-01, PKG-02, PKG-03, PKG-04, PKG-05, EXPORT-01, EXPORT-02
 **UI hint**: no
+**Plans**: 5 plans
 
 **Critical constraints resolved in this phase:**
 - `vite.config.ts` must set `base: "./"` (absolute `/` breaks pip-packaged asset URLs)
@@ -36,11 +37,11 @@ Six phases take Medieval Forge from zero to a fully validated, Unity-ready map p
 5. User can download a Unity ZIP containing all 12 standardized files from a generated project.
 
 ### Plans
-- **1.1** Project scaffold + packaging seam — pyproject.toml, Vite config (`base: "./"`), FastAPI static SPA serving, `medieval-forge` CLI entry point, aiosqlite pin, Alembic async env.py
-- **1.2** SQLite schema + project CRUD — SQLAlchemy models, Alembic migration, PROJ-01..05 FastAPI routes + Pydantic schemas
-- **1.3** Data ingestion pipeline — Wikidata SPARQL paginated client (INGEST-01), OSM Overpass fallback (INGEST-02), GeoJSON storage (INGEST-03), SSE progress stream (INGEST-04)
-- **1.4** Map generation wrapper — verify `map_generator.py` importability, `services/generator.py` thin wrapper, BackgroundTask generation endpoint, PNG preview FileResponse (GEN-01..04)
-- **1.5** Basic export — Unity ZIP assembly with 12 files (EXPORT-01, EXPORT-02), headless validation stub
+- [ ] `01-01-project-scaffold-packaging.md` — pyproject.toml, async FastAPI shell, Alembic async env.py, `medieval-forge` Click CLI (PKG-01..05), Wave 0 test scaffold
+- [ ] `01-02-sqlite-schema-project-crud.md` — Project SQLAlchemy model + initial migration, 5 CRUD routes, Pydantic schemas, T-PATH `paths.py` guard, full minimal React SPA (Vite 6 + Tailwind v4 + Radix Themes + TanStack Query) with 3 pages (PROJ-01..05)
+- [ ] `01-03-data-ingestion-pipeline.md` — Wikidata SPARQL paginated client + OSM Overpass fallback (T-SSRF guards), atomic GeoJSON write, asyncio.Queue/SSE progress endpoint, frontend Ingest button wired to streaming log panel (INGEST-01..04)
+- [ ] `01-04-map-generation-wrapper.md` — Verbatim copy of map_generator.py into package, sys.modules territory injector (Pitfall 6), POST /generate BackgroundTask + status polling, GET /preview/{filename} with whitelist (T-PATH), 3 preview `<img>` tags + GEN-04 <60s slow assertion (GEN-01..04)
+- [ ] `01-05-unity-export.md` — services/export.py with 12-file Unity spec + placeholder generator + MANIFEST.json, POST /export + GET /export/download FileResponse, frontend Export button + auto-download anchor (EXPORT-01, EXPORT-02)
 
 ---
 
