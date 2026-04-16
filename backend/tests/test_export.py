@@ -90,21 +90,73 @@ async def test_build_unity_zip_rejects_empty_generated_dir(client, tmp_path):
         build_unity_zip(pid)
 
 
-@pytest.mark.skip(reason="Implemented by Plan 01-05 Task 3 (api.export)")
 async def test_zip_download(client, tmp_path):
-    pass
+    """EXPORT-01: POST /export builds a ZIP, GET /export/download returns it."""
+    from medieval_forge.services.paths import ensure_project_dirs
+
+    created = await _create_project(client)
+    pid = created["id"]
+    dirs = ensure_project_dirs(pid)
+    _drop_fake_generated_files(dirs["generated"])
+    # Project must be in 'generated' state to allow export.
+    await client.patch(f"/api/projects/{pid}", json={"status": "generated"})
+
+    # POST /export
+    post_resp = await client.post(f"/api/projects/{pid}/export")
+    assert post_resp.status_code == 201, post_resp.text
+    body = post_resp.json()
+    assert body["project_id"] == pid
+    assert body["zip_filename"].startswith(f"medieval-forge-{pid}-")
+    assert body["size_bytes"] > 0
+    assert body["download_url"] == f"/api/projects/{pid}/export/download"
+
+    # GET /export/download
+    get_resp = await client.get(f"/api/projects/{pid}/export/download")
+    assert get_resp.status_code == 200
+    assert get_resp.headers["content-type"] == "application/zip"
+    assert "attachment" in get_resp.headers.get("content-disposition", "")
+    assert get_resp.content[:4] == b"PK\x03\x04"  # ZIP magic
+
+    # Status flipped to "exported".
+    proj_resp = await client.get(f"/api/projects/{pid}")
+    assert proj_resp.json()["status"] == "exported"
 
 
-@pytest.mark.skip(reason="Implemented by Plan 01-05 Task 3 (EXPORT-02 contents)")
 async def test_zip_contents(client, tmp_path):
-    pass
+    """EXPORT-02: downloaded ZIP contains all 12 spec files plus MANIFEST."""
+    import io
+    import zipfile as _zipfile
+
+    from medieval_forge.services.export import UNITY_ZIP_SPEC
+    from medieval_forge.services.paths import ensure_project_dirs
+
+    created = await _create_project(client)
+    pid = created["id"]
+    dirs = ensure_project_dirs(pid)
+    _drop_fake_generated_files(dirs["generated"])
+    await client.patch(f"/api/projects/{pid}", json={"status": "generated"})
+    await client.post(f"/api/projects/{pid}/export")
+
+    resp = await client.get(f"/api/projects/{pid}/export/download")
+    assert resp.status_code == 200
+
+    with _zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
+        names = set(zf.namelist())
+    for fname in UNITY_ZIP_SPEC:
+        assert fname in names, f"missing {fname}"
+    assert "MANIFEST.json" in names
 
 
-@pytest.mark.skip(reason="Implemented by Plan 01-05 Task 3 (T-PATH on download)")
 async def test_download_invalid_uuid_returns_400(client):
-    pass
+    resp = await client.get("/api/projects/not-a-uuid/export/download")
+    assert resp.status_code == 400
 
 
-@pytest.mark.skip(reason="Implemented by Plan 01-05 Task 3 (refuses pre-generated state)")
 async def test_export_refuses_if_not_generated(client):
-    pass
+    """409 if project.status is not 'generated' or 'exported'."""
+    created = await _create_project(client)
+    pid = created["id"]
+    # status is 'created' by default — must not allow export.
+    resp = await client.post(f"/api/projects/{pid}/export")
+    assert resp.status_code == 409
+    assert "generate" in resp.json()["detail"].lower()
