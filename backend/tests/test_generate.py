@@ -1,13 +1,36 @@
-"""Tests for GEN-01..04, T-PATH preview guard, T-DOS overlap guard.
-
-Stubs in Wave 0 of Plan 01-04; implemented in Tasks 3, 4, 5.
-"""
+"""Tests for GEN-01..04, T-PATH preview guard, T-DOS overlap guard."""
 import pytest
 
 
-@pytest.mark.skip(reason="Implemented by Plan 01-04 Task 3 (services.generator)")
+@pytest.fixture(autouse=True)
+def _isolated_projects_root(tmp_path, monkeypatch):
+    from medieval_forge.services import paths as paths_mod
+    monkeypatch.setattr(paths_mod, "PROJECTS_ROOT", tmp_path / "projects")
+
+
 def test_inject_territory_module_creates_sys_modules_entry():
-    pass
+    import importlib
+    import sys
+
+    from medieval_forge.services import generator
+
+    name = "_mf_territory_test_unit"
+    data = {
+        "kingdoms": {"K1": {"name": "Kingdom One"}},
+        "duchies": {"D1": {"name": "Duchy"}},
+        "condados": {"C1": {"name": "County"}},
+    }
+    try:
+        mod = generator._inject_territory_module(name, data)
+        # importlib.import_module finds it (this is the call inside map_generator.load_territory_data).
+        loaded = importlib.import_module(name)
+        assert loaded is mod
+        assert loaded.KINGDOMS == data["kingdoms"]
+        assert loaded.DUCHIES == data["duchies"]
+        assert loaded.CONDADOS == data["condados"]
+    finally:
+        generator._cleanup_territory_module(name)
+    assert name not in sys.modules
 
 
 @pytest.mark.skip(reason="Implemented by Plan 01-04 Task 4 (api.generate)")
