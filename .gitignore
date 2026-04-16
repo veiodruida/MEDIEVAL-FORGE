@@ -19,6 +19,14 @@ backend/medieval_forge/static/*
 frontend/node_modules/
 frontend/dist/
 
+# Frontend TypeScript build info
+frontend/*.tsbuildinfo
+frontend/vite.config.d.ts
+frontend/vite.config.js
+
+# npm lock (committed for reproducible installs)
+# frontend/package-lock.json  <- intentionally tracked
+
 # Editor
 .idea/
 .vscode/
