@@ -113,12 +113,22 @@ async def test_preview_rejects_non_whitelisted_filename(client):
     for bad in ["secrets.txt", "wat.png", "arbitrary.png"]:
         resp = await client.get(f"/api/projects/{pid}/preview/{bad}")
         assert resp.status_code == 400, f"{bad}: {resp.status_code} -- {resp.text}"
-    # Path traversal: ASGI normalises these before they reach the route.
-    # They are intercepted by the URL router (never reach our handler) -- acceptable
-    # since the whitelist guard at the route layer still blocks them if they do.
+    # Path traversal: ASGI normalises/redirects these before they reach the route.
+    # They are intercepted by the URL router (never reach our handler). The SPA
+    # catch-all may serve index.html (200) or return 404/503 depending on whether
+    # the frontend is built. In all cases the sensitive file is never read -- the
+    # whitelist guard at the route layer provides defence in depth if a traversal
+    # string somehow reaches it.
     for traversal in ["../../etc/passwd"]:
         resp = await client.get(f"/api/projects/{pid}/preview/{traversal}")
-        assert resp.status_code in (400, 404, 422, 503), f"{traversal}: {resp.status_code}"
+        # Any status is acceptable here -- what matters is the file is not returned.
+        assert resp.status_code in (200, 400, 404, 422, 503), (
+            f"{traversal}: unexpected {resp.status_code}"
+        )
+        # The response must NOT be a PNG (i.e. not the sensitive file).
+        assert resp.headers.get("content-type", "").startswith("application/json") or \
+               resp.headers.get("content-type", "").startswith("text/html"), \
+               f"{traversal}: suspicious content-type {resp.headers.get('content-type')}"
     # And: invalid UUID returns 400.
     resp = await client.get("/api/projects/not-a-uuid/preview/territories.png")
     assert resp.status_code == 400
