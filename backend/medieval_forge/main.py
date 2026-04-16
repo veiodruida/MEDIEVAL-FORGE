@@ -38,11 +38,9 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# API routers will be registered here by plans 02..05:
-#   from .api.projects import router as projects_router
-#   app.include_router(projects_router, prefix="/api")
-#   ... etc.
-# IMPORTANT: register them BEFORE the SPA catch-all below.
+from .api.projects import router as projects_router  # noqa: E402
+
+app.include_router(projects_router, prefix="/api")
 
 # /assets/* — JS/CSS bundles. Only mount if directory exists (frontend may
 # not be built yet during early development).
