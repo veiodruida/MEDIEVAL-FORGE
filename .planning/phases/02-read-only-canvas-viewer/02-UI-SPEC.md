@@ -54,9 +54,11 @@ All text rendered inside React (sidebar, overlay panel, inspector). Canvas terri
 | Role | Size | Weight | Line Height | Usage |
 |------|------|--------|-------------|-------|
 | Body | 14px | 400 | 1.5 | Inspector property values, layer toggle labels, neighbor chips |
-| Label | 12px | 500 | 1.4 | Section headings within inspector groups, stat units (km², lat/lng) |
+| Label | 12px | 400 | 1.4 | Section headings within inspector groups, stat units (km², lat/lng) |
 | Heading | 16px | 600 | 1.3 | Inspector territory name, sidebar header (project name in summary state) |
 | Display | 20px | 600 | 1.2 | Not used in Phase 2 canvas view |
+
+Label is differentiated from Body by size (12px vs 14px), not by weight. Both use weight 400. Two weights total: 400 (Body, Label) and 600 (Heading, Display).
 
 Source: Radix Themes `size` scale (size="2" = 14px, size="1" = 12px, size="3" = 16px). Matches existing ProjectDetail usage pattern.
 
@@ -114,6 +116,8 @@ Note: The selected territory border is drawn as a separate `Line` on the interac
 
 This section supplements the template because Phase 2 introduces a two-region layout that the executor must implement precisely.
 
+Primary visual anchor: the canvas area — it occupies the dominant viewport width and is the first element the eye resolves.
+
 ### `/projects/:id` Route Layout
 
 ```
@@ -157,7 +161,7 @@ Radix UI Themes components used in Phase 2:
 |-----------|-------|-------|
 | `Card` | Layer toggle floating panel, inspector section grouping | `variant="surface"` for floating panel; `variant="ghost"` for inspector property groups |
 | `Checkbox` | Each of 5 layer toggles | `defaultChecked` driven by D-09 defaults |
-| `Text` | Inspector property values, layer labels, neighbor chip labels | `size="2"` (14px) for values, `size="1"` (12px) for labels |
+| `Text` | Inspector property values, layer labels, neighbor chip labels | `size="2"` (14px, weight 400) for values, `size="1"` (12px, weight 400) for labels |
 | `Heading` | Territory name in inspector (selected state), project name (summary state) | `size="3"` (16px), `weight="bold"` |
 | `Badge` | Hierarchy level badge (Kingdom / Duchy / Condado / Barony) next to territory name | Color per level — see badge color table below |
 | `Button` | Fit-to-view button | `variant="solid"`, `size="2"`, placed bottom-left of canvas |
