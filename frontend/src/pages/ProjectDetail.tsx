@@ -4,6 +4,7 @@ import { Box, Button, Card, Callout, Flex, Heading, Tabs, Text, TextField } from
 import { useQueryClient } from '@tanstack/react-query'
 import { useProject, useUpdateProject, useIngestStream, useGenerate, useExport, useIngestStatus, useTerritoryTemplate, useRenderModern } from '../api/client'
 import { TerritoryEditor, type TerritoryData } from './TerritoryEditor'
+import { CanvasViewer } from '../components/canvas/CanvasViewer'
 
 const STATUS_LABEL: Record<string, string> = {
   created: 'Criado',
@@ -121,6 +122,13 @@ export function ProjectDetail() {
           </Text>
         </Flex>
       </Card>
+
+      {/* Canvas Viewer — rendered when map is generated or exported */}
+      {isGenerated && (
+        <Box mb="4" style={{ height: 600, background: '#1a1a2e', borderRadius: 8, overflow: 'hidden' }}>
+          <CanvasViewer projectId={project.id} width={900} height={600} />
+        </Box>
+      )}
 
       {/* Preview — destaque quando disponível */}
       {isGenerated && (

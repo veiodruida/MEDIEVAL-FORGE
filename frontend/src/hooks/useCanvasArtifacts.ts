@@ -105,7 +105,7 @@ export function useCanvasArtifacts(
         enabled: Boolean(projectId && projection),
         staleTime: Infinity,
         gcTime: Infinity,
-        select: (raw): TerritoryRender[] => {
+        select: (raw: FC<CondadoFeature>): TerritoryRender[] => {
           if (!projection) return []
           return raw.features.map((f) => ({
             id: f.properties.id,
@@ -125,7 +125,7 @@ export function useCanvasArtifacts(
         enabled: Boolean(projectId && projection),
         staleTime: Infinity,
         gcTime: Infinity,
-        select: (raw): BaronyRender[] => {
+        select: (raw: FC<BaronyFeature>): BaronyRender[] => {
           if (!projection) return []
           return raw.features.map((f) => ({
             id: f.properties.id,
