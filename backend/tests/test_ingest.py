@@ -273,6 +273,92 @@ def test_relation_no_outer_returns_none():
     assert result is None
 
 
+# ---------- Country clipping tests ----------
+
+def _make_polygon_feature(name: str, coords: list[list[float]]) -> dict:
+    """Build a minimal GeoJSON Polygon feature for clipping tests."""
+    return {
+        "type": "Feature",
+        "properties": {"name": name, "osm_id": 0, "admin_level": "6"},
+        "geometry": {
+            "type": "Polygon",
+            "coordinates": [coords],
+        },
+    }
+
+
+def test_clip_features_keeps_inside_and_removes_outside():
+    """_clip_features_to_countries keeps features whose representative_point is
+    inside the country union and removes those that are outside.
+
+    Fixture: country polygon = unit square [0,1]×[0,1].
+    Features:
+      A (0.5, 0.5) — inside → kept
+      B (0.3, 0.3) — inside → kept
+      C (2.0, 2.0) — outside → removed
+      D (5.0, 5.0) — outside → removed
+    """
+    from shapely.geometry import Polygon as _Polygon
+    from medieval_forge.services.ingest_osm import _clip_features_to_countries
+
+    country_poly = _Polygon([(0, 0), (1, 0), (1, 1), (0, 1), (0, 0)])
+
+    # Tiny squares centered on each test point.
+    def _small_square(cx: float, cy: float, r: float = 0.05) -> list[list[float]]:
+        return [
+            [cx - r, cy - r], [cx + r, cy - r],
+            [cx + r, cy + r], [cx - r, cy + r],
+            [cx - r, cy - r],
+        ]
+
+    feat_a = _make_polygon_feature("A-inside", _small_square(0.5, 0.5))
+    feat_b = _make_polygon_feature("B-inside", _small_square(0.3, 0.3))
+    feat_c = _make_polygon_feature("C-outside", _small_square(2.0, 2.0))
+    feat_d = _make_polygon_feature("D-outside", _small_square(5.0, 5.0))
+
+    features = [feat_a, feat_b, feat_c, feat_d]
+    result = _clip_features_to_countries(features, [country_poly])
+
+    names = {f["properties"]["name"] for f in result}
+    assert "A-inside" in names
+    assert "B-inside" in names
+    assert "C-outside" not in names
+    assert "D-outside" not in names
+    assert len(result) == 2
+
+
+def test_clip_features_empty_polys_returns_all():
+    """When country_polys is empty, all features are returned unchanged."""
+    from medieval_forge.services.ingest_osm import _clip_features_to_countries
+
+    feat = _make_polygon_feature("any", [[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]])
+    result = _clip_features_to_countries([feat], [])
+    assert result == [feat]
+
+
+def test_clip_features_multi_country_union():
+    """clip_iso_codes=["ES","PT"] style: features inside either polygon are kept."""
+    from shapely.geometry import Polygon as _Polygon
+    from medieval_forge.services.ingest_osm import _clip_features_to_countries
+
+    poly_es = _Polygon([(0, 0), (2, 0), (2, 1), (0, 1), (0, 0)])   # left rect
+    poly_pt = _Polygon([(3, 0), (5, 0), (5, 1), (3, 1), (3, 0)])   # right rect — gap between
+
+    def _tiny(cx, cy):
+        r = 0.05
+        return [[cx-r, cy-r], [cx+r, cy-r], [cx+r, cy+r], [cx-r, cy+r], [cx-r, cy-r]]
+
+    feat_es = _make_polygon_feature("in-ES", _tiny(1.0, 0.5))   # inside poly_es
+    feat_pt = _make_polygon_feature("in-PT", _tiny(4.0, 0.5))   # inside poly_pt
+    feat_fr = _make_polygon_feature("in-FR", _tiny(6.0, 0.5))   # outside both
+
+    result = _clip_features_to_countries([feat_es, feat_pt, feat_fr], [poly_es, poly_pt])
+    names = {f["properties"]["name"] for f in result}
+    assert "in-ES" in names
+    assert "in-PT" in names
+    assert "in-FR" not in names
+
+
 # ---------- Tasks 3 and 4 tests (stubs until implemented) ----------
 
 async def test_geojson_written(tmp_path, monkeypatch):

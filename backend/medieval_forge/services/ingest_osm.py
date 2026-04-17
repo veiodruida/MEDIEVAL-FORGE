@@ -4,6 +4,10 @@ Estratégia de query:
 - Se bbox fornecida: query por bounding box (muito mais rápido, evita timeout 504)
 - Se só ISO fornecido: query por área de país (fallback, pode ser lento para países grandes)
 
+Country clipping (Bug A fix):
+- Quando clip_iso_codes fornecido, faz query extra por admin_level=2 para cada ISO
+- União dos polígonos de país → filtra municípios cujo representative_point está dentro
+
 Retry: tenta até 3 endpoints públicos do Overpass em sequência.
 T-SSRF: validate_iso_country enforces 2-letter uppercase ISO 3166-1 code.
 """
@@ -16,7 +20,7 @@ from typing import Any, Callable
 
 import httpx
 from shapely.geometry import LineString, MultiPolygon, Polygon, mapping
-from shapely.ops import linemerge, polygonize
+from shapely.ops import linemerge, polygonize, unary_union
 
 log = logging.getLogger(__name__)
 
@@ -70,6 +74,133 @@ def _build_country_query(country_iso: str, admin_level: int = 6) -> str:
         f');\n'
         f"out geom;\n"
     )
+
+
+def _build_country_boundary_query(country_iso: str) -> str:
+    """Query para obter o polígono de fronteira do país (admin_level=2).
+
+    Retorna a relação de fronteira soberana do país identificado pelo ISO 3166-1.
+    Usado para clipping de municípios fora do país alvo.
+    """
+    validate_iso_country(country_iso)
+    return (
+        f'[out:json][timeout:60];\n'
+        f'(\n'
+        f'  relation["admin_level"="2"]["boundary"="administrative"]'
+        f'["ISO3166-1"="{country_iso}"];\n'
+        f');\n'
+        f"out geom;\n"
+    )
+
+
+def _relation_to_polygon(rel: dict[str, Any]) -> Polygon | MultiPolygon | None:
+    """Converte relação OSM para Shapely Polygon/MultiPolygon.
+
+    Variante simplificada de _relation_to_geojson_feature usada para obter
+    o polígono de fronteira de país para clipping.
+    """
+    members = rel.get("members", [])
+    outer_lines: list[LineString] = []
+
+    for m in members:
+        geom = m.get("geometry") or []
+        pts = [(pt["lon"], pt["lat"]) for pt in geom if "lon" in pt and "lat" in pt]
+        if len(pts) < 2:
+            continue
+        if m.get("role", "") == "outer":
+            outer_lines.append(LineString(pts))
+
+    if not outer_lines:
+        return None
+
+    merged = linemerge(outer_lines)
+    polys = list(polygonize(merged))
+    if not polys:
+        return None
+    if len(polys) == 1:
+        return polys[0]
+    return MultiPolygon(polys)
+
+
+async def _fetch_country_polygon(
+    country_iso: str,
+    queue: asyncio.Queue[str | None],
+    client_factory: Callable[[], httpx.AsyncClient] | None,
+) -> Polygon | MultiPolygon | None:
+    """Busca o polígono de fronteira soberana de um país via Overpass.
+
+    Retorna None se não encontrar ou se a geometria for malformada.
+    Emite mensagem SSE de progresso.
+    """
+    await queue.put(
+        f"data: Buscando polígono de fronteira para {country_iso} (clipping)...\n\n"
+    )
+    query = _build_country_boundary_query(country_iso)
+    try:
+        payload = await _post_query(query, queue, client_factory)
+    except Exception as exc:
+        log.warning(
+            "country boundary fetch failed for %s: %s — clipping skipped for this country",
+            country_iso, exc,
+        )
+        return None
+
+    for el in payload.get("elements", []):
+        if el.get("type") != "relation":
+            continue
+        poly = _relation_to_polygon(el)
+        if poly is not None:
+            log.info("country polygon fetched for %s: %s", country_iso, poly.geom_type)
+            return poly
+
+    log.warning("no country polygon found for %s — clipping skipped for this country", country_iso)
+    return None
+
+
+def _clip_features_to_countries(
+    features: list[dict[str, Any]],
+    country_polys: list[Polygon | MultiPolygon],
+) -> list[dict[str, Any]]:
+    """Filtra features mantendo apenas aquelas cujo representative_point está
+    dentro da união dos polígonos de país.
+
+    Um feature sem geometria polygon (ex: Point) é sempre mantido — não há
+    como testá-lo espacialmente sem coordenadas de área.
+    """
+    if not country_polys:
+        return features
+
+    country_union = unary_union(country_polys)
+    kept: list[dict[str, Any]] = []
+    removed = 0
+
+    for feat in features:
+        geom_type = feat.get("geometry", {}).get("type", "")
+        if geom_type not in {"Polygon", "MultiPolygon"}:
+            # Pontos / outras geometrias — manter sem testar
+            kept.append(feat)
+            continue
+
+        try:
+            from shapely.geometry import shape as _shape
+            shp = _shape(feat["geometry"])
+            pt = shp.representative_point()
+            if country_union.contains(pt):
+                kept.append(feat)
+            else:
+                removed += 1
+                name = feat.get("properties", {}).get("name", "?")
+                log.debug("clipped out feature outside country union: %s", name)
+        except Exception as exc:
+            log.warning("country clip: error testing feature, keeping it: %s", exc)
+            kept.append(feat)
+
+    if removed:
+        log.info(
+            "country clipping removed %d features outside target countries (%d kept)",
+            removed, len(kept),
+        )
+    return kept
 
 
 def _relation_to_geojson_feature(rel: dict[str, Any]) -> dict[str, Any] | None:
@@ -191,15 +322,21 @@ async def fetch_municipalities(
     queue: asyncio.Queue[str | None],
     *,
     bbox: tuple[float, float, float, float] | None = None,
+    clip_iso_codes: list[str] | None = None,
     client_factory: Callable[[], httpx.AsyncClient] | None = None,
 ) -> dict[str, Any]:
     """Busca municípios OSM e retorna GeoJSON FeatureCollection.
 
     Args:
-        country_iso: Código ISO alpha-2 (usado apenas se bbox=None).
+        country_iso: Código ISO alpha-2 (usado apenas se bbox=None e clip_iso_codes=None).
         queue: Fila SSE para mensagens de progresso.
         bbox: (lat_min, lon_min, lat_max, lon_max) — se fornecido, usa query
               por bounding box (muito mais rápido que por país).
+        clip_iso_codes: Lista de códigos ISO alpha-2 a usar para country clipping.
+              Quando fornecido, busca os polígonos de fronteira soberana de cada
+              país e filtra features cujo representative_point está fora da união.
+              Exemplo: ["ES", "PT"] para Ibéria.
+              Se None e bbox fornecido, sem clipping (avisa no SSE).
         client_factory: Fábrica de cliente HTTP (para testes).
     """
     if bbox is not None:
@@ -228,4 +365,38 @@ async def fetch_municipalities(
             features.append(feat)
 
     await queue.put(f"data: OSM: {len(features)} municípios/regiões encontrados.\n\n")
+
+    # Country clipping: remove features outside the target country polygon(s).
+    if clip_iso_codes:
+        await queue.put(
+            f"data: Clipping geográfico para países: {', '.join(clip_iso_codes)}...\n\n"
+        )
+        country_polys: list[Polygon | MultiPolygon] = []
+        for iso in clip_iso_codes:
+            try:
+                validate_iso_country(iso)
+            except ValueError as exc:
+                log.warning("clip_iso_codes: invalid ISO %r skipped: %s", iso, exc)
+                continue
+            poly = await _fetch_country_polygon(iso, queue, client_factory)
+            if poly is not None:
+                country_polys.append(poly)
+
+        if country_polys:
+            before = len(features)
+            features = _clip_features_to_countries(features, country_polys)
+            after = len(features)
+            await queue.put(
+                f"data: Clipping: {before - after} features removidas fora dos países alvo "
+                f"({after} restantes).\n\n"
+            )
+        else:
+            await queue.put(
+                "data: AVISO: Polígonos de fronteira não encontrados — clipping ignorado.\n\n"
+            )
+    elif bbox is not None:
+        await queue.put(
+            "data: AVISO: bbox sem clip_iso_codes — features de países vizinhos podem aparecer.\n\n"
+        )
+
     return {"type": "FeatureCollection", "features": features}

@@ -164,6 +164,29 @@ def qid_to_iso(qid: str) -> str:
     return iso
 
 
+def clip_iso_codes_for_qid(country_qid: str) -> list[str] | None:
+    """Retorna lista de ISO alpha-2 para country clipping dado um QID Wikidata.
+
+    Consulta PRESETS pelo country_qid e retorna clip_iso_codes se definido.
+    Para QIDs não presentes nos presets, tenta converter o próprio QID para ISO
+    e retorna lista com um único código — cobrindo países simples sem preset.
+
+    Retorna None apenas se o QID não for reconhecido de forma alguma, caso em
+    que o clipping será ignorado com aviso.
+    """
+    # 1. Verificar presets com clip_iso_codes explícito
+    for preset in PRESETS:
+        if preset.get("country_qid") == country_qid and "clip_iso_codes" in preset:
+            return preset["clip_iso_codes"]
+
+    # 2. Fallback: converter QID → ISO (países simples sem preset)
+    iso = _qid_to_iso.get(country_qid)
+    if iso:
+        return [iso]
+
+    return None
+
+
 def list_countries() -> list[dict]:
     """Retorna lista de países disponíveis para a UI."""
     seen: set[str] = set()
@@ -189,6 +212,9 @@ PRESETS: list[dict] = [
         "country_qid": "Q45",
         "bbox": {"lon_min": -9.5, "lat_min": 36.9, "lon_max": -6.2, "lat_max": 42.2},
         "period_example": (868, 1640),
+        # clip_iso_codes: ISO alpha-2 list used for country-polygon clipping after bbox OSM fetch.
+        # Single-country regions use their own ISO only.
+        "clip_iso_codes": ["PT"],
     },
     {
         "label": "Península Ibérica (Portugal + Espanha)",
@@ -196,6 +222,9 @@ PRESETS: list[dict] = [
         "country_qid": "Q29",
         "bbox": {"lon_min": -13.2, "lat_min": 35.4, "lon_max": 8.2, "lat_max": 44.6},
         "period_example": (711, 1492),
+        # Iberia spans two sovereign countries — clip to union of ES + PT polygons so that
+        # French départements (Dordogne, Landes, etc.) are excluded from the ingest result.
+        "clip_iso_codes": ["ES", "PT"],
     },
     {
         "label": "França",
