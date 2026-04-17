@@ -1,8 +1,8 @@
 ---
-status: awaiting_human_verify
+status: resolved
 trigger: "Port reference pipeline geographic terrain: replace synthetic noise in generate_terrain_lookup() with polygon-based mountain rasterization from mountain_river_data.json"
 created: 2026-04-17T04:00:00Z
-updated: 2026-04-17T04:30:00Z
+updated: 2026-04-17T12:45:00Z
 symptoms_prefilled: true
 ---
 
@@ -76,3 +76,20 @@ files_changed:
   - backend/medieval_forge/services/generator.py
   - backend/tests/test_terrain.py (new)
   - backend/tests/test_generate.py
+
+## Addendum — 2026-04-17: Rivers Disconnected from Pipeline
+
+**Decision:** Rivers are no longer produced by the map generation pipeline. The pipeline no longer writes `rivers_overlay.png` and no longer composites river lines onto visual maps (`visual_condado.png`, `visual_barony.png`).
+
+**Scope of change (commit 79987b0):**
+- `render_rivers()` function retained intact in `backend/medieval_forge/lib/map_generator.py` (line 766) — not deleted, not modified.
+- `backend/medieval_forge/services/mountain_river_data_iberia.json` retained intact — river polyline data preserved alongside mountain polygon data.
+- Pipeline call site in `generate_maps()` ("# 13. Rivers" block) replaced with `rivers_img = None`. The subsequent `generate_terrain_lookup(..., rivers_img=rivers_img)` call remains valid.
+- `"rivers_overlay.png"` removed from `_GENERATOR_OUTPUTS` tuple in `backend/medieval_forge/services/generator.py`.
+- `"rivers_overlay.png"` removed from `UNITY_ZIP_SPEC` tuple in `backend/medieval_forge/services/export.py`. The Unity zip now contains 11 files instead of 12; this is intentional until rivers are reactivated.
+
+**Reversibility:** To re-enable rivers, restore the "# 13. Rivers" block in `generate_maps()` (the original block is documented in this plan at `.planning/quick/260417-hpt-remove-rivers-generation-from-pipeline/260417-hpt-PLAN.md`) and re-add `"rivers_overlay.png"` to both `_GENERATOR_OUTPUTS` and `UNITY_ZIP_SPEC`.
+
+**Rationale:** Per user request on 2026-04-17 — rivers not desired in current map output. The disconnect is intentional and reversible; function and data are preserved so rivers can be re-enabled in a future iteration without rework.
+
+**Existing rivers_overlay.png files in user project directories:** Cleanup of previously generated files is not required (per user: "não precisa ser limpo"). Any existing `rivers_overlay.png` files in output directories are harmless leftovers and can be ignored or deleted manually at the user's discretion.
