@@ -337,7 +337,7 @@ def test_terrain_lookup_mountain_mask_applied():
 
 
 def test_terrain_types_json_structure():
-    """terrain_types dict has all required keys for each terrain type."""
+    """terrain_types dict has exactly 4 canonical types with required game stat keys."""
     import numpy as np
     from medieval_forge.lib.map_generator import generate_terrain_lookup, RegionConfig
 
@@ -345,7 +345,16 @@ def test_terrain_types_json_structure():
     land = np.ones((32, 32), dtype=bool)
     _, terrain_types = generate_terrain_lookup(land, cfg)
 
-    assert len(terrain_types) >= 4, "Need at least ocean, plain, forest, mountain"
+    # Exactly 4 types: ocean, coast, plain, mountain (no synthetic hill/forest).
+    assert len(terrain_types) == 4, (
+        f"Expected exactly 4 terrain types (ocean, coast, plain, mountain), "
+        f"got {len(terrain_types)}: {list(terrain_types.keys())}"
+    )
+    expected_type_names = {"ocean", "coast", "plain", "mountain"}
+    actual_type_names = {v["type"] for v in terrain_types.values()}
+    assert actual_type_names == expected_type_names, (
+        f"Expected terrain types {expected_type_names}, got {actual_type_names}"
+    )
     for key, entry in terrain_types.items():
         # Key format: "R,G,B"
         parts = key.split(",")
@@ -393,7 +402,7 @@ async def test_terrain_lookup_files_produced(client, tmp_path):
     ttypes = gen_dir / "terrain_types.json"
     assert ttypes.exists(), "terrain_types.json was not generated"
     data = _json.loads(ttypes.read_text())
-    assert len(data) >= 4, f"terrain_types.json has only {len(data)} entries — expected >= 4"
+    assert len(data) == 4, f"terrain_types.json has {len(data)} entries — expected exactly 4 (ocean/coast/plain/mountain)"
     for key, entry in data.items():
         assert "movement" in entry and "defense" in entry and "attack" in entry, (
             f"terrain_types.json entry {key!r} missing game stat fields"
