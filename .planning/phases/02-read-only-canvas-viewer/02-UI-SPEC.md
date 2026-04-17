@@ -1,10 +1,11 @@
 ---
 phase: 2
 slug: read-only-canvas-viewer
-status: draft
+status: approved
 shadcn_initialized: false
 preset: none
 created: 2026-04-17
+reviewed_at: 2026-04-17
 ---
 
 # Phase 2 — UI Design Contract: Read-Only Canvas Viewer
