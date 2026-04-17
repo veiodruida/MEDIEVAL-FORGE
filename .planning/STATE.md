@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-04-16)
 Phase: 1 of 6 (Data Pipeline + Backend Scaffold)
 Plan: 0 of 5 in current phase
 Status: Ready to plan
-Last activity: 2026-04-17 - Completed quick task 260417-hpt: remove rivers generation from pipeline
+Last activity: 2026-04-17 - Completed quick task 260417-jq1: Carregar centroids curados de territory_data_v3 no template Iberia
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -98,6 +98,7 @@ None yet.
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 260417-hpt | remove rivers generation from pipeline | 2026-04-17 | 4ea6444 | [260417-hpt-remove-rivers-generation-from-pipeline](./quick/260417-hpt-remove-rivers-generation-from-pipeline/) |
+| 260417-jq1 | Carregar centroids curados de territory_data_v3 no template Iberia | 2026-04-17 | 2eec56e | [260417-jq1-carregar-centroids-curados-de-territory-](./quick/260417-jq1-carregar-centroids-curados-de-territory-/) |
 
 ## Session Continuity
 
