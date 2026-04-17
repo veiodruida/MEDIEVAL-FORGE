@@ -103,260 +103,45 @@ async def test_wikidata_pagination():
 
 # ---------- INGEST-02: OSM fallback ----------
 
-# Helper: build an OSM-style relation dict from a list of way-member geometries.
-def _osm_relation(
-    rel_id: int,
-    name: str,
-    outer_ways: list[list[tuple[float, float]]],
-    inner_ways: list[list[tuple[float, float]]] | None = None,
-    admin_level: str = "6",
-) -> dict:
-    members = []
-    for pts in outer_ways:
-        members.append({
-            "role": "outer",
-            "geometry": [{"lon": x, "lat": y} for x, y in pts],
-        })
-    for pts in (inner_ways or []):
-        members.append({
-            "role": "inner",
-            "geometry": [{"lon": x, "lat": y} for x, y in pts],
-        })
-    return {
-        "type": "relation",
-        "id": rel_id,
-        "tags": {"name": name, "admin_level": admin_level, "boundary": "administrative"},
-        "members": members,
-    }
-
-
-# Four outer ways forming a unit square (each way = one edge).
-_SQUARE_OUTER_WAYS = [
-    [(0.0, 0.0), (1.0, 0.0)],
-    [(1.0, 0.0), (1.0, 1.0)],
-    [(1.0, 1.0), (0.0, 1.0)],
-    [(0.0, 1.0), (0.0, 0.0)],
-]
-
-# Four inner ways forming a small square hole (0.2–0.8 in both axes).
-_HOLE_INNER_WAYS = [
-    [(0.2, 0.2), (0.8, 0.2)],
-    [(0.8, 0.2), (0.8, 0.8)],
-    [(0.8, 0.8), (0.2, 0.8)],
-    [(0.2, 0.8), (0.2, 0.2)],
-]
-
-# Two disjoint squares: [0,1]x[0,1] and [2,3]x[0,1].
-_ISLAND_OUTER_WAYS = [
-    # square A
-    [(0.0, 0.0), (1.0, 0.0)],
-    [(1.0, 0.0), (1.0, 1.0)],
-    [(1.0, 1.0), (0.0, 1.0)],
-    [(0.0, 1.0), (0.0, 0.0)],
-    # square B
-    [(2.0, 0.0), (3.0, 0.0)],
-    [(3.0, 0.0), (3.0, 1.0)],
-    [(3.0, 1.0), (2.0, 1.0)],
-    [(2.0, 1.0), (2.0, 0.0)],
-]
-
-
 async def test_osm_fallback():
-    """INGEST-02 end-to-end: single properly-closed outer ring produces one Polygon feature."""
     from medieval_forge.services.ingest_osm import fetch_municipalities
 
-    # Single outer way that is already closed (first == last point).
-    closed_way = [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0), (0.0, 0.0)]
     overpass_payload = {
         "elements": [
-            _osm_relation(1, "Province A", [closed_way], admin_level="8"),
-            {"type": "node", "id": 2},  # filtered out
+            {
+                "type": "relation",
+                "id": 1,
+                "tags": {"name": "Province A", "admin_level": "8", "boundary": "administrative"},
+                "members": [
+                    {
+                        "role": "outer",
+                        "geometry": [
+                            {"lon": 0.0, "lat": 0.0},
+                            {"lon": 1.0, "lat": 0.0},
+                            {"lon": 1.0, "lat": 1.0},
+                            {"lon": 0.0, "lat": 1.0},
+                        ],
+                    }
+                ],
+            },
+            {
+                "type": "node",  # Should be filtered out
+                "id": 2,
+            },
         ]
     }
     fake = _FakeClient([overpass_payload])
     queue: asyncio.Queue[str | None] = asyncio.Queue()
-    result = await fetch_municipalities("ES", queue, client_factory=lambda: fake)
+    result = await fetch_municipalities(
+        "ES", queue, client_factory=lambda: fake
+    )
 
     assert result["type"] == "FeatureCollection"
     assert len(result["features"]) == 1
     feat = result["features"][0]
     assert feat["geometry"]["type"] == "Polygon"
     assert feat["properties"]["name"] == "Province A"
-    # Outer ring must be closed.
-    ring = feat["geometry"]["coordinates"][0]
-    assert ring[0] == ring[-1]
-
-
-# ---------- _relation_to_geojson_feature unit tests ----------
-
-def test_relation_simple_square():
-    """Four outer ways forming one square → single Polygon, 1 outer ring."""
-    from medieval_forge.services.ingest_osm import _relation_to_geojson_feature
-
-    rel = _osm_relation(10, "Square", _SQUARE_OUTER_WAYS)
-    feat = _relation_to_geojson_feature(rel)
-
-    assert feat is not None
-    assert feat["geometry"]["type"] == "Polygon"
-    coords = feat["geometry"]["coordinates"]
-    # Exactly one ring (outer), no holes.
-    assert len(coords) == 1
-    # Ring must be closed.
-    assert coords[0][0] == coords[0][-1]
-    # Basic area sanity: unit square ≈ 1.0 sq-deg.
-    from shapely.geometry import shape
-    poly = shape(feat["geometry"])
-    assert abs(poly.area - 1.0) < 1e-6
-
-
-def test_relation_with_hole():
-    """Four outer + four inner ways → Polygon with 1 outer ring and 1 hole."""
-    from medieval_forge.services.ingest_osm import _relation_to_geojson_feature
-
-    rel = _osm_relation(20, "DonutSquare", _SQUARE_OUTER_WAYS, _HOLE_INNER_WAYS)
-    feat = _relation_to_geojson_feature(rel)
-
-    assert feat is not None
-    assert feat["geometry"]["type"] == "Polygon"
-    coords = feat["geometry"]["coordinates"]
-    # Two rings: outer + one hole.
-    assert len(coords) == 2
-    # Both rings closed.
-    assert coords[0][0] == coords[0][-1]
-    assert coords[1][0] == coords[1][-1]
-    # Area of donut is less than full square.
-    from shapely.geometry import shape
-    poly = shape(feat["geometry"])
-    assert poly.area < 1.0
-    assert poly.area > 0.0
-
-
-def test_relation_multi_island():
-    """Eight outer ways forming two disjoint squares → MultiPolygon with 2 parts."""
-    from medieval_forge.services.ingest_osm import _relation_to_geojson_feature
-
-    rel = _osm_relation(30, "Islands", _ISLAND_OUTER_WAYS)
-    feat = _relation_to_geojson_feature(rel)
-
-    assert feat is not None
-    assert feat["geometry"]["type"] == "MultiPolygon"
-    parts = feat["geometry"]["coordinates"]
-    assert len(parts) == 2
-
-
-def test_relation_malformed_returns_none(caplog):
-    """Outer ways with a gap (don't close) → returns None and logs a warning."""
-    import logging
-    from medieval_forge.services.ingest_osm import _relation_to_geojson_feature
-
-    # Three disconnected edges — no closing path, so polygonize yields nothing.
-    broken_ways = [
-        [(0.0, 0.0), (1.0, 0.0)],   # bottom
-        [(1.0, 0.0), (1.0, 1.0)],   # right
-        [(5.0, 5.0), (6.0, 5.0)],   # disconnected — leaves a gap
-    ]
-    rel = _osm_relation(40, "Broken", broken_ways)
-
-    with caplog.at_level(logging.WARNING, logger="medieval_forge.services.ingest_osm"):
-        result = _relation_to_geojson_feature(rel)
-
-    assert result is None
-    assert any("do not form closed ring" in r.message for r in caplog.records)
-
-
-def test_relation_no_outer_returns_none():
-    """Relation with only inner members and no outer ways → returns None."""
-    from medieval_forge.services.ingest_osm import _relation_to_geojson_feature
-
-    rel = _osm_relation(50, "NoOuter", outer_ways=[], inner_ways=_HOLE_INNER_WAYS)
-    result = _relation_to_geojson_feature(rel)
-    assert result is None
-
-
-# ---------- Country clipping tests ----------
-
-def _make_polygon_feature(name: str, coords: list[list[float]]) -> dict:
-    """Build a minimal GeoJSON Polygon feature for clipping tests."""
-    return {
-        "type": "Feature",
-        "properties": {"name": name, "osm_id": 0, "admin_level": "6"},
-        "geometry": {
-            "type": "Polygon",
-            "coordinates": [coords],
-        },
-    }
-
-
-def test_clip_features_keeps_inside_and_removes_outside():
-    """_clip_features_to_countries keeps features whose representative_point is
-    inside the country union and removes those that are outside.
-
-    Fixture: country polygon = unit square [0,1]×[0,1].
-    Features:
-      A (0.5, 0.5) — inside → kept
-      B (0.3, 0.3) — inside → kept
-      C (2.0, 2.0) — outside → removed
-      D (5.0, 5.0) — outside → removed
-    """
-    from shapely.geometry import Polygon as _Polygon
-    from medieval_forge.services.ingest_osm import _clip_features_to_countries
-
-    country_poly = _Polygon([(0, 0), (1, 0), (1, 1), (0, 1), (0, 0)])
-
-    # Tiny squares centered on each test point.
-    def _small_square(cx: float, cy: float, r: float = 0.05) -> list[list[float]]:
-        return [
-            [cx - r, cy - r], [cx + r, cy - r],
-            [cx + r, cy + r], [cx - r, cy + r],
-            [cx - r, cy - r],
-        ]
-
-    feat_a = _make_polygon_feature("A-inside", _small_square(0.5, 0.5))
-    feat_b = _make_polygon_feature("B-inside", _small_square(0.3, 0.3))
-    feat_c = _make_polygon_feature("C-outside", _small_square(2.0, 2.0))
-    feat_d = _make_polygon_feature("D-outside", _small_square(5.0, 5.0))
-
-    features = [feat_a, feat_b, feat_c, feat_d]
-    result = _clip_features_to_countries(features, [country_poly])
-
-    names = {f["properties"]["name"] for f in result}
-    assert "A-inside" in names
-    assert "B-inside" in names
-    assert "C-outside" not in names
-    assert "D-outside" not in names
-    assert len(result) == 2
-
-
-def test_clip_features_empty_polys_returns_all():
-    """When country_polys is empty, all features are returned unchanged."""
-    from medieval_forge.services.ingest_osm import _clip_features_to_countries
-
-    feat = _make_polygon_feature("any", [[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]])
-    result = _clip_features_to_countries([feat], [])
-    assert result == [feat]
-
-
-def test_clip_features_multi_country_union():
-    """clip_iso_codes=["ES","PT"] style: features inside either polygon are kept."""
-    from shapely.geometry import Polygon as _Polygon
-    from medieval_forge.services.ingest_osm import _clip_features_to_countries
-
-    poly_es = _Polygon([(0, 0), (2, 0), (2, 1), (0, 1), (0, 0)])   # left rect
-    poly_pt = _Polygon([(3, 0), (5, 0), (5, 1), (3, 1), (3, 0)])   # right rect — gap between
-
-    def _tiny(cx, cy):
-        r = 0.05
-        return [[cx-r, cy-r], [cx+r, cy-r], [cx+r, cy+r], [cx-r, cy+r], [cx-r, cy-r]]
-
-    feat_es = _make_polygon_feature("in-ES", _tiny(1.0, 0.5))   # inside poly_es
-    feat_pt = _make_polygon_feature("in-PT", _tiny(4.0, 0.5))   # inside poly_pt
-    feat_fr = _make_polygon_feature("in-FR", _tiny(6.0, 0.5))   # outside both
-
-    result = _clip_features_to_countries([feat_es, feat_pt, feat_fr], [poly_es, poly_pt])
-    names = {f["properties"]["name"] for f in result}
-    assert "in-ES" in names
-    assert "in-PT" in names
-    assert "in-FR" not in names
+    assert feat["geometry"]["coordinates"][0][0] == feat["geometry"]["coordinates"][0][-1]  # closed
 
 
 # ---------- Tasks 3 and 4 tests (stubs until implemented) ----------

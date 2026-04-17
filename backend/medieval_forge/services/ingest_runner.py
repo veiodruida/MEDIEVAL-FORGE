@@ -42,13 +42,11 @@ async def run_ingest(
     queue: asyncio.Queue[str | None],
     db_session_factory: async_sessionmaker | None = None,
     bbox: tuple[float, float, float, float] | None = None,
-    clip_iso_codes: list[str] | None = None,
 ) -> None:
     """Producer task. ALWAYS puts None sentinel before returning.
 
     bbox: (lat_min, lon_min, lat_max, lon_max) — quando fornecido, OSM usa query
     por bounding box em vez de por país (muito mais rápido).
-    clip_iso_codes: lista de ISOs para country clipping após bbox query (ex: ["ES","PT"]).
     """
     factory = db_session_factory or AsyncSessionLocal
     try:
@@ -62,9 +60,7 @@ async def run_ingest(
         if source == "wikidata":
             payload = await ingest_wikidata.fetch_municipalities(country, queue)
         elif source == "osm":
-            payload = await ingest_osm.fetch_municipalities(
-                country, queue, bbox=bbox, clip_iso_codes=clip_iso_codes
-            )
+            payload = await ingest_osm.fetch_municipalities(country, queue, bbox=bbox)
         else:
             raise ValueError(f"unknown source: {source!r}")
 

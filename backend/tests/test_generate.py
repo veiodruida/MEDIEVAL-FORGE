@@ -172,18 +172,14 @@ def _minimal_territory_data() -> dict:
 def _write_minimal_geojson(path) -> str:
     """Write a minimal PT-format GeoJSON covering the test barony region.
 
-    The service layer recomputes the render bbox from territory centroids + 15%
-    padding (via _compute_padded_bbox). For the minimal territory data
-    (_minimal_territory_data), centroids are at lon -3.0..-3.5, lat 38.8..41.2,
-    giving a padded bbox of roughly lon -3.58..-2.92, lat 38.44..41.56.
+    build_land_mask filters polygon points to cfg.lon_min-1 <= lo <= cfg.lon_max+1
+    and cfg.lat_min-1 <= la <= cfg.lat_max+1 (default: lon [-14.2,9.2] lat [34.4,45.6]).
+    Points outside these bounds are dropped before Pillow draws the polygon,
+    so the polygon coords MUST be well inside the region bounds to retain >= 3 pts.
 
-    build_land_mask filters polygon points to cfg.lon_min-1 <= lo <= cfg.lon_max+1.
-    With the padded bbox that filter window is approximately lon -4.58..-1.92,
-    lat 37.44..42.56. The GeoJSON polygon MUST have its vertices inside this
-    window so that at least 3 points survive and Pillow can rasterise the polygon.
-
-    We use a rectangle centred on the barony region with ~1° margin on each side
-    so all 5 ring points survive the filter regardless of exact padding arithmetic.
+    We use a large rectangle at the 4 cardinal extremes of the barony KD-tree seeds
+    so the land mask has a fully filled rectangle and the KD-tree can assign every
+    pixel to a barony.
     """
     import json
     import pathlib
@@ -195,13 +191,14 @@ def _write_minimal_geojson(path) -> str:
                 "geometry": {
                     "type": "Polygon",
                     "coordinates": [[
-                        # Rectangle centred on barony centroids (lon ~-3.25, lat ~40.0)
-                        # with ~1° margin so all 5 points survive the bbox filter.
-                        [-4.5, 37.5],
-                        [-2.0, 37.5],
-                        [-2.0, 42.5],
-                        [-4.5, 42.5],
-                        [-4.5, 37.5],
+                        # Rectangle well inside default RegionConfig bounds
+                        # (lon_min=-13.2 lon_max=8.2 lat_min=35.4 lat_max=44.6)
+                        # so all 5 points survive the bound-filter in build_land_mask.
+                        [-12.0, 36.0],
+                        [7.0, 36.0],
+                        [7.0, 44.0],
+                        [-12.0, 44.0],
+                        [-12.0, 36.0],
                     ]],
                 },
                 "properties": {"name": "test-region"},
@@ -275,141 +272,3 @@ async def test_generation_time(client, tmp_path):
     elapsed = time.monotonic() - t0
 
     assert elapsed < 60.0, f"generation took {elapsed:.1f}s, exceeds GEN-04 budget"
-
-
-# ---------- Terrain lookup unit tests ----------
-
-def test_terrain_lookup_has_multiple_types():
-    """generate_terrain_lookup produces a non-black image with at least land + ocean colors."""
-    import numpy as np
-    from medieval_forge.lib.map_generator import generate_terrain_lookup, RegionConfig
-
-    cfg = RegionConfig(map_w=64, map_h=64)
-
-    # Land mask: left half = land, right half = ocean.
-    land = np.zeros((64, 64), dtype=bool)
-    land[:, :32] = True  # left 32 columns are land
-
-    lookup, terrain_types = generate_terrain_lookup(land, cfg, mtn_mask=None)
-
-    # Output shape must match land mask.
-    assert lookup.shape == (64, 64, 3)
-
-    # Must have at least 2 distinct RGB values (land + ocean).
-    flat = lookup.reshape(-1, 3)
-    unique_colors = set(map(tuple, flat))
-    assert len(unique_colors) >= 2, f"Expected 2+ unique terrain colors, got {len(unique_colors)}: {unique_colors}"
-
-    # Ocean pixels (right half) must be the ocean color.
-    from medieval_forge.lib.map_generator import _TERRAIN_TYPES
-    ocean_rgb = _TERRAIN_TYPES["ocean"]["rgb"]
-    assert tuple(lookup[0, 63]) == ocean_rgb, "right-half pixel should be ocean color"
-
-    # Land pixels (left half) must NOT be black (0,0,0).
-    land_sample = lookup[:, :32].reshape(-1, 3)
-    all_black = np.all(land_sample == 0, axis=1)
-    assert not np.all(all_black), "All land pixels are black — terrain classification did not run"
-
-
-def test_terrain_lookup_mountain_mask_applied():
-    """Mountain pixels on land are painted with mountain color."""
-    import numpy as np
-    from medieval_forge.lib.map_generator import generate_terrain_lookup, RegionConfig, _TERRAIN_TYPES
-
-    cfg = RegionConfig(map_w=64, map_h=64)
-
-    # All land.
-    land = np.ones((64, 64), dtype=bool)
-
-    # Mountain in top-left 16x16 quadrant.
-    mtn = np.zeros((64, 64), dtype=bool)
-    mtn[:16, :16] = True
-
-    lookup, terrain_types = generate_terrain_lookup(land, cfg, mtn_mask=mtn)
-
-    mountain_rgb = _TERRAIN_TYPES["mountain"]["rgb"]
-    # Every pixel in the mountain quadrant must be mountain color.
-    for y in range(16):
-        for x in range(16):
-            assert tuple(lookup[y, x]) == mountain_rgb, (
-                f"pixel ({y},{x}) should be mountain {mountain_rgb}, got {tuple(lookup[y, x])}"
-            )
-
-
-def test_terrain_types_json_structure():
-    """terrain_types dict has exactly 4 canonical types with required game stat keys."""
-    import numpy as np
-    from medieval_forge.lib.map_generator import generate_terrain_lookup, RegionConfig
-
-    cfg = RegionConfig(map_w=32, map_h=32)
-    land = np.ones((32, 32), dtype=bool)
-    _, terrain_types = generate_terrain_lookup(land, cfg)
-
-    # Exactly 4 types: ocean, coast, plain, mountain (no synthetic hill/forest).
-    assert len(terrain_types) == 4, (
-        f"Expected exactly 4 terrain types (ocean, coast, plain, mountain), "
-        f"got {len(terrain_types)}: {list(terrain_types.keys())}"
-    )
-    expected_type_names = {"ocean", "coast", "plain", "mountain"}
-    actual_type_names = {v["type"] for v in terrain_types.values()}
-    assert actual_type_names == expected_type_names, (
-        f"Expected terrain types {expected_type_names}, got {actual_type_names}"
-    )
-    for key, entry in terrain_types.items():
-        # Key format: "R,G,B"
-        parts = key.split(",")
-        assert len(parts) == 3, f"key {key!r} is not R,G,B format"
-        assert all(0 <= int(p) <= 255 for p in parts), f"key {key!r} has out-of-range values"
-        # Required fields
-        assert "movement" in entry, f"terrain_types[{key}] missing 'movement'"
-        assert "defense" in entry,  f"terrain_types[{key}] missing 'defense'"
-        assert "attack" in entry,   f"terrain_types[{key}] missing 'attack'"
-
-
-@pytest.mark.slow
-async def test_terrain_lookup_files_produced(client, tmp_path):
-    """Full pipeline: terrain_lookup.png and terrain_types.json are written and non-trivial."""
-    import json as _json
-    import numpy as np
-    from PIL import Image as _Image
-    from medieval_forge.services import paths as paths_mod
-    from medieval_forge.services.generator import run_generation
-    from medieval_forge.services.paths import ensure_project_dirs
-
-    fake_root = paths_mod.PROJECTS_ROOT
-    created = await _create_project(client)
-    pid = created["id"]
-
-    # Place the GeoJSON in the project's raw/ dir so _validate_municipalities passes.
-    dirs = ensure_project_dirs(pid)
-    raw_geojson = dirs["raw"] / "municipalities.geojson"
-    _write_minimal_geojson(raw_geojson)
-    config = _make_test_config(str(raw_geojson))
-    await run_generation(pid, config)
-
-    gen_dir = fake_root / pid / "generated"
-
-    # terrain_lookup.png must exist and be non-trivial.
-    tlookup = gen_dir / "terrain_lookup.png"
-    assert tlookup.exists(), "terrain_lookup.png was not generated"
-    img = np.array(_Image.open(str(tlookup)))
-    unique_colors = set(map(tuple, img.reshape(-1, 3)))
-    assert len(unique_colors) >= 2, (
-        f"terrain_lookup.png is trivial: only {len(unique_colors)} unique color(s)"
-    )
-
-    # terrain_types.json must exist and have required structure.
-    ttypes = gen_dir / "terrain_types.json"
-    assert ttypes.exists(), "terrain_types.json was not generated"
-    data = _json.loads(ttypes.read_text())
-    assert len(data) == 4, f"terrain_types.json has {len(data)} entries — expected exactly 4 (ocean/coast/plain/mountain)"
-    for key, entry in data.items():
-        assert "movement" in entry and "defense" in entry and "attack" in entry, (
-            f"terrain_types.json entry {key!r} missing game stat fields"
-        )
-
-    # terrain.png alias must point to the same content as terrain_lookup.png.
-    terrain_alias = gen_dir / "terrain.png"
-    assert terrain_alias.exists(), "terrain.png alias was not created"
-    alias_colors = set(map(tuple, np.array(_Image.open(str(terrain_alias))).reshape(-1, 3)))
-    assert alias_colors == unique_colors, "terrain.png and terrain_lookup.png have different content"

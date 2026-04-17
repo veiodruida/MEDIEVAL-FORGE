@@ -795,153 +795,7 @@ def render_rivers(cfg):
 
 
 # ═══════════════════════════════════════════════════════════════
-# SECTION 13: TERRAIN LOOKUP (terrain_lookup.png + terrain_types.json)
-# ═══════════════════════════════════════════════════════════════
-
-# Terrain type definitions: name → (R, G, B) + game stats.
-# Exactly 4 types derived from geographic polygon data — no synthetic noise.
-# Forest and hill are NOT generated here; they require a separate data source
-# (e.g. CORINE land cover) and are out of scope for the current pipeline.
-_TERRAIN_TYPES: dict[str, dict] = {
-    "ocean":    {"rgb": (45,  90,  140), "movement": 0,   "defense": 0,   "attack": 0},
-    "coast":    {"rgb": (100, 160, 180), "movement": 0.9, "defense": 1.0, "attack": 1.0},
-    "plain":    {"rgb": (180, 200, 120), "movement": 1.0, "defense": 1.0, "attack": 1.0},
-    "mountain": {"rgb": (100,  85,  65), "movement": 0.4, "defense": 1.8, "attack": 0.6},
-}
-
-
-def render_mountains_from_data(
-    data: dict,
-    cfg: RegionConfig,
-    land_mask: np.ndarray,
-    target_w: int,
-    target_h: int,
-) -> np.ndarray:
-    """Rasterize mountain polygons from pre-loaded JSON data into a boolean mask.
-
-    This is the testable core of render_mountains() — it accepts data already
-    loaded from JSON so tests can inject fixture data without touching the
-    filesystem.
-
-    Args:
-        data: dict with key "mountains" → {key: {polygon: [[lon,lat], ...]}}
-        cfg: RegionConfig for geo_to_pixel projection.
-        land_mask: boolean (target_h, target_w) land mask — mountains are
-                   clipped to land (no ocean bleed).
-        target_w, target_h: pixel dimensions for the output mask.
-
-    Returns:
-        boolean (target_h, target_w) ndarray — True where mountain polygons fall
-        on land. Returns all-False array if no mountain polygons found.
-    """
-    mask = np.zeros((target_h, target_w), dtype=bool)
-    mountains = data.get("mountains", {})
-    for key, mtn in mountains.items():
-        polygon = mtn.get("polygon", [])
-        if len(polygon) < 3:
-            continue
-        pts = [geo_to_pixel(lo, la, cfg, target_w, target_h) for lo, la in polygon]
-        img = Image.new("L", (target_w, target_h), 0)
-        ImageDraw.Draw(img).polygon(pts, fill=255)
-        mask |= (np.array(img) > 0)
-    # Clip to land — mountains must not bleed into ocean.
-    if land_mask is not None:
-        mask &= land_mask
-    return mask
-
-
-def generate_terrain_lookup(
-    land: np.ndarray,
-    cfg: RegionConfig,
-    mtn_mask: np.ndarray | None = None,
-    rivers_img=None,
-) -> tuple[np.ndarray, dict]:
-    """Generate terrain_lookup pixel map and terrain_types metadata.
-
-    Classification uses hand-curated geographic polygon data (mountain ranges
-    from mountain_river_data.json) rather than synthetic noise. The palette is
-    exactly 4 types: ocean, coast, plain, mountain.
-
-    Classification rules (applied in priority order, highest last = wins):
-      1. ocean    — pixel not in land mask (baseline fill)
-      2. plain    — all land pixels
-      3. coast    — land pixel within 8px of ocean boundary (distance_transform)
-      4. mountain — pixel in mtn_mask, intersected with land (highest priority)
-
-    Forest and hill types are NOT generated here. They require a separate data
-    source (e.g. CORINE land cover) and are planned as a future extension.
-
-    Args:
-        land: boolean (H, W) array — True = land pixel.
-        cfg: RegionConfig (for dimensions).
-        mtn_mask: optional boolean mountain mask. May be at 2x resolution
-                  (shape H*upscale × W*upscale) — downscaled to 1x via NEAREST.
-                  If None, no mountain pixels are painted.
-        rivers_img: unused (rivers are a visual-only overlay in rivers_overlay.png,
-                    not encoded in the terrain type lookup).
-
-    Returns:
-        (lookup_arr, terrain_types_dict)
-        lookup_arr: uint8 (H, W, 3) RGB array — each pixel colored by terrain type.
-        terrain_types_dict: JSON-serialisable dict mapping "R,G,B" →
-                            {type, movement, defense, attack}.
-    """
-    H, W = land.shape
-    lookup = np.zeros((H, W, 3), dtype=np.uint8)
-
-    # Step 1 — Ocean baseline (pixels outside land mask).
-    lookup[~land] = _TERRAIN_TYPES["ocean"]["rgb"]
-
-    # Step 2 — Plain: all land pixels (overridden by coast and mountain below).
-    lookup[land] = _TERRAIN_TYPES["plain"]["rgb"]
-
-    # Step 3 — Coast mask: land pixels within 8px of ocean boundary.
-    # distance_transform_edt returns 0 at ocean pixels and increases inland.
-    # Land pixels with small EDT value are close to ocean → coast.
-    from scipy.ndimage import distance_transform_edt as _dte
-    dist_from_ocean = _dte(land)  # 0 at ocean, positive on land
-    coast_mask = land & (dist_from_ocean <= 8)
-    if np.any(coast_mask):
-        lookup[coast_mask] = _TERRAIN_TYPES["coast"]["rgb"]
-
-    # Step 4 — Mountain mask (downscale from 2x to 1x via NEAREST if necessary).
-    # NEVER use BICUBIC or BILINEAR — they spread mountain pixels into ocean.
-    mtn_1x: np.ndarray | None = None
-    if mtn_mask is not None:
-        mh, mw = mtn_mask.shape
-        if mh == H and mw == W:
-            mtn_1x = mtn_mask
-        else:
-            # Downscale via integer stride (NEAREST equivalent for boolean masks).
-            scale_h = mh // H
-            scale_w = mw // W
-            if scale_h >= 1 and scale_w >= 1:
-                mtn_1x = mtn_mask[::scale_h, ::scale_w][:H, :W]
-
-    # Mountains override coast and plain — only where mountain is on land.
-    if mtn_1x is not None:
-        mtn_land = mtn_1x & land
-        if np.any(mtn_land):
-            lookup[mtn_land] = _TERRAIN_TYPES["mountain"]["rgb"]
-
-    # Step 5 — Build terrain_types.json: emit only the 4 canonical types.
-    # Each entry: "R,G,B" → {type, movement, defense, attack}.
-    terrain_types: dict[str, dict] = {}
-    for type_name, td in _TERRAIN_TYPES.items():
-        r, g, b = td["rgb"]
-        key = f"{r},{g},{b}"
-        terrain_types[key] = {
-            "type":     type_name,
-            "movement": td["movement"],
-            "defense":  td["defense"],
-            "attack":   td["attack"],
-        }
-
-    return lookup, terrain_types
-
-
-# ═══════════════════════════════════════════════════════════════
-# SECTION 14: MAIN PIPELINE
+# SECTION 13: MAIN PIPELINE
 # ═══════════════════════════════════════════════════════════════
 
 def generate_maps(cfg: RegionConfig = None, territory_module: str = "territory_data_v3",
@@ -1062,24 +916,13 @@ def generate_maps(cfg: RegionConfig = None, territory_module: str = "territory_d
     rivers_img = render_rivers(cfg)
     if rivers_img is not None:
         rivers_img.save(f"{cfg.output_dir}/rivers_overlay.png")
-
+        
         # Also composite rivers on visual maps
         for mt in ["condado", "barony"]:
             vis = Image.open(f"{cfg.output_dir}/visual_{mt}.png").convert("RGBA")
             vis.paste(rivers_img, (0, 0), rivers_img)
             vis.convert("RGB").save(f"{cfg.output_dir}/visual_{mt}.png")
-
-    # 14. Terrain lookup (terrain_lookup.png + terrain_types.json)
-    print("[15] Terrain lookup...")
-    terrain_arr, terrain_types = generate_terrain_lookup(
-        land, cfg, mtn_mask=mtn_mask, rivers_img=rivers_img
-    )
-    Image.fromarray(terrain_arr).save(f"{cfg.output_dir}/terrain_lookup.png")
-    with open(f"{cfg.output_dir}/terrain_types.json", 'w') as f:
-        json.dump(terrain_types, f, indent=2)
-    unique_types = len({tuple(terrain_arr[land][i]) for i in range(0, int(land.sum()), max(1, int(land.sum())//1000))})
-    print(f"    Terrain types written: {len(terrain_types)} types, ~{unique_types} unique colors sampled")
-
+    
     print(f"\n{'='*60}")
     print(f"DONE — {na} baronies, {nc_active} condados")
     print(f"Output: {cfg.output_dir}/")

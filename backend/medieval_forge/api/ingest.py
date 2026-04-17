@@ -32,14 +32,10 @@ async def _sse_generator(
     country: str,
     session_factory,
     bbox: tuple[float, float, float, float] | None = None,
-    clip_iso_codes: list[str] | None = None,
 ):
     queue: asyncio.Queue[str | None] = asyncio.Queue()
     task = asyncio.create_task(
-        run_ingest(
-            project_id, source, country, queue, session_factory,
-            bbox=bbox, clip_iso_codes=clip_iso_codes,
-        )
+        run_ingest(project_id, source, country, queue, session_factory, bbox=bbox)
     )
     try:
         while True:
@@ -146,29 +142,8 @@ async def trigger_ingest(
             project.bbox_lon_max,   # type: ignore[arg-type]
         )
 
-    # Derivar clip_iso_codes do QID do projeto para clipping geográfico pós-bbox.
-    # Só aplicável a OSM (Wikidata já filtra por QID nativamente).
-    clip_iso_codes: list[str] | None = None
-    if source == "osm" and bbox is not None:
-        from ..services.countries import clip_iso_codes_for_qid
-        clip_iso_codes = clip_iso_codes_for_qid(project.country_qid)
-        if clip_iso_codes:
-            logger.info(
-                "ingest %s: will clip OSM features to countries %s",
-                project_id, clip_iso_codes,
-            )
-        else:
-            logger.warning(
-                "ingest %s: country_qid=%r has no clip_iso_codes — "
-                "cross-border features will NOT be filtered",
-                project_id, project.country_qid,
-            )
-
     return StreamingResponse(
-        _sse_generator(
-            project_id, source, effective_country, AsyncSessionLocal,
-            bbox=bbox, clip_iso_codes=clip_iso_codes,
-        ),
+        _sse_generator(project_id, source, effective_country, AsyncSessionLocal, bbox=bbox),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
