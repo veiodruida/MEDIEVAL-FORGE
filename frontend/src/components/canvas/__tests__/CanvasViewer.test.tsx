@@ -2,8 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { CanvasViewer } from '../CanvasViewer'
+import { useUIStore } from '../../../stores/uiStore'
 
-// Mock react-konva — Konva requires a real DOM canvas context not available in jsdom
 vi.mock('react-konva', () => ({
   Stage: ({ children }: { children?: React.ReactNode }) => (
     <div data-testid="konva-stage">{children}</div>
@@ -18,6 +18,20 @@ vi.mock('react-konva', () => ({
 vi.mock('use-image', () => ({
   default: () => [undefined, 'loading'],
   useImage: () => [undefined, 'loading'],
+}))
+
+vi.mock('../TerritoryLayer', () => ({
+  TerritoryLayer: () => <div data-testid="territory-layer" />,
+}))
+
+vi.mock('../BaronyLayer', () => ({
+  BaronyLayer: ({ visible }: { visible: boolean }) => (
+    <div data-testid="barony-layer" data-visible={String(visible)} />
+  ),
+}))
+
+vi.mock('../LayerTogglePanel', () => ({
+  LayerTogglePanel: () => <div data-testid="layer-toggle-panel" />,
 }))
 
 const META_FIXTURE = {
@@ -77,10 +91,13 @@ function wrapper({ children }: { children: React.ReactNode }) {
 describe('CanvasViewer', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    useUIStore.setState({
+      selectedTerritoryId: null,
+      layerVisibility: { terrain: true, territories: true, borders: true, capitals: true, labels: false },
+    })
   })
 
   it('shows loading state while fetching metadata', async () => {
-    // Never resolve fetch to keep loading state
     global.fetch = vi.fn(() => new Promise(() => {})) as unknown as typeof fetch
     render(<CanvasViewer projectId="00000000-0000-4000-8000-000000000001" />, { wrapper })
     expect(screen.getByText('Loading map…')).toBeTruthy()
@@ -114,15 +131,30 @@ describe('CanvasViewer', () => {
     expect(await findByText(/Failed to load territory data/)).toBeTruthy()
   })
 
-  it('BackgroundLayer has listening={false} in the layer mock', async () => {
+  it('Stage contains TerritoryLayer and BaronyLayer after all data loads', async () => {
     setupFetchMock()
-    const { findByTestId } = render(
-      <CanvasViewer projectId="00000000-0000-4000-8000-000000000001" />,
-      { wrapper },
-    )
-    // konva-layer rendered by our mock — BackgroundLayer passes listening={false}
-    // to the real Konva Layer; our mock renders it as a div regardless.
-    const layer = await findByTestId('konva-layer')
-    expect(layer).toBeTruthy()
+    render(<CanvasViewer projectId="00000000-0000-4000-8000-000000000001" />, { wrapper })
+    const stage = await screen.findByTestId('konva-stage')
+    expect(stage.querySelector('[data-testid="territory-layer"]')).not.toBeNull()
+    expect(stage.querySelector('[data-testid="barony-layer"]')).not.toBeNull()
+  })
+
+  it('LayerTogglePanel is sibling of Stage (not inside Stage)', async () => {
+    setupFetchMock()
+    render(<CanvasViewer projectId="00000000-0000-4000-8000-000000000001" />, { wrapper })
+    const panel = await screen.findByTestId('layer-toggle-panel')
+    const stage = screen.getByTestId('konva-stage')
+    expect(panel).toBeTruthy()
+    expect(stage.contains(panel)).toBe(false)
+  })
+
+  it('BaronyLayer visible prop tracks layerVisibility.borders', async () => {
+    useUIStore.setState({
+      layerVisibility: { terrain: true, territories: true, borders: false, capitals: true, labels: false },
+    })
+    setupFetchMock()
+    render(<CanvasViewer projectId="00000000-0000-4000-8000-000000000001" />, { wrapper })
+    const barony = await screen.findByTestId('barony-layer')
+    expect(barony.getAttribute('data-visible')).toBe('false')
   })
 })

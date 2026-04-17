@@ -6,6 +6,7 @@ interface BackgroundLayerProps {
   src: string
   mapW: number
   mapH: number
+  visible?: boolean
 }
 
 /**
@@ -13,11 +14,11 @@ interface BackgroundLayerProps {
  * listening={false} disables hit detection on this layer (plan 2.1 — read-only).
  * Interaction layers added in plans 2.2/2.3 sit above this.
  */
-export function BackgroundLayer({ src, mapW, mapH }: BackgroundLayerProps) {
+export function BackgroundLayer({ src, mapW, mapH, visible = true }: BackgroundLayerProps) {
   const [image] = useImage(src, 'anonymous')
 
   return (
-    <Layer listening={false}>
+    <Layer listening={false} visible={visible}>
       {image && (
         <Image
           image={image}

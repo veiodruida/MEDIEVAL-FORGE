@@ -123,11 +123,22 @@ export function ProjectDetail() {
         </Flex>
       </Card>
 
-      {/* Canvas Viewer — rendered when map is generated or exported */}
+      {/* Canvas Viewer — two-region layout: canvas area + inspector sidebar placeholder */}
       {isGenerated && (
-        <Box mb="4" style={{ height: 600, background: '#1a1a2e', borderRadius: 8, overflow: 'hidden' }}>
-          <CanvasViewer projectId={project.id} width={900} height={600} />
-        </Box>
+        <Flex mb="4" style={{ height: '600px', borderRadius: 8, overflow: 'hidden' }}>
+          <Box
+            className="canvas-region"
+            style={{ flex: 1, background: '#1a1a2e', overflow: 'hidden', position: 'relative' }}
+          >
+            <CanvasViewer projectId={project.id} />
+          </Box>
+          <Box
+            className="inspector-sidebar-placeholder"
+            style={{ width: 340, borderLeft: '1px solid var(--gray-4)', padding: 16, overflowY: 'auto' }}
+          >
+            {/* InspectorSidebar — plan 2.3 seam */}
+          </Box>
+        </Flex>
       )}
 
       {/* Preview — destaque quando disponível */}
