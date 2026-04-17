@@ -1,8 +1,8 @@
 ---
-status: awaiting_human_verify
+status: resolved
 trigger: "osm-multipolygon-stitching — OSM relation parser treats each outer way as independent polygon instead of stitching ways into closed rings"
 created: 2026-04-17T00:00:00Z
-updated: 2026-04-17T01:00:00Z
+updated: 2026-04-17T02:00:00Z
 ---
 
 ## Current Focus
@@ -63,7 +63,7 @@ root_cause: _relation_to_geojson_feature treated each OSM way member (a LineStri
 
 fix: Rewrote _relation_to_geojson_feature to collect outer/inner members as shapely LineString objects, use linemerge(list) + polygonize() to assemble closed rings, pair inner rings to containing outers via op.contains(ip.representative_point()), and emit Polygon (single outer) or MultiPolygon (multiple disjoint outers). Added logging.warning for malformed relations where polygonize yields no polygons.
 
-verification: 5 new unit tests pass (test_relation_simple_square, test_relation_with_hole, test_relation_multi_island, test_relation_malformed_returns_none, test_relation_no_outer_returns_none). Full suite: 37 pass, 4 pre-existing failures, 0 regressions. Awaiting human visual verification of Iberia ingest.
+verification: 5 new unit tests pass (test_relation_simple_square, test_relation_with_hole, test_relation_multi_island, test_relation_malformed_returns_none, test_relation_no_outer_returns_none). Full suite: 37 pass, 4 pre-existing failures, 0 regressions. Human confirmed 2026-04-17: "Ok parece bem melhor" — territories now render as filled pastel polygons instead of black outlines on solid ocean.
 
 files_changed:
   - backend/medieval_forge/services/ingest_osm.py
