@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-04-16)
 Phase: 1 of 6 (Data Pipeline + Backend Scaffold)
 Plan: 0 of 5 in current phase
 Status: Ready to plan
-Last activity: 2026-04-16 — Roadmap created, STATE.md initialized
+Last activity: 2026-04-17 - Completed quick task 260417-hpt: remove rivers generation from pipeline
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -92,6 +92,12 @@ None yet.
 **Phase 6 research flag:**
 
 - Unity 12-file spec: verify against current Unity 6 grand strategy community practice during Phase 6 planning
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 260417-hpt | remove rivers generation from pipeline | 2026-04-17 | 4ea6444 | [260417-hpt-remove-rivers-generation-from-pipeline](./quick/260417-hpt-remove-rivers-generation-from-pipeline/) |
 
 ## Session Continuity
 
