@@ -23,7 +23,6 @@
 ║    - territory_colors.json → color→ID mapping for Unity        ║
 ║    - territory_metadata.json → full hierarchy for Unity        ║
 ║    - mountains_mask.png  → impassable terrain mask             ║
-║    - rivers_overlay.png  → river lines (visual only)           ║
 ╚══════════════════════════════════════════════════════════════════╝
 
 Unity Integration:
@@ -31,7 +30,6 @@ Unity Integration:
   - Unity reads pixel at click position → looks up color in territory_colors.json
   - Visual maps are placeholder — will be replaced by pergaminho skin
   - Mountains mask: white = impassable, black = passable
-  - Rivers overlay: transparent PNG with blue lines
 """
 
 import json, math, os, sys
@@ -1057,17 +1055,10 @@ def generate_maps(cfg: RegionConfig = None, territory_module: str = "territory_d
                     mc[ch] + noise[mtn_mask], 30, 220).astype(np.uint8)
             Image.fromarray(vis).save(f"{cfg.output_dir}/visual_{mt}.png")
     
-    # 13. Rivers
-    print("[14] Rivers...")
-    rivers_img = render_rivers(cfg)
-    if rivers_img is not None:
-        rivers_img.save(f"{cfg.output_dir}/rivers_overlay.png")
-
-        # Also composite rivers on visual maps
-        for mt in ["condado", "barony"]:
-            vis = Image.open(f"{cfg.output_dir}/visual_{mt}.png").convert("RGBA")
-            vis.paste(rivers_img, (0, 0), rivers_img)
-            vis.convert("RGB").save(f"{cfg.output_dir}/visual_{mt}.png")
+    # 13. Rivers — DISCONNECTED from pipeline on 2026-04-17.
+    # render_rivers() remains available in this module for future reactivation.
+    # See .planning/debug/resolved/terrain-real-geography.md (Rivers Disconnect addendum).
+    rivers_img = None
 
     # 14. Terrain lookup (terrain_lookup.png + terrain_types.json)
     print("[15] Terrain lookup...")
@@ -1090,7 +1081,6 @@ def generate_maps(cfg: RegionConfig = None, territory_module: str = "territory_d
     print(f"  lookup_*_colors.json — color→ID mapping")
     print(f"  territory_metadata.json — full hierarchy")
     print(f"  mountains_mask.png   — impassable terrain")
-    print(f"  rivers_overlay.png   — river lines")
     print(f"{'='*60}")
 
 

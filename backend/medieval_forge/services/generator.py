@@ -39,7 +39,6 @@ _GENERATOR_OUTPUTS: tuple[str, ...] = (
     "lookup_barony_colors.json",
     "territory_metadata.json",
     "mountains_mask.png",
-    "rivers_overlay.png",
     "terrain_lookup.png",
     "terrain_types.json",
 )
@@ -228,8 +227,9 @@ def _build_region_config(generated_dir: Path, config: dict[str, Any]) -> Any:
     # The Iberia template ships mountain_river_data_iberia.json alongside
     # territory_iberia.json in the services/ package directory.
     # If the caller has not explicitly set mountain_river_json, resolve it
-    # from the bundled file so render_mountains() and render_rivers() have
-    # real geographic polygon data to work with.
+    # from the bundled file so render_mountains() has real geographic polygon
+    # data to work with. (render_rivers is disconnected from the pipeline but
+    # its function and data are preserved for future reactivation.)
     if "mountain_river_json" not in kwargs:
         _bundled = Path(__file__).parent / "mountain_river_data_iberia.json"
         if _bundled.exists():

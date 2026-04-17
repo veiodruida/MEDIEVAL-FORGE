@@ -29,7 +29,6 @@ UNITY_ZIP_SPEC: tuple[str, ...] = (
     "terrain_types.json",
     "territory_metadata.json",
     "mountains_mask.png",
-    "rivers_overlay.png",
     "visual_barony.png",
     "visual_condado.png",
     "mountain_river_data.json",
