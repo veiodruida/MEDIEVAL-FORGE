@@ -6,24 +6,37 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest",
+    "test:e2e": "playwright test",
+    "test:e2e:update": "playwright test --update-snapshots"
   },
   "dependencies": {
+    "@radix-ui/themes": "^3.3.0",
+    "@tanstack/react-query": "^5.99.0",
+    "konva": "^10.2.5",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
+    "react-konva": "^19.2.3",
     "react-router-dom": "^7.14.0",
-    "@tanstack/react-query": "^5.99.0",
-    "zustand": "^5.0.12",
     "zundo": "^2.3.0",
-    "@radix-ui/themes": "^3.3.0"
+    "zustand": "^5.0.12"
   },
   "devDependencies": {
+    "@playwright/test": "^1.59.1",
+    "@tailwindcss/vite": "^4.2.0",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/pngjs": "^6.0.5",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react": "^4.4.0",
+    "@vitest/coverage-v8": "^3.2.4",
+    "jsdom": "^29.0.2",
+    "pngjs": "^7.0.0",
+    "tailwindcss": "^4.2.0",
     "typescript": "~5.8.0",
     "vite": "^6.4.0",
-    "tailwindcss": "^4.2.0",
-    "@tailwindcss/vite": "^4.2.0"
+    "vitest": "^3.2.4"
   }
 }
