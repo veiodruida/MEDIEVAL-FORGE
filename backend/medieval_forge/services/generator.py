@@ -61,7 +61,10 @@ _AUXILIARY_OUTPUTS: tuple[str, ...] = (
 )
 
 GENERATED_FILE_WHITELIST: frozenset[str] = frozenset(
-    list(_GENERATOR_OUTPUTS) + list(_PREVIEW_ALIASES.keys()) + list(_AUXILIARY_OUTPUTS)
+    list(_GENERATOR_OUTPUTS)
+    + list(_PREVIEW_ALIASES.keys())
+    + list(_AUXILIARY_OUTPUTS)
+    + ["territories.geojson", "baronies.geojson"]
 )
 
 
@@ -321,6 +324,28 @@ def _run_pipeline_sync(
             )
         logger.debug("map_generator output for %s:\n%s", project_id, _buf.getvalue())
         _materialise_aliases(generated_dir)
+        # CANVAS-01 + D-02: build GeoJSON artifacts by reading back the generator's
+        # lookup PNGs + territory_metadata.json from disk. Keeps inicio/map_generator.py
+        # as an untouched black box (D-04 in this module's docstring).
+        import math as _math
+        from .territories_geojson import emit_territories_from_disk, _ProjCfg
+        from .baronies_geojson import emit_baronies_from_disk
+        _center_lat = (region_cfg.lat_min + region_cfg.lat_max) / 2
+        _lon_scale = region_cfg.lon_scale if region_cfg.lon_scale is not None else _math.cos(_math.radians(_center_lat))
+        cfg_shim = _ProjCfg(
+            lon_min=region_cfg.lon_min, lon_max=region_cfg.lon_max,
+            lat_min=region_cfg.lat_min, lat_max=region_cfg.lat_max,
+            map_w=region_cfg.map_w,     map_h=region_cfg.map_h,
+            upscale=region_cfg.upscale, lon_scale=_lon_scale,
+        )
+        try:
+            emit_territories_from_disk(project_id, generated_dir, cfg_shim)
+            emit_baronies_from_disk(project_id, generated_dir, cfg_shim)
+        except Exception:
+            logger.exception(
+                "geojson emission failed for %s — canvas will show empty overlays", project_id
+            )
+            # Do not fail the pipeline; PNG outputs still usable.
     finally:
         _cleanup_territory_module(module_name)
 
