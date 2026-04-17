@@ -224,6 +224,17 @@ def _build_region_config(generated_dir: Path, config: dict[str, Any]) -> Any:
         if raw_geojson.exists():
             kwargs["municipality_pt_geojson"] = str(raw_geojson)
 
+    # Wire bundled mountain/river data for templates that ship it.
+    # The Iberia template ships mountain_river_data_iberia.json alongside
+    # territory_iberia.json in the services/ package directory.
+    # If the caller has not explicitly set mountain_river_json, resolve it
+    # from the bundled file so render_mountains() and render_rivers() have
+    # real geographic polygon data to work with.
+    if "mountain_river_json" not in kwargs:
+        _bundled = Path(__file__).parent / "mountain_river_data_iberia.json"
+        if _bundled.exists():
+            kwargs["mountain_river_json"] = str(_bundled)
+
     return map_generator.RegionConfig(**kwargs)
 
 
