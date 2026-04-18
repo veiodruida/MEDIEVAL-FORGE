@@ -2,211 +2,120 @@
 phase: 02-read-only-canvas-viewer
 reviewed: 2026-04-18T00:00:00Z
 depth: standard
-files_reviewed: 49
+files_reviewed: 10
 files_reviewed_list:
-  - .gitignore
+  - backend/medieval_forge/services/territories_geojson.py
   - backend/medieval_forge/services/baronies_geojson.py
   - backend/medieval_forge/services/generator.py
-  - backend/medieval_forge/services/territories_geojson.py
-  - backend/tests/test_baronies_geojson.py
   - backend/tests/test_territories_geojson.py
-  - frontend/e2e/perf-panzoom.spec.ts
-  - frontend/e2e/smoke-tailwind-radix.spec.ts
-  - frontend/package.json
-  - frontend/playwright.config.ts
-  - frontend/src/App.tsx
-  - frontend/src/components/canvas/BackgroundLayer.tsx
-  - frontend/src/components/canvas/BaronyLayer.tsx
-  - frontend/src/components/canvas/CanvasViewer.tsx
-  - frontend/src/components/canvas/DecorationsLayer.tsx
-  - frontend/src/components/canvas/FitToViewButton.tsx
-  - frontend/src/components/canvas/InspectorSidebar.tsx
-  - frontend/src/components/canvas/InteractionLayer.tsx
-  - frontend/src/components/canvas/LayerTogglePanel.tsx
-  - frontend/src/components/canvas/TerritoryLayer.tsx
-  - frontend/src/components/canvas/TerritoryPolygon.tsx
-  - frontend/src/components/canvas/__smoke__/CanvasRadixOverlaySmoke.tsx
-  - frontend/src/components/canvas/__tests__/BaronyLayer.test.tsx
-  - frontend/src/components/canvas/__tests__/CanvasViewer.panOnSelect.test.tsx
-  - frontend/src/components/canvas/__tests__/CanvasViewer.test.tsx
-  - frontend/src/components/canvas/__tests__/DecorationsLayer.test.tsx
-  - frontend/src/components/canvas/__tests__/FitToViewButton.test.tsx
-  - frontend/src/components/canvas/__tests__/InspectorSidebar.test.tsx
-  - frontend/src/components/canvas/__tests__/LayerTogglePanel.test.tsx
-  - frontend/src/components/canvas/__tests__/TerritoryLayer.test.tsx
-  - frontend/src/components/canvas/__tests__/selection.test.tsx
-  - frontend/src/context/ProjectionContext.tsx
+  - backend/tests/test_baronies_geojson.py
+  - backend/tests/test_generator_e2e.py
   - frontend/src/hooks/useCanvasArtifacts.ts
-  - frontend/src/hooks/useKeyboardShortcuts.test.ts
-  - frontend/src/hooks/useKeyboardShortcuts.ts
-  - frontend/src/hooks/useZoomPan.test.ts
-  - frontend/src/hooks/useZoomPan.ts
-  - frontend/src/lib/projection.test.ts
-  - frontend/src/lib/projection.ts
-  - frontend/src/pages/ProjectDetail.tsx
-  - frontend/src/stores/uiStore.test.ts
-  - frontend/src/stores/uiStore.ts
-  - frontend/src/test-setup.ts
-  - frontend/src/vite-env.d.ts
-  - frontend/vitest.config.ts
-  - pyproject.toml
+  - frontend/src/components/canvas/__tests__/CanvasViewer.test.tsx
+  - frontend/src/components/canvas/TerritoryLayer.tsx
+  - frontend/src/components/canvas/BaronyLayer.tsx
 findings:
   critical: 0
-  warning: 5
-  info: 5
-  total: 10
+  warning: 2
+  info: 2
+  total: 4
 status: issues_found
 ---
 
-# Phase 02: Code Review Report
+# Phase 02: Code Review Report — Plan 02-04 (Gap Closure G-01/G-02/G-03)
 
-**Reviewed:** 2026-04-18
+**Reviewed:** 2026-04-18T00:00:00Z
 **Depth:** standard
-**Files Reviewed:** 49
+**Files Reviewed:** 10
 **Status:** issues_found
+**Diff Range:** `0bf5bbd..HEAD` (7 commits, plan 02-04)
 
 ## Summary
 
-The Phase 2 read-only canvas viewer implementation is solid overall: the projection math is well-tested (1000-point round-trip at 1e-9 precision), the Konva layer composition matches the plan's z-order contract, state management is narrow and correctly scoped, and there is extensive unit-test coverage for every component and hook. No critical issues were found — no injection, no hardcoded secrets, no auth bypass, no data-loss paths. Project-id path traversal is guarded at `paths.project_dir`, and all fetch failures have explicit handling.
+This review covers the gap-closure plan 02-04 within phase 02-read-only-canvas-viewer. It overwrites the prior REVIEW.md (which scoped plans 01–03). The diff closes three verification gaps:
 
-The issues below are all non-blocking for Phase 2 acceptance but should be addressed before the canvas moves into Phase 3 (edit mode), where concurrency and edge-case geometry will matter more.
+- **G-01 (format mismatch):** `emit_territories_from_disk` / `emit_baronies_from_disk` now parse the real `{"r,g,b": idx}` schema written by `lib/map_generator.py` SECTION 10, instead of an imagined `{condado_id: "#hex"}` shape. New `condado_colors.json` and `barony_colors.json` sidecars are emitted alongside (frontend-consumable hex map) while the Unity-consumed `lookup_*_colors.json` keep their original schema.
+- **G-02 (silent swallow):** the previous `try/except` around the emitter calls in `_run_pipeline_sync` is gone; emitter errors now propagate to `run_generation` and surface as `status='error_generating'` with `last_error` populated.
+- **G-03 (missing integration test):** `test_generator_e2e.py` adds two BLOCKING-grade tests that exercise the real read-back path end-to-end and assert exception propagation.
 
-Noteworthy risks:
+**D-04 black-box constraint preserved:** `git diff --stat 0bf5bbd..HEAD -- backend/medieval_forge/lib/map_generator.py` shows zero changes — the vendored generator is untouched.
 
-1. A concurrency race in `generator._patch_reload_for_synthetic` (it mutates global `importlib.reload`), which is safe only under the assumption that at most one generation runs at a time.
-2. An unreachable-looking fallback branch in `generator._build_region_config`: when `_compute_padded_bbox` returns `{}` (no territory data), the caller's explicit bbox is silently dropped even though the docstring and inline comments promise the opposite.
-3. A duplicated definition of `_cleanup_territory_module` in `generator.py` — harmless (second definition wins) but a merge-smell worth removing.
-4. `firstOuterRing` in `useCanvasArtifacts` silently discards all but the first polygon of a MultiPolygon; islands and exclaves will render partial until polygonized.
-5. A version-floor inconsistency in `pyproject.toml`: `rasterio>=1.4,<2.0` admits 1.5+, which per project CLAUDE.md requires Python 3.12+ but `requires-python` is `>=3.11`.
+**Quality is high overall.** Tests cover the primary positive path, the malformed-key negative path, the out-of-range-skip behavior, the sidecar emission, and the BLOCKING e2e flow. Zero-padded hex (`#0a141e` not `#a141e`) is explicitly asserted. The `STRtree.query` usage in `territories_geojson.py:116-117` correctly relies on Shapely 2.x returning numpy int indices (verified live).
+
+Issues found are bounded and non-blocking for the gap closure itself: one duplicate-definition code smell, one latent concurrency hazard in pre-existing code that the diff did not introduce but did not fix either, and two minor cleanups in the frontend wiring and test mock surface.
 
 ## Warnings
 
-### WR-01: Duplicated function definition `_cleanup_territory_module`
+### WR-01: Duplicate definition of `_cleanup_territory_module`
 
-**File:** `backend/medieval_forge/services/generator.py:81` and `backend/medieval_forge/services/generator.py:116`
-**Issue:** `_cleanup_territory_module` is defined twice with identical bodies. The second definition silently shadows the first. This is dead code and a code-smell that often indicates a bad merge or incomplete refactor. Python does not warn about rebinding module-level names, so this will not surface until it diverges.
+**File:** `backend/medieval_forge/services/generator.py:89` and `backend/medieval_forge/services/generator.py:124`
+**Issue:** The same function is defined twice with identical bodies. The second definition silently shadows the first. This is a real maintenance hazard — a future edit to the lines 89-90 body will be silently overridden by lines 124-125 at import time, and any reader is forced to scroll the whole module to confirm which copy is "live." The duplication appears to predate this diff but lives in a file that plan 02-04 actively edits, so it is in-scope to flag. The shim near line 124 is a no-op shadow with no other purpose.
 **Fix:**
 ```python
-# Delete the duplicate at lines 116-117:
-#   def _cleanup_territory_module(name: str) -> None:
-#       sys.modules.pop(name, None)
-# Keep only the original definition at line 81.
+# Remove the second copy at lines 124-125 entirely:
+def _cleanup_territory_module(name: str) -> None:
+    sys.modules.pop(name, None)
 ```
+Keep only the definition at line 89. No call sites change.
 
-### WR-02: `_patch_reload_for_synthetic` mutates global `importlib.reload` — race risk under concurrent generations
+### WR-02: `_patch_reload_for_synthetic` mutates `importlib.reload` globally — not safe for concurrent generations
 
-**File:** `backend/medieval_forge/services/generator.py:98-113`
-**Issue:** The context manager patches `importlib.reload` on the global `importlib` module (`_importlib_mod.reload = _safe_reload`), then restores the original on exit. Because `run_generation` dispatches via `asyncio.to_thread`, two generation calls overlapping in the same process would race the patch/restore: the inner thread restores the real `reload` before the outer thread finishes, and any `importlib.reload(...)` call from user code (or a background reload from some other library) in that window would see the wrong value. The patch is also non-atomic — if the thread is cancelled between `_importlib_mod.reload = _safe_reload` and the `try`, restoration never happens.
-**Fix:** Either (a) serialize with a module-level `threading.Lock` around the patched window, or (b) patch locally — assign to `map_generator.importlib.reload` so the scope is the vendored module's namespace rather than the global `importlib`:
+**File:** `backend/medieval_forge/services/generator.py:107-121`
+**Issue:** `_patch_reload_for_synthetic` does `_importlib_mod.reload = _safe_reload` and restores `_real_reload` in the `finally`. `run_generation` is invoked from `api/generate.py` as a FastAPI `BackgroundTasks` job (see `api/generate.py:57`), and the project layer offers no per-process serialization. If two generations run concurrently:
+
+1. Thread A enters the context, captures `_real_reload = importlib.reload` (the genuine one), patches the module attribute.
+2. Thread B enters, captures `_real_reload = importlib.reload` — but this is now Thread A's `_safe_reload`, not the real one. Thread B then patches the attribute again with its own `_safe_reload` that closes over A's safe reload.
+3. Thread B's `finally` restores its captured `_real_reload` — which is A's safe reload, not the genuine `importlib.reload`. The genuine reload reference is now lost from the module attribute until Thread A's `finally` runs. Worse, if Thread A finishes first, its `finally` restores the genuine reload, but Thread B's later `finally` then overwrites it with A's safe reload — leaving the patched function permanently installed.
+
+This was not introduced by plan 02-04, but plan 02-04 actively edits `_run_pipeline_sync` and the same concurrency window is now also in the path of the new emitter calls. With G-02 making the pipeline crash loudly on bad data, the chance of one generation interrupting another mid-flight goes up, not down.
+
+**Fix:** Either serialize generation behind a per-process `threading.Lock` (or a per-project `asyncio.Lock` at the api layer), or replace the global mutation with a thread-local trampoline. Minimal patch:
 ```python
-# Option (b) — narrower scope, no lock required:
-_real_reload = map_generator.importlib.reload
-map_generator.importlib.reload = _safe_reload
-try:
-    yield
-finally:
-    map_generator.importlib.reload = _real_reload
+import threading
+_RELOAD_LOCK = threading.Lock()
+
+@contextmanager
+def _patch_reload_for_synthetic(synthetic_module_name: str):
+    _real_reload = importlib.reload
+    def _safe_reload(module: types.ModuleType) -> types.ModuleType:
+        if getattr(module, "__name__", None) == synthetic_module_name:
+            return module
+        return _real_reload(module)
+    with _RELOAD_LOCK:
+        import importlib as _importlib_mod
+        _importlib_mod.reload = _safe_reload  # type: ignore[method-assign]
+        try:
+            yield
+        finally:
+            _importlib_mod.reload = _real_reload  # type: ignore[method-assign]
 ```
-Combine with a per-project lock in the API layer if concurrent generations are ever allowed.
-
-### WR-03: `_build_region_config` silently drops caller's bbox when no territory data
-
-**File:** `backend/medieval_forge/services/generator.py:213-220`
-**Issue:** When `_compute_padded_bbox` returns `{}` (the branch at line 174, reached when `territory_data` has no centroids), `kwargs.update(padded)` is a no-op. The subsequent loop at line 218 applies every valid RegionConfig field from `config` *except* `lon_min/lon_max/lat_min/lat_max` — they're in `_bbox_keys`. Result: an explicit caller-supplied bbox in the "no territory data" path is silently discarded, contradicting the inline comment at line 172–173 ("No territory data — fall back to caller-supplied values") and the docstring at 194–197 which promises caller values are respected as a minimum envelope. In practice `_run_pipeline_sync` requires a non-empty `territory_data` (ValueError at line 302–305), so this branch may not be reachable today — but the contradiction is a latent bug if `_build_region_config` is ever called from a new entry point.
-**Fix:** In the empty-padded case, explicitly apply the caller's bbox keys:
-```python
-if not padded:
-    for k in ("lon_min", "lon_max", "lat_min", "lat_max"):
-        v = config.get(k)
-        if v is not None and k in valid_fields:
-            kwargs[k] = v
-```
-Place this before the general `for k, v in config.items()` loop, or drop `_bbox_keys` from the skip set when `padded` is empty.
-
-### WR-04: `firstOuterRing` silently drops all but first polygon of a MultiPolygon
-
-**File:** `frontend/src/hooks/useCanvasArtifacts.ts:79-83`
-**Issue:** `firstOuterRing` picks `g.coordinates[0]` for `Polygon` and `g.coordinates[0][0]` for `MultiPolygon`. Any real-world territory with islands or exclaves (coastal Galicia, the Azores, Balearics, any state straddling a river delta) will have a MultiPolygon whose non-first polygons are rendered as nothing. The selected territory's gold outline and barony fills will also be partial. Phase 2 covers continental Iberia, so this may be acceptable for the milestone, but it is a correctness gap against real data.
-**Fix:** Either render all polygons (return `number[][]` and emit one `Line` per polygon), or add an explicit known-limitation comment noting Phase 2 renders only the primary polygon per condado and tracking work to Phase 3+. A minimal render-all approach:
-```typescript
-function allOuterRings(
-  g: CondadoFeature['geometry'] | BaronyFeature['geometry'],
-): [number, number][][] {
-  return g.type === 'Polygon' ? [g.coordinates[0]] : g.coordinates.map((p) => p[0])
-}
-// Then TerritoryRender gains `points: number[][]` and the layers render one Line per ring.
-```
-
-### WR-05: `rasterio>=1.4,<2.0` inconsistent with `requires-python = ">=3.11"`
-
-**File:** `pyproject.toml:10,27`
-**Issue:** Per project CLAUDE.md (Potential Issue #6), rasterio 1.5+ requires Python 3.12+ and NumPy 2+. The current constraint `rasterio>=1.4,<2.0` resolves to the latest available version, which today is 1.5+. A fresh install on Python 3.11 will either fail at install time or silently install a binary-incompatible build. CI and user machines on 3.11 will diverge from 3.12 machines in surprising ways.
-**Fix:**
-```toml
-# Option A — pin rasterio to 1.4.x to match the 3.11 floor:
-"rasterio>=1.4,<1.5",
-
-# Option B — raise Python floor to 3.12 and keep rasterio unpinned:
-requires-python = ">=3.12"
-# (also bump numpy>=2 since rasterio 1.5 requires it)
-```
-Option A is less disruptive given the existing dependency list; Option B aligns with the RESEARCH doc's long-term direction.
+The lock makes the patch effectively serialized for the duration of `generate_maps()`, which is acceptable for a local-tool workload but should be documented. Long-term, refactor `load_territory_data` upstream so the synthetic module short-circuit lives in `_inject_territory_module` (e.g., set `mod.__spec__` to a spec whose `loader` returns `mod` from `exec_module`) — but that touches `lib/map_generator.py` and violates D-04, so the lock is the pragmatic fix.
 
 ## Info
 
-### IN-01: `InspectorSidebarWrapper` calls `useCanvasArtifacts` twice per render
+### IN-01: `barony_colors.json` is fetched by the frontend but never consumed in the render path
 
-**File:** `frontend/src/pages/ProjectDetail.tsx:405,424`
-**Issue:** The wrapper calls `useCanvasArtifacts(projectId, null)` to discover metadata, derives a `projection` via `useMemo`, then calls `useCanvasArtifacts(projectId, projection)` again to get the projected territories. TanStack Query dedups the fetches, but each call registers 5 query observers (via `useQueries`), so the component has 10 observer subscriptions where 5 would suffice. There's also a brief "null projection" cycle that computes `points: []` in the `select` transform before being superseded.
-**Fix:** Hoist projection derivation up to the level that already has metadata, or split `useCanvasArtifacts` into a `useTerritoryMetadata` hook (no projection needed) + a `useProjectedArtifacts(projection)` hook. Not urgent — Phase 2 data volumes are small.
-
-### IN-02: Variable name reuse `b` in `baronies_geojson.emit_baronies_from_disk`
-
-**File:** `backend/medieval_forge/services/baronies_geojson.py:80-82`
-**Issue:** `b` is used as the blue channel integer (`b = int(hexstr[5:7], 16)`) inside the color loop. In the surrounding module (`build_baronies_geojson` at line 40), `b` is the barony dict. They don't collide (different scopes) but readability is low — a future reader scanning for barony iteration may be misled. Also, shadowing a dict name with an integer in a color parser is a classic source of confusion during debugging.
-**Fix:** Rename to `blue` (or `bch`) throughout the color-decoding loop for both `baronies_geojson.py:81` and `territories_geojson.py:150`.
-
-### IN-03: `STRtree` adjacency uses `.touches()` which admits single-point corner contact
-
-**File:** `backend/medieval_forge/services/territories_geojson.py:117`
-**Issue:** `g.touches(unioned[other_ci])` returns true for polygons sharing even a single vertex (diagonal corner contact). The test at `test_territories_geojson.py:46-48` explicitly acknowledges this: "they may also touch at a corner point (pixel (50,40)) which shapely.touches() counts as adjacency." If the UI intends "shares an edge" semantics (which is the usual adjacency meaning on a territory map), this produces spurious neighbors at the rare pixel intersections of four polygons. For Voronoi-derived maps this is rare; for the demo fixtures it's relatively common.
-**Fix:** If spec wants edge-adjacency only, replace with a length check on the shared boundary:
-```python
-shared = g.boundary.intersection(unioned[other_ci].boundary)
-if shared.length > 0:  # rejects 0-length point intersections
-    neigh_ids.add(...)
+**File:** `frontend/src/hooks/useCanvasArtifacts.ts:156-166` and `frontend/src/components/canvas/CanvasViewer.tsx:68`
+**Issue:** `useCanvasArtifacts` returns five queries; consumer code at `CanvasViewer.tsx:68` destructures as `const [territoriesQ, baroniesQ, condadoColorsQ, , metaQ] = ...` — index 3 (the `barony_colors` query) is intentionally skipped. `BaronyLayer.tsx:26` reads the per-feature `b.fill` from `BaronyRender`, which is already resolved server-side from `baronies.geojson` properties. The sidecar fetch therefore costs one HTTP request, two TanStack-Query cache entries, and `Infinity` GC time without serving any render path. The sidecar is symmetrical with `condado_colors.json` and may be intentional future-proofing.
+**Fix:** Either drop the `barony_colors.json` query from the hook (and the matching whitelist entry in `generator.py:74` if no other consumer is planned), or document the intent inline so a future cleanup pass does not delete what looks like dead code. If the symmetry with `condado_colors.json` is the design intent, a one-line comment on the query block is enough:
+```ts
+// Fetched for parity with condado_colors.json + future use; BaronyLayer
+// currently consumes per-feature `fill` from baronies.geojson properties.
 ```
-Otherwise, document explicitly that single-point contact counts as adjacency.
 
-### IN-04: `InteractionLayer.tsx` — redundant `listening={false}` on Line inside a `listening={false}` Layer
+### IN-02: `panToGeoCenter` mocked as `vi.fn()` instead of a callable returning the right shape
 
-**File:** `frontend/src/components/canvas/InteractionLayer.tsx:27-35`
-**Issue:** The Layer already has `listening={false}`; Konva's convention is that a child with default listening still inherits non-interactive behavior when the Layer is non-listening. Setting it on both is redundant (same applies to `BaronyLayer.tsx:19-29`). Not a bug — just stylistic noise.
-**Fix:** Drop `listening={false}` from the inner `Line` props; keep it on the Layer only. Conversely, if keeping both for defensive consistency is deliberate, add a one-line comment to that effect to preempt future PR noise.
-
-### IN-05: `CenteredLabel` effect depends only on `props.text`
-
-**File:** `frontend/src/components/canvas/DecorationsLayer.tsx:32-41`
-**Issue:** The post-mount offset-calibration effect lists `[props.text]` as its dep array. If `fontSize` or `fontFamily` were ever parameterized (which is likely in Phase 3 when zoom-adaptive typography lands), the measured width would stop re-running. Currently they're hardcoded constants so the effect is correct today.
-**Fix:** Either (a) add a comment noting the fontSize/fontFamily are intentionally fixed and must be added to the dep array if parameterized, or (b) proactively include them:
-```typescript
-useEffect(() => { /* ... */ }, [props.text /* + fontSize, fontFamily when parameterized */])
+**File:** `frontend/src/components/canvas/__tests__/CanvasViewer.test.tsx:24-31`
+**Issue:** The test mock at line 27 does `panToGeoCenter: vi.fn()`. The real `panToGeoCenter` takes `(stage, ...)` and calls `applyPanClamp` for its side effects (no return). `vi.fn()` defaults to returning `undefined`, which happens to match the real signature, so this test passes — but the same pattern at line 28 wraps `makeWheelHandler: vi.fn(() => () => {})` with the curried-handler shape, and line 29 wraps `makeDragBoundFunc: vi.fn(() => (pos) => pos)`. The asymmetry suggests the author thought about return shapes for some mocks but not for `panToGeoCenter`. Today this is harmless; if `panToGeoCenter` ever gains a return value (e.g., the new pan offset for chained animations), the mock will silently return `undefined` and the test will keep passing while the real callsite breaks.
+**Fix:** Document the void return in the mock to make intent explicit, and pin the contract:
+```ts
+// panToGeoCenter has no return value — side effect only (mutates Stage).
+panToGeoCenter: vi.fn<typeof import('../../../hooks/useZoomPan').panToGeoCenter>(),
 ```
+Or accept the current shape and leave a `// returns void` comment.
 
 ---
 
-## Items Considered and Not Flagged
-
-For reviewer transparency:
-
-- `generator.py:344` — broad `except Exception:` around geojson emission is deliberately documented ("geojson emission failed — canvas will show empty overlays") and does not swallow the primary pipeline failure. Intentional.
-- `useZoomPan.ts:100-102` — `(this as unknown as ...).getStage?.()` cast is defensive handling for Konva's `this`-binding contract, not a type escape hatch.
-- `hex[1:3]`/`hex[3:5]`/`hex[5:7]` slicing in both `_geojson` builders would crash on malformed color strings; those strings are produced by our own generator so it's inside the trust boundary. Not an issue today; revisit if third-party color maps are ever accepted.
-- `App.tsx:14-16` — `/canvas-smoke` dev-only route is correctly gated with `import.meta.env.DEV` so it's stripped from production bundles.
-- `CanvasViewer.tsx:141` — `eslint-disable-next-line react-hooks/exhaustive-deps` is correct here; the live-read of `stage.scaleX()` inside the effect is explicitly documented (lines 123–126) as the reason `currentScale` must NOT be in the dep array.
-
----
-
-_Reviewed: 2026-04-18_
+_Reviewed: 2026-04-18T00:00:00Z_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: standard_
