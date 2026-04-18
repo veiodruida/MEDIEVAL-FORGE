@@ -50,7 +50,7 @@ Six phases take Medieval Forge from zero to a fully validated, Unity-ready map p
 **Depends on**: Phase 1
 **Requirements**: CANVAS-01, CANVAS-02, CANVAS-03, CANVAS-04, CANVAS-05, CANVAS-06
 **UI hint**: yes
-**Plans:** 3 plans
+**Plans:** 5 plans
 
 ### Success Criteria
 1. User can see all territory polygons rendered on the Konva canvas with correct hierarchy colors and visible borders matching the generated GeoJSON data.
@@ -60,9 +60,11 @@ Six phases take Medieval Forge from zero to a fully validated, Unity-ready map p
 5. User can press a "Fit to view" button and the canvas resets to show the full map centered in the viewport.
 
 ### Plans
-- [ ] `02-01-projection-stage-scaffold-PLAN.md` — backend `territories.geojson` + neighbors emission (closes RESEARCH Open Questions 1 & 2), Wave-0 Vitest/Playwright infra + Tailwind-v4 + Radix Pitfall-2 smoke, projection module (`geoToCanvas` / `canvasToGeo` / `geoRingToKonvaPoints`), Zustand `useUIStore`, ProjectionContext, `useCanvasArtifacts`, Konva Stage + BackgroundLayer mounted in `/projects/:id` (CANVAS-01)
-- [ ] `02-02-territory-rendering-layer-toggles-PLAN.md` — React.memo `TerritoryPolygon`, `TerritoryLayer` driven by `lookup_condado_colors.json` with D-03 read-only contract, `BaronyLayer` fallback, floating Radix Card `LayerTogglePanel` with 5 checkboxes, UI-SPEC two-region layout in ProjectDetail (CANVAS-01, CANVAS-04)
-- [ ] `02-03-interaction-inspector-PLAN.md` — cursor-anchored wheel zoom + pan clamp + `dragBoundFunc`, Esc / Ctrl+0 keyboard hook, `DecorationsLayer` (capitals + labels gated at 2× minScale), `InteractionLayer` gold outline, `FitToViewButton`, `InspectorSidebar` (4 property groups + project overview + neighbor chips) (CANVAS-02, CANVAS-03, CANVAS-05, CANVAS-06)
+- [x] `02-01-projection-stage-scaffold-PLAN.md` — backend `territories.geojson` + neighbors emission (closes RESEARCH Open Questions 1 & 2), Wave-0 Vitest/Playwright infra + Tailwind-v4 + Radix Pitfall-2 smoke, projection module (`geoToCanvas` / `canvasToGeo` / `geoRingToKonvaPoints`), Zustand `useUIStore`, ProjectionContext, `useCanvasArtifacts`, Konva Stage + BackgroundLayer mounted in `/projects/:id` (CANVAS-01)
+- [x] `02-02-territory-rendering-layer-toggles-PLAN.md` — React.memo `TerritoryPolygon`, `TerritoryLayer` driven by `lookup_condado_colors.json` with D-03 read-only contract, `BaronyLayer` fallback, floating Radix Card `LayerTogglePanel` with 5 checkboxes, UI-SPEC two-region layout in ProjectDetail (CANVAS-01, CANVAS-04)
+- [x] `02-03-interaction-inspector-PLAN.md` — cursor-anchored wheel zoom + pan clamp + `dragBoundFunc`, Esc / Ctrl+0 keyboard hook, `DecorationsLayer` (capitals + labels gated at 2× minScale), `InteractionLayer` gold outline, `FitToViewButton`, `InspectorSidebar` (4 property groups + project overview + neighbor chips) (CANVAS-02, CANVAS-03, CANVAS-05, CANVAS-06)
+- [x] `02-04-e2e-pipeline-fix-PLAN.md` — gap closure for G-01/G-02/G-03: adapter rewrite in `services/territories_geojson.py` + `services/baronies_geojson.py` for real `{"r,g,b": idx}` format, silent try/except removal in `_run_pipeline_sync`, `condado_colors.json`/`barony_colors.json` sidecar emission, [BLOCKING] integration test (CANVAS-01, CANVAS-03, CANVAS-04)
+- [ ] `02-05-canvas-sizing-color-ux-fixes-PLAN.md` — gap closure for GAP-04/05/06/07/08: CanvasViewer ResizeObserver + viewport-relative ProjectDetail canvas region (keystone fix for Stage 800×600 bug), GAP-04 diagnose-then-fix decision tree (H1/H2/H3/H4), label threshold 1.5× + Radix Tooltip, InspectorSidebar ErrorBoundary (CANVAS-01..06)
 
 ---
 
@@ -168,7 +170,7 @@ Six phases take Medieval Forge from zero to a fully validated, Unity-ready map p
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Data Pipeline + Backend Scaffold | 0/5 | Not started | - |
-| 2. Read-Only Canvas Viewer | 0/3 | Not started | - |
+| 2. Read-Only Canvas Viewer | 4/5 | Gap closure planning (02-05) | - |
 | 3. LLM Research Integration | 0/3 | Not started | - |
 | 4. Canvas Editing — Basic | 0/4 | Not started | - |
 | 5. Canvas Editing — Advanced | 0/2 | Not started | - |
