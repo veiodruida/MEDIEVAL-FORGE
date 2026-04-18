@@ -6,6 +6,7 @@ Inputs from disk: lookup_barony.png, lookup_barony_colors.json, territory_metada
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +17,8 @@ from shapely.ops import unary_union
 
 from .paths import project_dir
 from .territories_geojson import _ProjCfg, _pixel_polygon_to_lonlat
+
+logger = logging.getLogger(__name__)
 
 
 def build_baronies_geojson(
@@ -62,7 +65,16 @@ def build_baronies_geojson(
 
 
 def emit_baronies_from_disk(project_id: str, generated_dir: Path, cfg: _ProjCfg) -> Path:
-    """Read-back orchestrator. Resolves pb + baronies from disk, calls builder."""
+    """Read-back orchestrator. Parses the REAL map_generator lookup format
+    ``{"r,g,b": idx}`` (see lib/map_generator.py SECTION 10). DO NOT change to
+    hex parsing — that schema does not exist on disk.
+
+    Emits two artifacts:
+      * ``baronies.geojson`` (existing contract, via build_baronies_geojson)
+      * ``barony_colors.json`` sidecar — ``{barony_name: "#rrggbb"}`` for the
+        frontend. The Unity-consumed ``lookup_barony_colors.json`` stays
+        untouched (D-04 black-box preserved).
+    """
     from PIL import Image
     meta = json.loads((generated_dir / "territory_metadata.json").read_text())
     baronies = meta.get("baronies", [])
@@ -70,17 +82,34 @@ def emit_baronies_from_disk(project_id: str, generated_dir: Path, cfg: _ProjCfg)
         [c["id"], c["name"], c["lon"], c["lat"], c.get("duchy", ""), c.get("baronies", [])]
         for c in meta["condados"]
     ]
-    barony_colors = json.loads((generated_dir / "lookup_barony_colors.json").read_text())
-    name_to_bi = {b["name"]: i for i, b in enumerate(baronies)}
+    colors_raw = json.loads((generated_dir / "lookup_barony_colors.json").read_text())
+
     img = np.array(Image.open(generated_dir / "lookup_barony.png").convert("RGB"))
     H, W, _ = img.shape
     pb = np.full((H, W), -1, dtype=np.int32)
-    for bname, hexstr in barony_colors.items():
-        r = int(hexstr[1:3], 16)
-        g = int(hexstr[3:5], 16)
-        b = int(hexstr[5:7], 16)
-        mask = (img[:, :, 0] == r) & (img[:, :, 1] == g) & (img[:, :, 2] == b)
-        bi = name_to_bi.get(bname)
-        if bi is not None:
-            pb[mask] = bi
-    return build_baronies_geojson(project_id, pb, baronies, condados, cfg, barony_colors)
+
+    sidecar: dict[str, str] = {}
+    barony_colors_hex: dict[str, str] = {}
+    for rgb_key, idx_val in colors_raw.items():
+        parts = rgb_key.split(",")
+        if len(parts) != 3:
+            raise ValueError(
+                f"lookup_barony_colors.json malformed key {rgb_key!r}; expected 'r,g,b'"
+            )
+        r, g, blue = (int(p) for p in parts)
+        idx = int(idx_val)
+        if idx < 0 or idx >= len(baronies):
+            logger.warning(
+                "lookup_barony_colors.json idx %d out of range (len=%d) — skipping",
+                idx, len(baronies),
+            )
+            continue
+        mask = (img[:, :, 0] == r) & (img[:, :, 1] == g) & (img[:, :, 2] == blue)
+        pb[mask] = idx
+        hex_str = f"#{r:02x}{g:02x}{blue:02x}"
+        sidecar[baronies[idx]["name"]] = hex_str
+        barony_colors_hex[baronies[idx]["name"]] = hex_str
+
+    (generated_dir / "barony_colors.json").write_text(json.dumps(sidecar))
+    # Pass the hex map to build_baronies_geojson (it expects name -> "#hex")
+    return build_baronies_geojson(project_id, pb, baronies, condados, cfg, barony_colors_hex)
