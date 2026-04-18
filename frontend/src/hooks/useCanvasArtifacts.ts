@@ -29,6 +29,9 @@ export interface TerritoryMetadataCondado {
   // neighbors is populated by Task 1 territories.geojson emission (hoisted client-side
   // when merging territories.geojson with metadata); always string[] for Phase 2 condados.
   neighbors: string[]
+  // Optional capital city name (D-06.3). Present when the generator has a curated
+  // capital name; absent triggers the "No capital assigned" sentinel in InspectorSidebar.
+  capital_name?: string
 }
 
 export interface TerritoryMetadata {
