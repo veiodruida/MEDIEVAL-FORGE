@@ -103,9 +103,8 @@ describe('InspectorSidebar — project overview (no selection)', () => {
       wrap(<InspectorSidebar metadata={META} territories={TERRITORIES} project={PROJECT} />),
     )
     expect(screen.getByText('Reconquista 868')).toBeInTheDocument()
-    expect(screen.getByText(/Q29/)).toBeInTheDocument()
-    expect(screen.getByText(/868/)).toBeInTheDocument()
-    expect(screen.getByText(/900/)).toBeInTheDocument()
+    // Country + period line contains Q29 and the full "868–900 AD" range
+    expect(screen.getByText(/Q29 · 868.+900 AD/)).toBeInTheDocument()
   })
 })
 
