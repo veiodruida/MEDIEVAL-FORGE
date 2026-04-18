@@ -126,9 +126,14 @@ export function ProjectDetail() {
         </Flex>
       </Card>
 
-      {/* Canvas Viewer — two-region layout: canvas area + inspector sidebar placeholder */}
+      {/* Canvas Viewer — two-region layout: canvas area + inspector sidebar placeholder.
+          GAP-05 (02-05): height is viewport-relative so the Stage fills the central
+          column on any browser size. Pre-canvas block measures ~170-200px
+          (Box p="6" + Flex header mb="4" + progress Card mb="4"). calc(100vh - 220px)
+          leaves a 20-50px margin; minHeight guards short viewports. Tune here if the
+          canvas feels cramped. */}
       {isGenerated && (
-        <Flex mb="4" style={{ height: '600px', borderRadius: 8, overflow: 'hidden' }}>
+        <Flex mb="4" style={{ height: 'calc(100vh - 220px)', minHeight: '500px', borderRadius: 8, overflow: 'hidden' }}>
           <Box
             className="canvas-region"
             style={{ flex: 1, background: '#1a1a2e', overflow: 'hidden', position: 'relative' }}

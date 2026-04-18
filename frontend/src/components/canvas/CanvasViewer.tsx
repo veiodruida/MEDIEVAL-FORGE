@@ -43,6 +43,13 @@ const PADDING_PCT = 0.05
  *   InteractionLayer → gold selection outline (D-03, listening=false)
  * Sibling absolute-positioned overlays: LayerTogglePanel, FitToViewButton.
  *
+ * GAP-05 fix (02-05): Stage dimensions track the parent container via a
+ * callback-ref ResizeObserver pattern (B-1 fix). The naive
+ * `useEffect(() => { ref.current ... }, [])` approach captures the loading div
+ * once at mount and never migrates when React swaps in the content div after
+ * metaQ resolves. The callback-ref below (dis)connects the observer on every
+ * DOM mount/unmount so the observer always targets the LIVE div.
+ *
  * Interaction behavior:
  *   - draggable Stage with pan-clamp (makeDragBoundFunc)
  *   - cursor-anchored wheel zoom clamped to [minScale, 4*minScale]
@@ -57,6 +64,49 @@ const PADDING_PCT = 0.05
  */
 export function CanvasViewer({ projectId, width = 800, height = 600 }: CanvasViewerProps) {
   const stageRef = useRef<Konva.Stage | null>(null)
+
+  // --- B-1 callback-ref ResizeObserver ------------------------------------
+  // Viewport state — MUST be declared BEFORE any conditional early returns so
+  // hook order stays stable across the loading/error/content branches. The
+  // width/height props act as a fallback when CanvasViewer is mounted outside
+  // a flex parent (preserves existing test suite behavior).
+  const [viewportW, setViewportW] = useState<number>(width)
+  const [viewportH, setViewportH] = useState<number>(height)
+
+  const roRef = useRef<ResizeObserver | null>(null)
+  const setContainerRef = useCallback((el: HTMLDivElement | null) => {
+    if (roRef.current) {
+      roRef.current.disconnect()
+      roRef.current = null
+    }
+    if (el && typeof ResizeObserver !== 'undefined') {
+      const ro = new ResizeObserver((entries) => {
+        for (const entry of entries) {
+          const cr = entry.contentRect
+          // T-02-05-01: guard against 0x0 transient measurements that occur
+          // during fast unmount/remount sequences. A 0x0 write would collapse
+          // the Stage and break minScale recompute.
+          if (cr.width > 0 && cr.height > 0) {
+            setViewportW(Math.floor(cr.width))
+            setViewportH(Math.floor(cr.height))
+          }
+        }
+      })
+      ro.observe(el)
+      roRef.current = ro
+    }
+  }, [])
+
+  // Unmount safety: tear down observer if parent subtree unmounts before
+  // setContainerRef(null) is invoked (e.g. react-router fast navigation).
+  useEffect(() => {
+    return () => {
+      roRef.current?.disconnect()
+      roRef.current = null
+    }
+  }, [])
+  // -------------------------------------------------------------------------
+
   const [projection, setProjection] = useState<ProjectionConfig | null>(null)
   const [minScale, setMinScale] = useState(1)
   const [currentScale, setCurrentScale] = useState(1)
@@ -90,28 +140,36 @@ export function CanvasViewer({ projectId, width = 800, height = 600 }: CanvasVie
     }
   }, [metaQ.data, projection])
 
-  // Fit-to-view callback (shared by auto-fit on mount, button click, Ctrl+0)
+  // Fit-to-view callback (shared by auto-fit on mount, button click, Ctrl+0).
+  // Uses viewportW/viewportH directly (state) rather than stage.width()/height()
+  // so it recomputes with fresh dims on the SAME render as the resize update —
+  // stage.width() would still reflect the previous Stage prop at this point.
   const fitToView = useCallback(() => {
     const stage = stageRef.current
-    if (!stage || !projection) return
+    if (!projection) return
     const { scale, x, y } = computeFitToView(
       projection.mapW,
       projection.mapH,
-      stage.width(),
-      stage.height(),
+      viewportW,
+      viewportH,
       PADDING_PCT,
     )
-    stage.scale({ x: scale, y: scale })
-    stage.position({ x, y })
+    if (stage) {
+      stage.scale({ x: scale, y: scale })
+      stage.position({ x, y })
+      stage.batchDraw()
+    }
     setMinScale(scale)
     setCurrentScale(scale)
-    stage.batchDraw()
-  }, [projection])
+  }, [projection, viewportW, viewportH])
 
-  // D-12: auto-fit once projection lands
+  // D-12: auto-fit once projection lands AND whenever Stage dimensions change.
+  // viewportW/H in the dep array re-runs fitToView on resize so minScale stays
+  // correct. DO NOT add viewportW/H to the pan-on-select effect's deps —
+  // that would re-pan on every resize event.
   useEffect(() => {
     if (projection) fitToView()
-  }, [projection, fitToView])
+  }, [projection, fitToView, viewportW, viewportH])
 
   // Ctrl/Cmd+0 + Esc shortcuts
   useKeyboardShortcuts(fitToView)
@@ -123,7 +181,8 @@ export function CanvasViewer({ projectId, width = 800, height = 600 }: CanvasVie
   // IMPORTANT: do NOT list currentScale in the dep array. It is read live from
   // stage.scaleX() inside the effect. If we depended on it, wheel zoom's
   // setCurrentScale would retrigger this effect and snap the viewport back to
-  // the selected territory on every wheel tick.
+  // the selected territory on every wheel tick. Also do NOT add viewportW/H —
+  // resize events should not re-trigger selection-pan behavior.
   useEffect(() => {
     const stage = stageRef.current
     if (!stage || !projection || !selectedId || !metaQ.data) return
@@ -192,16 +251,31 @@ export function CanvasViewer({ projectId, width = 800, height = 600 }: CanvasVie
     [select],
   )
 
+  // ------------------------------------------------------------------------
+  // EARLY RETURNS — safe because every hook above has been called. B-1:
+  // `ref={setContainerRef}` MUST appear on the root div of EVERY branch so
+  // the observer migrates from the loading div to the content div when metaQ
+  // resolves. Missing the ref on any branch silently breaks the B-1 fix.
+  // ------------------------------------------------------------------------
   if (metaQ.isPending) {
-    return <div style={{ padding: 24 }}>Loading map…</div>
+    return (
+      <div ref={setContainerRef} style={{ width: '100%', height: '100%', padding: 24 }}>
+        Loading map…
+      </div>
+    )
   }
 
   if (metaQ.error) {
     const msg = (metaQ.error as Error).message
-    if (msg === 'MAP_NOT_GENERATED') {
-      return <div style={{ padding: 24 }}>No map generated yet. Run the pipeline first.</div>
-    }
-    return <div style={{ padding: 24 }}>Failed to load territory data. Check the server is running.</div>
+    const text =
+      msg === 'MAP_NOT_GENERATED'
+        ? 'No map generated yet. Run the pipeline first.'
+        : 'Failed to load territory data. Check the server is running.'
+    return (
+      <div ref={setContainerRef} style={{ width: '100%', height: '100%', padding: 24 }}>
+        {text}
+      </div>
+    )
   }
 
   if (
@@ -211,22 +285,25 @@ export function CanvasViewer({ projectId, width = 800, height = 600 }: CanvasVie
     !condadoColorsQ.data ||
     !baroniesQ.data
   ) {
-    return <div style={{ padding: 24 }}>Loading map…</div>
+    return (
+      <div ref={setContainerRef} style={{ width: '100%', height: '100%', padding: 24 }}>
+        Loading map…
+      </div>
+    )
   }
 
-  // Viewport sized to fill the parent (ProjectDetail canvas-region flex:1 Box).
-  // width/height props provide fallback when mounted outside a flex container.
-  const viewportW = width
-  const viewportH = height
   const terrainSrc = `/api/projects/${projectId}/preview/terrain.png`
 
   return (
     <ProjectionProvider value={projection}>
+      {/* The wrapping div uses 100%/100% — NOT viewportW/H — to avoid a
+          feedback loop where observer→state→size→observer cycles forever. */}
       <div
+        ref={setContainerRef}
         style={{
           position: 'relative',
-          width: viewportW,
-          height: viewportH,
+          width: '100%',
+          height: '100%',
           overflow: 'hidden',
         }}
       >

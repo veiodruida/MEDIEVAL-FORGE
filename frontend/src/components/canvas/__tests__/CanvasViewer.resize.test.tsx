@@ -1,25 +1,32 @@
 import React from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render } from '@testing-library/react'
+import { render, act } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useUIStore } from '../../../stores/uiStore'
-import * as projectionLib from '../../../lib/projection'
+
+// Mock lib/projection so we can spy on computeFitToView (ESM named imports
+// used directly in CanvasViewer — vi.spyOn won't intercept, so we replace
+// the module with spyable impls that delegate to the real functions).
+const computeFitToViewSpy = vi.hoisted(() => vi.fn())
+vi.mock('../../../lib/projection', async () => {
+  const actual = await vi.importActual<typeof import('../../../lib/projection')>(
+    '../../../lib/projection',
+  )
+  computeFitToViewSpy.mockImplementation(actual.computeFitToView)
+  return {
+    ...actual,
+    computeFitToView: computeFitToViewSpy,
+  }
+})
 
 // ---------------------------------------------------------------------------
 // Hoisted mutable state for useCanvasArtifacts mock (R4 transition test)
 // ---------------------------------------------------------------------------
-const mockState = vi.hoisted(() => {
-  const loading = {
-    data: undefined,
-    isPending: true,
-    error: null,
-  }
-  return {
-    // Each call to useCanvasArtifacts reads from this state object.
-    // R4 flips `ready` from false → true between renders.
-    ready: false,
-  }
-})
+const mockState = vi.hoisted(() => ({
+  // Each call to useCanvasArtifacts reads from this state object.
+  // R4 flips `ready` from false → true between renders.
+  ready: false,
+}))
 
 const META_FIXTURE = {
   region: 'iberia',
@@ -167,43 +174,51 @@ describe('CanvasViewer — ResizeObserver wiring (GAP-05)', () => {
     expect(stagePropsRef.current?.width).toBe(800)
     expect(stagePropsRef.current?.height).toBe(600)
 
-    // Trigger resize via captured observer callback
-    roCallback!(
-      [{ contentRect: { width: 1600, height: 900 } } as unknown as ResizeObserverEntry],
-      {} as ResizeObserver,
-    )
+    // Trigger resize via captured observer callback (wrapped in act so
+    // React state updates flush before we assert Stage props).
+    act(() => {
+      roCallback!(
+        [{ contentRect: { width: 1600, height: 900 } } as unknown as ResizeObserverEntry],
+        {} as ResizeObserver,
+      )
+    })
 
     expect(stagePropsRef.current?.width).toBe(1600)
     expect(stagePropsRef.current?.height).toBe(900)
   })
 
   it('R2: recomputes minScale after resize — computeFitToView called with new dims', () => {
-    const spy = vi.spyOn(projectionLib, 'computeFitToView')
+    computeFitToViewSpy.mockClear()
     renderWithProviders(<CanvasViewer projectId="p1" />)
 
-    // Fire resize callback with a new viewport
-    roCallback!(
-      [{ contentRect: { width: 1600, height: 900 } } as unknown as ResizeObserverEntry],
-      {} as ResizeObserver,
-    )
+    const mountCallCount = computeFitToViewSpy.mock.calls.length
+    expect(mountCallCount).toBeGreaterThanOrEqual(1) // initial auto-fit
 
-    const calls = spy.mock.calls
-    expect(calls.length).toBeGreaterThanOrEqual(2) // once on mount, once on resize
+    // Fire resize callback with a new viewport
+    act(() => {
+      roCallback!(
+        [{ contentRect: { width: 1600, height: 900 } } as unknown as ResizeObserverEntry],
+        {} as ResizeObserver,
+      )
+    })
+
+    const calls = computeFitToViewSpy.mock.calls
+    expect(calls.length).toBeGreaterThan(mountCallCount) // re-fit triggered by resize
     const lastCall = calls[calls.length - 1]
     expect(lastCall).toBeDefined()
     expect(lastCall![2]).toBe(1600) // stage width arg
     expect(lastCall![3]).toBe(900) // stage height arg
-
-    spy.mockRestore()
   })
 
   it('R3: ignores 0x0 transient measurements without regression', () => {
     renderWithProviders(<CanvasViewer projectId="p1" />)
     const initialW = stagePropsRef.current?.width
-    roCallback!(
-      [{ contentRect: { width: 0, height: 0 } } as unknown as ResizeObserverEntry],
-      {} as ResizeObserver,
-    )
+    act(() => {
+      roCallback!(
+        [{ contentRect: { width: 0, height: 0 } } as unknown as ResizeObserverEntry],
+        {} as ResizeObserver,
+      )
+    })
     // Stage stays at prior dimensions (no 0x0 write-through)
     expect(stagePropsRef.current?.width).toBe(initialW)
     expect(stagePropsRef.current?.width).not.toBe(0)
@@ -212,16 +227,22 @@ describe('CanvasViewer — ResizeObserver wiring (GAP-05)', () => {
   it('R4: attaches observer to the content container after metaQ resolves (B-1 fix)', () => {
     // Start with loading branch
     mockState.ready = false
-    const { rerender } = renderWithProviders(<CanvasViewer projectId="p1" />)
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const { rerender } = render(
+      <QueryClientProvider client={qc}>
+        <CanvasViewer projectId="p1" />
+      </QueryClientProvider>,
+    )
 
     // At this point the observer should be attached to the loading div
     const loadingObservedCount = observedElements.length
     expect(loadingObservedCount).toBeGreaterThanOrEqual(1)
 
-    // Flip the mock so artifacts resolve, then re-render
+    // Flip the mock so artifacts resolve, then re-render with the SAME
+    // QueryClient — otherwise the entire tree re-mounts and state is lost.
     mockState.ready = true
     rerender(
-      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <QueryClientProvider client={qc}>
         <CanvasViewer projectId="p1" />
       </QueryClientProvider>,
     )
@@ -234,10 +255,12 @@ describe('CanvasViewer — ResizeObserver wiring (GAP-05)', () => {
 
     // The LIVE observer (attached to the content div) MUST still drive Stage props
     // when fired with new dimensions.
-    roCallback!(
-      [{ contentRect: { width: 1280, height: 720 } } as unknown as ResizeObserverEntry],
-      {} as ResizeObserver,
-    )
+    act(() => {
+      roCallback!(
+        [{ contentRect: { width: 1280, height: 720 } } as unknown as ResizeObserverEntry],
+        {} as ResizeObserver,
+      )
+    })
     expect(stagePropsRef.current?.width).toBe(1280)
     expect(stagePropsRef.current?.height).toBe(720)
   })
