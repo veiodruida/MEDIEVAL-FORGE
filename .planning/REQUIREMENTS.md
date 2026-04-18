@@ -22,10 +22,10 @@
 - [ ] **GEN-04**: Generation runs in <60s for a standard country dataset
 
 ### CANVAS — Canvas Viewer
-- [ ] **CANVAS-01**: User can view all territories on a Konva canvas with correct colors and borders
+- [x] **CANVAS-01**: User can view all territories on a Konva canvas with correct colors and borders
 - [ ] **CANVAS-02**: User can pan and zoom the canvas (Stage drag + wheel zoom)
-- [ ] **CANVAS-03**: User can click a territory to select it and see its properties in the right panel
-- [ ] **CANVAS-04**: Canvas shows layer toggles (terrain, territories, borders, capitals, labels)
+- [x] **CANVAS-03**: User can click a territory to select it and see its properties in the right panel
+- [x] **CANVAS-04**: Canvas shows layer toggles (terrain, territories, borders, capitals, labels)
 - [ ] **CANVAS-05**: Canvas shows territory labels at appropriate zoom levels
 - [ ] **CANVAS-06**: User can fit the map to view (reset zoom/pan)
 
@@ -117,10 +117,10 @@
 | PKG-05 | Phase 1 | Pending | Frontend bundled in wheel via package_data |
 | EXPORT-01 | Phase 1 | Pending | Headless ZIP assembly (polished in Phase 6) |
 | EXPORT-02 | Phase 1 | Pending | 12-file ZIP content spec (polished in Phase 6) |
-| CANVAS-01 | Phase 2 | Pending | Read-only canvas before editing |
+| CANVAS-01 | Phase 2 | Complete | Read-only canvas before editing |
 | CANVAS-02 | Phase 2 | Pending | Pan + zoom |
-| CANVAS-03 | Phase 2 | Pending | Click-to-inspect sidebar |
-| CANVAS-04 | Phase 2 | Pending | Layer toggle panel |
+| CANVAS-03 | Phase 2 | Complete | Click-to-inspect sidebar |
+| CANVAS-04 | Phase 2 | Complete | Layer toggle panel |
 | CANVAS-05 | Phase 2 | Pending | Labels at zoom threshold |
 | CANVAS-06 | Phase 2 | Pending | Fit-to-view reset |
 | RESEARCH-01 | Phase 3 | Pending | Claude API streaming |
