@@ -77,19 +77,29 @@ export function makeWheelHandler(
 
 /**
  * dragBoundFunc for Stage drag-pan. Mirrors applyPanClamp's math but returns a
- * new position instead of mutating the stage. Konva calls this during drag and
- * uses the returned value as the effective position.
+ * new position instead of mutating the stage. Konva calls this during drag,
+ * bound to the Node (Stage) via `this`, and uses the returned value as the
+ * effective position.
+ *
+ * Callers supply `getStage` so the function can read the viewport width/height
+ * on each drag tick (useful when the canvas container resizes).
  */
 export function makeDragBoundFunc(
   cfg: PanClampConfig,
   getScale: () => number,
+  getStage?: () => Konva.Stage | null,
 ) {
-  return (
+  return function dragBound(
+    this: Konva.Node | void,
     pos: { x: number; y: number },
-    _e: unknown,
-    stage?: Konva.Stage,
-  ): { x: number; y: number } => {
+  ): { x: number; y: number } {
     const s = getScale()
+    // Prefer the explicit getStage() resolver; fall back to `this` when Konva
+    // calls us bound to the Node; default to 0/0 (centers the map).
+    const stage =
+      (getStage && getStage()) ||
+      (this && (this as unknown as { getStage?: () => Konva.Stage }).getStage?.()) ||
+      null
     const vw = stage?.width() ?? 0
     const vh = stage?.height() ?? 0
     const scaledW = cfg.mapW * s

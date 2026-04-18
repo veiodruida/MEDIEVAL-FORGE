@@ -52,11 +52,12 @@ describe('makeWheelHandler — cursor-anchored zoom', () => {
 
     const handler = makeWheelHandler(0.1, 4, { mapW: 2000, mapH: 1600 })
     const preventDefault = vi.fn()
+    // Cast through unknown — KonvaEventObject is a complex type and the handler
+    // only touches evt.deltaY/preventDefault + target.getStage().
     handler({
       evt: { deltaY: -1, preventDefault } as unknown as WheelEvent,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      target: { getStage: () => stage } as any,
-    })
+      target: { getStage: () => stage },
+    } as never)
     expect(preventDefault).toHaveBeenCalled()
     expect(stage.scale).toHaveBeenCalled()
     const { x } = stage.scale.mock.calls.at(-1)![0]
@@ -69,9 +70,8 @@ describe('makeWheelHandler — cursor-anchored zoom', () => {
     const handler = makeWheelHandler(0.1, 4, { mapW: 2000, mapH: 1600 })
     handler({
       evt: { deltaY: 1, preventDefault: vi.fn() } as unknown as WheelEvent,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      target: { getStage: () => stage } as any,
-    })
+      target: { getStage: () => stage },
+    } as never)
     // Already at min, no scale change should happen
     expect(stage.scale).not.toHaveBeenCalled()
   })
@@ -82,9 +82,8 @@ describe('makeWheelHandler — cursor-anchored zoom', () => {
     const handler = makeWheelHandler(0.1, 4, { mapW: 2000, mapH: 1600 })
     handler({
       evt: { deltaY: -1, preventDefault: vi.fn() } as unknown as WheelEvent,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      target: { getStage: () => stage } as any,
-    })
+      target: { getStage: () => stage },
+    } as never)
     expect(stage.scale).not.toHaveBeenCalled()
   })
 })
@@ -109,16 +108,16 @@ describe('applyPanClamp — keeps map inside viewport', () => {
 describe('makeDragBoundFunc', () => {
   it('clamps returned position when scaled size exceeds viewport', () => {
     const stage = makeStage({ scale: 2 })
+    // Konva binds dragBoundFunc to the Node via `this`; test invokes via .call
     const bound = makeDragBoundFunc({ mapW: 2000, mapH: 1600 }, () => 2)
-    // Try to drag far right — should clamp to 0 (no gap on left)
-    const out = bound({ x: 500, y: 500 }, null, stage as never)
+    const out = bound.call(stage as never, { x: 500, y: 500 })
     expect(out).toEqual({ x: 0, y: 0 })
   })
 
   it('centers returned position when scaled size fits inside viewport', () => {
     const stage = makeStage({ scale: 0.1 })
     const bound = makeDragBoundFunc({ mapW: 2000, mapH: 1600 }, () => 0.1)
-    const out = bound({ x: 999, y: 999 }, null, stage as never)
+    const out = bound.call(stage as never, { x: 999, y: 999 })
     // scaledW = 200; x = (1000 - 200) / 2 = 400
     expect(out).toEqual({ x: 400, y: (800 - 160) / 2 })
   })

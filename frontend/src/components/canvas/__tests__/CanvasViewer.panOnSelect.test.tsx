@@ -5,18 +5,20 @@ import { CanvasViewer } from '../CanvasViewer'
 import { useUIStore } from '../../../stores/uiStore'
 
 // Mock the zoom-pan hook so we can spy on panToGeoCenter + control scale updates.
-// The plan's acceptance criteria require `panToGeoCenter` to appear in CanvasViewer
-// source AND be called from a selectedId effect — both are enforced here.
-const panToGeoCenterMock = vi.fn()
-const makeWheelHandlerMock = vi.fn(() => () => {})
-const makeDragBoundFuncMock = vi.fn(() => (pos: { x: number; y: number }) => pos)
+// vi.hoisted() keeps the mock fns defined before vi.mock() is hoisted.
+const hooks = vi.hoisted(() => ({
+  panToGeoCenterMock: vi.fn(),
+  makeWheelHandlerMock: vi.fn(() => () => {}),
+  makeDragBoundFuncMock: vi.fn(() => (pos: { x: number; y: number }) => pos),
+}))
+const { panToGeoCenterMock } = hooks
 
 vi.mock('../../../hooks/useZoomPan', () => ({
   SCALE_BY: 1.05,
   MAX_SCALE_MULTIPLIER: 4,
-  panToGeoCenter: panToGeoCenterMock,
-  makeWheelHandler: makeWheelHandlerMock,
-  makeDragBoundFunc: makeDragBoundFuncMock,
+  panToGeoCenter: hooks.panToGeoCenterMock,
+  makeWheelHandler: hooks.makeWheelHandlerMock,
+  makeDragBoundFunc: hooks.makeDragBoundFuncMock,
   applyPanClamp: vi.fn(),
 }))
 
@@ -24,25 +26,54 @@ vi.mock('../../../hooks/useKeyboardShortcuts', () => ({
   useKeyboardShortcuts: vi.fn(),
 }))
 
-// Record the latest select() dispatcher + capture Stage onClick handler
-let lastStageProps: Record<string, unknown> | null = null
-vi.mock('react-konva', () => ({
-  Stage: ({
-    children,
-    ...rest
-  }: { children?: React.ReactNode } & Record<string, unknown>) => {
-    lastStageProps = rest
-    return <div data-testid="konva-stage">{children}</div>
+// Record the latest Stage props (onClick, etc.) + forward a stub Konva.Stage
+// to the ref so effects that read stageRef.current work in tests.
+const stageHoisted = vi.hoisted(() => ({
+  lastProps: null as Record<string, unknown> | null,
+  makeStubStage: () => {
+    const stub: Record<string, unknown> = {
+      width: () => 1000,
+      height: () => 800,
+      scaleX: () => 1,
+      scaleY: () => 1,
+      x: () => 0,
+      y: () => 0,
+      scale: () => {},
+      position: () => {},
+      batchDraw: () => {},
+      getPointerPosition: () => ({ x: 0, y: 0 }),
+    }
+    stub.getStage = () => stub
+    return stub
   },
-  Layer: ({ children }: { children?: React.ReactNode }) => (
-    <div data-testid="konva-layer">{children}</div>
-  ),
-  Image: () => <div data-testid="konva-image" />,
-  Rect: () => <div data-testid="konva-rect" />,
-  Circle: () => <div data-testid="konva-circle" />,
-  Text: () => <div data-testid="konva-text" />,
-  Line: () => <div data-testid="konva-line" />,
 }))
+vi.mock('react-konva', async () => {
+  const React = await import('react')
+  return {
+    Stage: React.forwardRef(function StageMock(
+      props: { children?: React.ReactNode } & Record<string, unknown>,
+      ref: React.Ref<unknown>,
+    ) {
+      const { children, ...rest } = props
+      stageHoisted.lastProps = rest
+      const stub = React.useMemo(() => stageHoisted.makeStubStage(), [])
+      React.useImperativeHandle(ref, () => stub, [stub])
+      return <div data-testid="konva-stage">{children}</div>
+    }),
+    Layer: ({ children }: { children?: React.ReactNode }) => (
+      <div data-testid="konva-layer">{children}</div>
+    ),
+    Image: () => <div data-testid="konva-image" />,
+    Rect: () => <div data-testid="konva-rect" />,
+    Circle: () => <div data-testid="konva-circle" />,
+    Text: () => <div data-testid="konva-text" />,
+    Line: () => <div data-testid="konva-line" />,
+  }
+})
+
+function lastStageProps() {
+  return stageHoisted.lastProps
+}
 
 vi.mock('use-image', () => ({
   default: () => [undefined, 'loading'],
@@ -127,7 +158,7 @@ function wrapper({ children }: { children: React.ReactNode }) {
 describe('CanvasViewer — Pitfall 5 pan-on-select', () => {
   beforeEach(() => {
     panToGeoCenterMock.mockClear()
-    lastStageProps = null
+    stageHoisted.lastProps = null
     useUIStore.setState({
       selectedTerritoryId: null,
       layerVisibility: {
@@ -179,7 +210,7 @@ describe('CanvasViewer — Pitfall 5 pan-on-select', () => {
 describe('CanvasViewer — Pitfall 6 empty-Stage click deselect', () => {
   beforeEach(() => {
     panToGeoCenterMock.mockClear()
-    lastStageProps = null
+    stageHoisted.lastProps = null
     useUIStore.setState({
       selectedTerritoryId: 'C_LUGO',
       layerVisibility: {
@@ -197,8 +228,8 @@ describe('CanvasViewer — Pitfall 6 empty-Stage click deselect', () => {
     render(<CanvasViewer projectId="p1" />, { wrapper })
     await screen.findByTestId('konva-stage')
 
-    expect(lastStageProps).not.toBeNull()
-    const onClick = (lastStageProps as { onClick?: (e: unknown) => void }).onClick
+    expect(lastStageProps()).not.toBeNull()
+    const onClick = (lastStageProps() as { onClick?: (e: unknown) => void }).onClick
     expect(typeof onClick).toBe('function')
 
     // Fake Konva click event where e.target is the stage (e.target.getStage() === e.target)
@@ -215,7 +246,7 @@ describe('CanvasViewer — Pitfall 6 empty-Stage click deselect', () => {
     render(<CanvasViewer projectId="p1" />, { wrapper })
     await screen.findByTestId('konva-stage')
 
-    const onClick = (lastStageProps as { onClick?: (e: unknown) => void }).onClick
+    const onClick = (lastStageProps() as { onClick?: (e: unknown) => void }).onClick
     const stageLike = { getStage() { return this } }
     const shapeLike = { getStage: () => stageLike }
     onClick!({ target: shapeLike })
@@ -227,7 +258,7 @@ describe('CanvasViewer — Pitfall 6 empty-Stage click deselect', () => {
 describe('CanvasViewer — Stage wiring for zoom/pan/fit', () => {
   beforeEach(() => {
     panToGeoCenterMock.mockClear()
-    lastStageProps = null
+    stageHoisted.lastProps = null
     useUIStore.setState({
       selectedTerritoryId: null,
       layerVisibility: {
@@ -244,7 +275,7 @@ describe('CanvasViewer — Stage wiring for zoom/pan/fit', () => {
   it('passes draggable, onWheel, dragBoundFunc, onClick, onTap to the Stage', async () => {
     render(<CanvasViewer projectId="p1" />, { wrapper })
     await screen.findByTestId('konva-stage')
-    const p = lastStageProps as Record<string, unknown>
+    const p = lastStageProps() as Record<string, unknown>
     expect(p.draggable).toBe(true)
     expect(typeof p.onWheel).toBe('function')
     expect(typeof p.dragBoundFunc).toBe('function')
@@ -258,7 +289,7 @@ describe('CanvasViewer — Stage wiring for zoom/pan/fit', () => {
     // fitToView() on mount via the stage ref.
     render(<CanvasViewer projectId="p1" />, { wrapper })
     await screen.findByTestId('konva-stage')
-    const p = lastStageProps as Record<string, unknown>
+    const p = lastStageProps() as Record<string, unknown>
     expect(p.scaleX).toBeUndefined()
     expect(p.scaleY).toBeUndefined()
   })

@@ -1,10 +1,13 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { Box, Button, Card, Callout, Flex, Heading, Tabs, Text, TextField } from '@radix-ui/themes'
 import { useQueryClient } from '@tanstack/react-query'
-import { useProject, useUpdateProject, useIngestStream, useGenerate, useExport, useIngestStatus, useTerritoryTemplate, useRenderModern } from '../api/client'
+import { useProject, useUpdateProject, useIngestStream, useGenerate, useExport, useIngestStatus, useTerritoryTemplate, useRenderModern, type Project } from '../api/client'
 import { TerritoryEditor, type TerritoryData } from './TerritoryEditor'
 import { CanvasViewer } from '../components/canvas/CanvasViewer'
+import { InspectorSidebar } from '../components/canvas/InspectorSidebar'
+import { useCanvasArtifacts } from '../hooks/useCanvasArtifacts'
+import { buildProjectionConfig } from '../lib/projection'
 
 const STATUS_LABEL: Record<string, string> = {
   created: 'Criado',
@@ -133,10 +136,10 @@ export function ProjectDetail() {
             <CanvasViewer projectId={project.id} />
           </Box>
           <Box
-            className="inspector-sidebar-placeholder"
+            className="inspector-sidebar"
             style={{ width: 340, borderLeft: '1px solid var(--gray-4)', padding: 16, overflowY: 'auto' }}
           >
-            {/* InspectorSidebar — plan 2.3 seam */}
+            <InspectorSidebarWrapper projectId={project.id} project={project} />
           </Box>
         </Flex>
       )}
@@ -379,5 +382,65 @@ export function ProjectDetail() {
         </Tabs.Root>
       </Card>
     </Box>
+  )
+}
+
+/**
+ * Wrapper that builds ProjectionConfig from the loaded metadata + project bbox
+ * and hands metadata/territories/project to InspectorSidebar. Uses the same
+ * data source as CanvasViewer (/preview/territory_metadata.json); TanStack
+ * Query dedups the fetches.
+ *
+ * Advisor note: the wrapper derives its projection from metaQ.data.bounds (the
+ * generator's actual bounds) rather than project.bbox_* (ingest bbox) so it
+ * stays consistent with CanvasViewer even when those values differ.
+ */
+function InspectorSidebarWrapper({
+  projectId,
+  project,
+}: {
+  projectId: string
+  project: Project
+}) {
+  const artifacts0 = useCanvasArtifacts(projectId, null)
+  const metaQ = artifacts0[4]
+
+  const projection = useMemo(() => {
+    if (!metaQ.data) return null
+    const [mapW, mapH] = metaQ.data.map_size
+    const { bounds } = metaQ.data
+    return buildProjectionConfig(
+      {
+        lonMin: bounds.lon_min,
+        lonMax: bounds.lon_max,
+        latMin: bounds.lat_min,
+        latMax: bounds.lat_max,
+      },
+      mapW,
+      mapH,
+    )
+  }, [metaQ.data])
+
+  const artifacts = useCanvasArtifacts(projectId, projection)
+  const territoriesQ = artifacts[0]
+
+  if (metaQ.isPending || territoriesQ.isPending) {
+    return <Text size="2" color="gray">Loading…</Text>
+  }
+  if (!metaQ.data || !territoriesQ.data) {
+    return <Text size="2" color="gray">No inspector data.</Text>
+  }
+
+  return (
+    <InspectorSidebar
+      metadata={metaQ.data}
+      territories={territoriesQ.data}
+      project={{
+        name: project.name,
+        country_qid: project.country_qid,
+        period_start: project.period_start,
+        period_end: project.period_end,
+      }}
+    />
   )
 }
