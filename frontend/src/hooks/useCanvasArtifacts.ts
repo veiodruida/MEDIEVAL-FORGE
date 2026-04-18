@@ -86,11 +86,14 @@ function firstOuterRing(
  * Returns a 5-tuple of query results:
  * [0] territories.geojson → TerritoryRender[]
  * [1] baronies.geojson → BaronyRender[]
- * [2] lookup_condado_colors.json → Record<string, string>
- * [3] lookup_barony_colors.json → Record<string, string>  (fallback display paths)
+ * [2] condado_colors.json → Record<condado_id, '#rrggbb'> (sidecar from plan 02-04)
+ * [3] barony_colors.json  → Record<barony_name, '#rrggbb'> (sidecar from plan 02-04)
  * [4] territory_metadata.json → TerritoryMetadata
  *
  * Consumer migration note: plans 2.2 and 2.3 destructure by index.
+ * The original lookup_*_colors.json files on disk keep their Unity-consumed
+ * {"r,g,b": idx} shape untouched (D-04 black-box); the frontend consumes
+ * these sidecar files instead.
  */
 export function useCanvasArtifacts(
   projectId: string | undefined,
@@ -140,22 +143,22 @@ export function useCanvasArtifacts(
         },
       },
       {
-        // [2] lookup_condado_colors.json
+        // [2] condado_colors.json sidecar — {condado_id: '#rrggbb'}
         queryKey: ['condado-colors', projectId] as const,
         queryFn: () =>
           fetchJson<Record<string, string>>(
-            `/api/projects/${projectId}/preview/lookup_condado_colors.json`,
+            `/api/projects/${projectId}/preview/condado_colors.json`,
           ),
         enabled: Boolean(projectId),
         staleTime: Infinity,
         gcTime: Infinity,
       },
       {
-        // [3] lookup_barony_colors.json (kept for fallback display paths)
+        // [3] barony_colors.json sidecar — {barony_name: '#rrggbb'}
         queryKey: ['barony-colors', projectId] as const,
         queryFn: () =>
           fetchJson<Record<string, string>>(
-            `/api/projects/${projectId}/preview/lookup_barony_colors.json`,
+            `/api/projects/${projectId}/preview/barony_colors.json`,
           ),
         enabled: Boolean(projectId),
         staleTime: Infinity,

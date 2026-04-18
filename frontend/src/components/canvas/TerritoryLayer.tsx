@@ -13,7 +13,7 @@ interface TerritoryLayerProps {
 }
 
 /**
- * Konva Layer rendering all condado polygons with fills from lookup_condado_colors.json.
+ * Konva Layer rendering all condado polygons with fills from condado_colors.json sidecar.
  *
  * Narrow Zustand selector (§Pattern 3) — only selectedTerritoryId is subscribed so
  * changing a different store slice does NOT re-render this layer.

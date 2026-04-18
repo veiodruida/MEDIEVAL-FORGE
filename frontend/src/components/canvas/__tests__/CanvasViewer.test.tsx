@@ -101,10 +101,10 @@ function setupFetchMock(
     if (urlStr.includes('baronies.geojson')) {
       return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(BARONIES_FIXTURE) })
     }
-    if (urlStr.includes('lookup_condado_colors')) {
+    if (urlStr.includes('condado_colors')) {
       return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}) })
     }
-    if (urlStr.includes('lookup_barony_colors')) {
+    if (urlStr.includes('barony_colors')) {
       return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}) })
     }
     return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}) })
