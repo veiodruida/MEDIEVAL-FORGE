@@ -233,4 +233,34 @@ Six phases take Medieval Forge from zero to a fully validated, Unity-ready map p
 | EXPORT-04 | Phase 6 |
 
 ---
+
+## Backlog
+
+Unsequenced ideas captured outside the active phase plan. Promote with `/gsd-review-backlog`.
+
+### Phase 999.1: Output Resolution + Aspect Ratio Control (BACKLOG)
+
+**Goal:** [Captured for future planning] Allow Game Designer to configure output resolution AND aspect ratio (1:1, 4:3, 16:9, 3:2, 9:16) for the generated map artifacts. Compatibility target: AI image generators upstream that produce maps in those ratios.
+
+**Scope (3 layers):**
+1. Internal Voronoi raster resolution (`map_w`/`map_h` in `map_generator.py` — affects polygon granularity)
+2. Output PNG resolution (`terrain.png`, `lookup_condado.png`, `lookup_barony.png`, etc. — affects visual detail)
+3. Unity export presets per platform (mobile / desktop / console)
+
+**UI:** Named presets (Small / Medium / Large / Custom) + aspect-ratio dropdown + free numeric input fallback. Per-project setting, persisted in project metadata.
+
+**Constraints:**
+- Touches `backend/medieval_forge/lib/map_generator.py` — D-04 black-box must be renegotiated (current rule: do not modify; this feature breaks that rule).
+- Also touches `services/generator.py`, `api/generate.py` (params), frontend project-creation UI.
+- Likely needs new requirement(s) `EXPORT-05+` in REQUIREMENTS.md.
+
+**Blocked by:** Phase 02 (canvas viewer) gap closure.
+
+**Requirements:** TBD
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (promote with `/gsd-review-backlog` when ready)
+
+---
 *Created: 2026-04-16*
