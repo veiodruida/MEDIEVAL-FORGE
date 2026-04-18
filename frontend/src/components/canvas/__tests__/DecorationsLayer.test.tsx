@@ -137,9 +137,10 @@ describe('DecorationsLayer — D-04 dual-ring capitals', () => {
       expect(i.getAttribute('data-stroke-width')).toBe('1.5')
     })
 
-    // No shadow-based ring — D-04 specifies a real circle, not a shadow
+    // No shadow-based ring — D-04 specifies a real circle, not a shadow.
+    // shadowBlur is undefined on both circles → React omits the attribute → getAttribute returns null
     circles.forEach((c) => {
-      expect(c.getAttribute('data-shadow-blur')).toBe('null')
+      expect(c.getAttribute('data-shadow-blur')).toBeNull()
     })
   })
 

@@ -1,0 +1,116 @@
+import { useEffect, useRef } from 'react'
+import { Layer, Circle, Text } from 'react-konva'
+import type Konva from 'konva'
+import { useProjection } from '../../context/ProjectionContext'
+import { geoToCanvas } from '../../lib/projection'
+import type { TerritoryMetadataCondado } from '../../hooks/useCanvasArtifacts'
+
+/**
+ * Label gate: labels render only when the stage is zoomed in to at least
+ * 2× the fit-to-view scale (so they aren't visible at minScale where they would
+ * clutter the whole map). Matches UI-SPEC §Canvas Typography + RESEARCH §Pattern 8.
+ */
+export const LABEL_ZOOM_THRESHOLD_RELATIVE = 2.0
+
+interface Props {
+  condados: TerritoryMetadataCondado[]
+  condadoColors: Record<string, string>
+  layerVisibility: { capitals: boolean; labels: boolean }
+  currentScale: number
+  minScale: number
+}
+
+/**
+ * Post-mount label-centering: measure the real rendered text width via Konva's
+ * getTextWidth() once the node is mounted, then set offsetX = width/2. The
+ * character-count heuristic from prior drafts centers incorrectly for most
+ * proportional-font strings (short capitals → over-offset; wide letters like W/M
+ * → under-offset). Using the real measured width keeps labels pixel-centered.
+ */
+function CenteredLabel(props: { x: number; y: number; text: string }) {
+  const ref = useRef<Konva.Text | null>(null)
+  useEffect(() => {
+    const n = ref.current
+    if (!n) return
+    const width =
+      typeof (n as unknown as { getTextWidth?: () => number }).getTextWidth === 'function'
+        ? (n as unknown as { getTextWidth: () => number }).getTextWidth()
+        : n.width()
+    n.offsetX(width / 2)
+    n.getLayer()?.batchDraw()
+  }, [props.text])
+
+  return (
+    <Text
+      ref={ref as never}
+      x={props.x}
+      y={props.y}
+      text={props.text}
+      fontFamily="system-ui, sans-serif"
+      fontSize={12}
+      fill="#1a1a1a"
+      stroke="rgba(255,255,255,0.7)"
+      strokeWidth={1}
+      listening={false}
+      offsetY={14}
+    />
+  )
+}
+
+/**
+ * DecorationsLayer renders capital dots (D-04 dual-ring) + territory labels.
+ * Layer is listening=false — purely visual, clicks pass through to TerritoryLayer.
+ *
+ * D-04 dual-ring capital (UI-SPEC §Color §capital):
+ *   OUTER (dark ring): Circle radius=6.75 fill=rgba(0,0,0,0.6)
+ *   INNER (colored):   Circle radius=6 fill=condadoColor stroke=#ffffff strokeWidth=1.5
+ *
+ * NO canvas shadow — the dark ring is a real geometric circle, never a blur filter.
+ */
+export function DecorationsLayer({
+  condados,
+  condadoColors,
+  layerVisibility,
+  currentScale,
+  minScale,
+}: Props) {
+  const projection = useProjection()
+  const showLabels =
+    layerVisibility.labels &&
+    currentScale >= LABEL_ZOOM_THRESHOLD_RELATIVE * minScale
+
+  return (
+    <Layer listening={false}>
+      {layerVisibility.capitals &&
+        condados.flatMap((c) => {
+          const [x, y] = geoToCanvas(c.lon, c.lat, projection)
+          const color = condadoColors[c.id] ?? '#666666'
+          return [
+            <Circle
+              key={`cap-dark-${c.id}`}
+              data-role="capital-dark-ring"
+              x={x}
+              y={y}
+              radius={6.75}
+              fill="rgba(0, 0, 0, 0.6)"
+            />,
+            <Circle
+              key={`cap-${c.id}`}
+              data-role="capital"
+              x={x}
+              y={y}
+              radius={6}
+              fill={color}
+              stroke="#ffffff"
+              strokeWidth={1.5}
+            />,
+          ]
+        })}
+      {showLabels &&
+        condados.map((c) => {
+          const [x, y] = geoToCanvas(c.lon, c.lat, projection)
+          return <CenteredLabel key={`lbl-${c.id}`} x={x} y={y} text={c.name} />
+        })}
+    </Layer>
+  )
+}
