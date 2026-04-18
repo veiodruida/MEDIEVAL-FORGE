@@ -13,6 +13,36 @@ vi.mock('react-konva', () => ({
   ),
   Image: () => <div data-testid="konva-image" />,
   Rect: () => <div data-testid="konva-rect" />,
+  // plan 2.3 adds DecorationsLayer (Circle + Text) + InteractionLayer (Line)
+  Circle: () => <div data-testid="konva-circle" />,
+  Text: () => <div data-testid="konva-text" />,
+  Line: () => <div data-testid="konva-line" />,
+}))
+
+// plan 2.3 hooks — pass-through stubs for integration tests that don't exercise
+// zoom/pan logic directly (covered by dedicated useZoomPan + panOnSelect tests)
+vi.mock('../../../hooks/useZoomPan', () => ({
+  SCALE_BY: 1.05,
+  MAX_SCALE_MULTIPLIER: 4,
+  panToGeoCenter: vi.fn(),
+  makeWheelHandler: vi.fn(() => () => {}),
+  makeDragBoundFunc: vi.fn(() => (pos: { x: number; y: number }) => pos),
+  applyPanClamp: vi.fn(),
+}))
+vi.mock('../../../hooks/useKeyboardShortcuts', () => ({
+  useKeyboardShortcuts: vi.fn(),
+}))
+vi.mock('../DecorationsLayer', () => ({
+  DecorationsLayer: () => <div data-testid="decorations-layer" />,
+  LABEL_ZOOM_THRESHOLD_RELATIVE: 2.0,
+}))
+vi.mock('../InteractionLayer', () => ({
+  InteractionLayer: () => <div data-testid="interaction-layer" />,
+}))
+vi.mock('../FitToViewButton', () => ({
+  FitToViewButton: ({ onFit }: { onFit: () => void }) => (
+    <button data-testid="fit-to-view" onClick={onFit}>fit</button>
+  ),
 }))
 
 vi.mock('use-image', () => ({
