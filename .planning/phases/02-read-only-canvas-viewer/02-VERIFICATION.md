@@ -1,8 +1,9 @@
 ---
 phase: 02-read-only-canvas-viewer
 verified: 2026-04-18T15:10:00Z
-status: human_needed
-score: 26/26 must-haves verified
+updated: 2026-04-18T18:00:00Z
+status: gaps_found
+score: 26/26 automated must-haves verified (but E2E pipeline broken — see gaps)
 overrides_applied: 0
 requirements_covered:
   - CANVAS-01
@@ -27,7 +28,25 @@ roadmap_success_criteria:
   - sc: 'User can press a "Fit to view" button and the canvas resets to show the full map centered in the viewport.'
     status: verified_automated
     evidence: "FitToViewButton calls fitToView → computeFitToView → stage.scale+position + setMinScale; Ctrl+0 keyboard shortcut triggers same callback; FitToViewButton tests + useKeyboardShortcuts 7 tests pass"
-gaps: []
+gaps:
+  - id: G-01
+    severity: blocker
+    truth: "Backend `emit_territories_from_disk` / `emit_baronies_from_disk` parse `lookup_*_colors.json` using the wrong schema — they assume `{condado_id: '#rrggbb'}` but `map_generator.py:672` writes `{'r,g,b': int_index}`. `hexstr[1:3]` raises `TypeError: 'int' object is not subscriptable`, no geojson files are emitted, and the frontend canvas renders blue-empty with only the terrain background."
+    evidence: "territories_geojson.py:141-154 (hex parsing), baronies_geojson.py:78-81 (same defect), map_generator.py:672 (real format `{f'{r},{g},{b}': i}`); confirmed by user E2E test 2026-04-18 (HUMAN-UAT item 1 FAILED)"
+    affects: [CANVAS-01, CANVAS-03, CANVAS-04]
+    fix_hint: "Rewrite emitter adapters to consume `{'r,g,b': idx}` + join with `territory_metadata.json` condados[] list (idx → condado_id) to build the pc mask and produce the expected GeoJSON. Alternative: add a post-pipeline conversion step in generator.py that rewrites lookup_*_colors.json to `{condado_id: '#hex'}` before calling the emitters — but this modifies the on-disk artifact contract consumed by Unity/other downstream tools, so the adapter approach is safer."
+  - id: G-02
+    severity: blocker
+    truth: "The try/except at `generator.py:341-347` wrapping `emit_territories_from_disk` / `emit_baronies_from_disk` silently logs and swallows every exception, so the format-mismatch crash in G-01 never surfaced to the user, CI, or status machinery — the project moved to status='generated' despite two missing critical artifacts."
+    evidence: "generator.py:341-347 `except Exception as exc: logger.exception(...)` with no re-raise, no project.status downgrade, no artifact-presence check"
+    affects: [CANVAS-01, observability]
+    fix_hint: "Either (a) re-raise so the background task's outer handler sets status='error_generating' and records `last_error`, OR (b) keep logging but add an artifact-presence post-check that fails the generation when `territories.geojson` / `baronies.geojson` are missing. Option (a) is cleaner."
+  - id: G-03
+    severity: warning
+    truth: "No integration test exercises the real pipeline path `map_generator.generate_maps → lookup_*_colors.json on disk → emit_*_from_disk → territories.geojson/baronies.geojson`. Phase 02's 9 backend tests all call `build_territories_geojson` / `build_baronies_geojson` directly with synthetic in-memory numpy arrays, bypassing the disk read codepath where G-01 lives."
+    evidence: "tests/test_territories_geojson.py and tests/test_baronies_geojson.py (9/9 pass but never call emit_*_from_disk); 86/86 frontend tests mock artifact fetches"
+    affects: [regression prevention]
+    fix_hint: "Add an integration test with a tiny Iberia-like fixture (e.g. 32×32 synthetic map) that runs `run_generation` end-to-end and asserts both geojson files exist and parse to non-empty FeatureCollections."
 deferred:
   - truth: "MultiPolygon territories (islands/exclaves) render all polygons — currently firstOuterRing picks only the first ring"
     addressed_in: "Phase 3+"
