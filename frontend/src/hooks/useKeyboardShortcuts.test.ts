@@ -43,11 +43,15 @@ describe('useKeyboardShortcuts', () => {
 
   it('Esc does NOT clear selection when a contenteditable is focused', () => {
     const div = document.createElement('div')
-    div.contentEditable = 'true'
+    div.setAttribute('contenteditable', 'true')
+    // jsdom requires tabIndex for a non-form element to accept focus
+    div.tabIndex = 0
     document.body.appendChild(div)
     div.focus()
+    // Fire the Escape event as if it was dispatched from inside the contenteditable
+    // (activeElement in jsdom + our attribute check both cover this case)
     renderHook(() => useKeyboardShortcuts(() => {}))
-    fireKey({ key: 'Escape' })
+    div.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))
     expect(useUIStore.getState().selectedTerritoryId).toBe('C_X')
   })
 
