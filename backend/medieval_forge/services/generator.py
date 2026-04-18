@@ -64,7 +64,15 @@ GENERATED_FILE_WHITELIST: frozenset[str] = frozenset(
     list(_GENERATOR_OUTPUTS)
     + list(_PREVIEW_ALIASES.keys())
     + list(_AUXILIARY_OUTPUTS)
-    + ["territories.geojson", "baronies.geojson"]
+    + [
+        "territories.geojson",
+        "baronies.geojson",
+        # CANVAS-01 / plan 02-04 sidecars for the frontend (D-04 preserved:
+        # the Unity-consumed lookup_*_colors.json files keep their original
+        # {"r,g,b": idx} shape; these sidecars are {id: "#rrggbb"}).
+        "condado_colors.json",
+        "barony_colors.json",
+    ]
 )
 
 
@@ -338,14 +346,14 @@ def _run_pipeline_sync(
             map_w=region_cfg.map_w,     map_h=region_cfg.map_h,
             upscale=region_cfg.upscale, lon_scale=_lon_scale,
         )
-        try:
-            emit_territories_from_disk(project_id, generated_dir, cfg_shim)
-            emit_baronies_from_disk(project_id, generated_dir, cfg_shim)
-        except Exception:
-            logger.exception(
-                "geojson emission failed for %s — canvas will show empty overlays", project_id
-            )
-            # Do not fail the pipeline; PNG outputs still usable.
+        # CANVAS-01 + D-02 (plan 02-04): emission must succeed or the whole
+        # generation fails. Previously this was wrapped in try/except that
+        # swallowed the format-mismatch crash from G-01 for days. Any
+        # exception here propagates to run_generation, which lets
+        # api/generate.py's background task set status='error_generating'
+        # with last_error. (G-02: no silent swallow.)
+        emit_territories_from_disk(project_id, generated_dir, cfg_shim)
+        emit_baronies_from_disk(project_id, generated_dir, cfg_shim)
     finally:
         _cleanup_territory_module(module_name)
 
