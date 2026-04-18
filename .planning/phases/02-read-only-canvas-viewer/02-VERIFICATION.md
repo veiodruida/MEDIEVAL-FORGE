@@ -1,9 +1,8 @@
 ---
 phase: 02-read-only-canvas-viewer
-verified: 2026-04-18T15:10:00Z
-updated: 2026-04-18T18:00:00Z
-status: gaps_found
-score: 26/26 automated must-haves verified (but E2E pipeline broken — see gaps)
+verified: 2026-04-18T19:30:00Z
+status: human_needed
+score: 31/31 automated must-haves verified
 overrides_applied: 0
 requirements_covered:
   - CANVAS-01
@@ -12,305 +11,258 @@ requirements_covered:
   - CANVAS-04
   - CANVAS-05
   - CANVAS-06
+re_verification:
+  previous_status: gaps_found
+  previous_score: "26/26 automated truths verified; 3 blocker gaps (G-01, G-02, G-03)"
+  gaps_closed:
+    - id: G-01
+      evidence: "emit_territories_from_disk + emit_baronies_from_disk rewritten to parse `{'r,g,b': idx}` format; `grep -n \"hexstr\\[1:3\\]\" backend/medieval_forge/services/*.py` returns 0 matches; 5 new unit tests pass (2 malformed-key ValueError, 2 happy-path sidecar write, 1 out-of-range idx skipped)"
+    - id: G-02
+      evidence: "try/except swallow at generator.py:341-347 removed; emit_*_from_disk now called bare inside _run_pipeline_sync (lines 355-356); test_emitter_error_propagates_to_caller passes, asserting pytest.raises(ValueError, match='malformed key') bubbles through _run_pipeline_sync"
+    - id: G-03
+      evidence: "backend/tests/test_generator_e2e.py created (164 lines, 2 tests); test_run_generation_emits_both_geojson_artifacts exercises real _run_pipeline_sync + emit_*_from_disk disk codepath with 4 [BLOCKING] assertions; passes"
+  gaps_remaining: []
+  regressions: []
 roadmap_success_criteria:
   - sc: "User can see all territory polygons rendered on the Konva canvas with correct hierarchy colors and visible borders matching the generated GeoJSON data."
     status: verified_automated
-    evidence: "backend territories_geojson.py emits per-condado polygon features + neighbors; frontend TerritoryLayer renders <Line closed> with stroke=rgba(0,0,0,0.35) 1px and fill from lookup_condado_colors.json; 3 TerritoryLayer tests pass; real-data pixel-parity is human-verification item #5"
+    evidence: "G-01 closure means territories.geojson now actually emits; 16/16 backend tests (incl. [BLOCKING] integration test) + 3/3 TerritoryLayer frontend tests pass; real-pipeline pixel-parity remains human verification item"
   - sc: "User can pan the canvas by dragging and zoom with the mouse wheel; polygons remain pixel-aligned and do not re-project on zoom."
     status: verified_automated
-    evidence: "Stage draggable + dragBoundFunc={makeDragBoundFunc}; onWheel={makeWheelHandler} cursor-anchored; useZoomPan.test.ts 9/9 pass; polygons use imperative stage.scale() — no prop-driven re-projection; Playwright perf probe exists (env-gated)"
+    evidence: "useZoomPan.test.ts 9/9 pass; Stage uses imperative stage.scale() with no prop-driven re-projection; dragBoundFunc clamps enforced"
   - sc: "User can click any territory and see its name, type, and hierarchy properties appear in the right-side panel."
     status: verified_automated
-    evidence: "TerritoryPolygon onClick → select(id) → InteractionLayer gold outline + InspectorSidebar 4-group render; InspectorSidebar 9 tests + selection integration test pass"
+    evidence: "TerritoryPolygon onClick → select(id) → InteractionLayer gold outline + InspectorSidebar 4 groups; 9/9 InspectorSidebar tests + 5/5 selection integration tests + 7/7 CanvasViewer.panOnSelect tests pass"
   - sc: "User can toggle each layer (terrain, territories, borders, capitals, labels) on and off independently; labels only appear at appropriate zoom levels."
     status: verified_automated
-    evidence: "LayerTogglePanel renders 5 checkboxes wired to useUIStore.toggleLayer; LABEL_ZOOM_THRESHOLD_RELATIVE=2.0 gates labels in DecorationsLayer; LayerTogglePanel 5 tests + DecorationsLayer 8 tests pass"
+    evidence: "LayerTogglePanel 5/5 tests + DecorationsLayer 8/8 tests pass; LABEL_ZOOM_THRESHOLD_RELATIVE=2.0 gate enforced; 5 checkboxes wired to useUIStore.toggleLayer"
   - sc: 'User can press a "Fit to view" button and the canvas resets to show the full map centered in the viewport.'
     status: verified_automated
-    evidence: "FitToViewButton calls fitToView → computeFitToView → stage.scale+position + setMinScale; Ctrl+0 keyboard shortcut triggers same callback; FitToViewButton tests + useKeyboardShortcuts 7 tests pass"
-gaps:
-  - id: G-01
-    severity: blocker
-    truth: "Backend `emit_territories_from_disk` / `emit_baronies_from_disk` parse `lookup_*_colors.json` using the wrong schema — they assume `{condado_id: '#rrggbb'}` but `map_generator.py:672` writes `{'r,g,b': int_index}`. `hexstr[1:3]` raises `TypeError: 'int' object is not subscriptable`, no geojson files are emitted, and the frontend canvas renders blue-empty with only the terrain background."
-    evidence: "territories_geojson.py:141-154 (hex parsing), baronies_geojson.py:78-81 (same defect), map_generator.py:672 (real format `{f'{r},{g},{b}': i}`); confirmed by user E2E test 2026-04-18 (HUMAN-UAT item 1 FAILED)"
-    affects: [CANVAS-01, CANVAS-03, CANVAS-04]
-    fix_hint: "Rewrite emitter adapters to consume `{'r,g,b': idx}` + join with `territory_metadata.json` condados[] list (idx → condado_id) to build the pc mask and produce the expected GeoJSON. Alternative: add a post-pipeline conversion step in generator.py that rewrites lookup_*_colors.json to `{condado_id: '#hex'}` before calling the emitters — but this modifies the on-disk artifact contract consumed by Unity/other downstream tools, so the adapter approach is safer."
-  - id: G-02
-    severity: blocker
-    truth: "The try/except at `generator.py:341-347` wrapping `emit_territories_from_disk` / `emit_baronies_from_disk` silently logs and swallows every exception, so the format-mismatch crash in G-01 never surfaced to the user, CI, or status machinery — the project moved to status='generated' despite two missing critical artifacts."
-    evidence: "generator.py:341-347 `except Exception as exc: logger.exception(...)` with no re-raise, no project.status downgrade, no artifact-presence check"
-    affects: [CANVAS-01, observability]
-    fix_hint: "Either (a) re-raise so the background task's outer handler sets status='error_generating' and records `last_error`, OR (b) keep logging but add an artifact-presence post-check that fails the generation when `territories.geojson` / `baronies.geojson` are missing. Option (a) is cleaner."
-  - id: G-03
-    severity: warning
-    truth: "No integration test exercises the real pipeline path `map_generator.generate_maps → lookup_*_colors.json on disk → emit_*_from_disk → territories.geojson/baronies.geojson`. Phase 02's 9 backend tests all call `build_territories_geojson` / `build_baronies_geojson` directly with synthetic in-memory numpy arrays, bypassing the disk read codepath where G-01 lives."
-    evidence: "tests/test_territories_geojson.py and tests/test_baronies_geojson.py (9/9 pass but never call emit_*_from_disk); 86/86 frontend tests mock artifact fetches"
-    affects: [regression prevention]
-    fix_hint: "Add an integration test with a tiny Iberia-like fixture (e.g. 32×32 synthetic map) that runs `run_generation` end-to-end and asserts both geojson files exist and parse to non-empty FeatureCollections."
-deferred:
-  - truth: "MultiPolygon territories (islands/exclaves) render all polygons — currently firstOuterRing picks only the first ring"
-    addressed_in: "Phase 3+"
-    evidence: "02-REVIEW.md WR-04 (warning, non-blocking) — continental Iberia has no exclaves; noted for real-world MultiPolygon data in later phases"
-  - truth: "Single-point corner adjacency (touches) produces spurious neighbors at 4-corner pixel junctions"
-    addressed_in: "Phase 4+"
-    evidence: "02-REVIEW.md IN-03 — acknowledged in test suite; Voronoi-derived maps rarely hit this; edge-length filter can be added when editing lands"
+    evidence: "FitToViewButton + Ctrl+0 shortcut both call fitToView; useKeyboardShortcuts 7/7 + FitToViewButton tests pass; minScale recomputed on fit"
 human_verification:
-  - test: "Open a generated Iberia project and visually confirm ALL condado polygons render with the exact colors from lookup_condado_colors.json (pixel parity with terrain.png)"
-    expected: "Every condado is painted with its Unity palette color; 1px rgba(0,0,0,0.35) borders visible; no #666666 fallback (fallback indicates a missing color lookup)"
-    why_human: "Pixel-parity visual check against the real Iberia pipeline output — automated tests use synthetic raster fixtures; full E2E path requires a generated project"
+  - test: "Open a generated Iberia project and visually confirm ALL condado polygons render with exact colors from lookup_condado_colors.json (pixel parity with terrain.png)"
+    expected: "Every condado painted with its Unity palette color via the new condado_colors.json sidecar; 1px rgba(0,0,0,0.35) borders visible; NO #666666 fallback (fallback indicates a missing color lookup). UAT item 1 was FAILED pre-02-04; G-01 closure unblocks it."
+    why_human: "Pixel-parity visual check against the real Iberia pipeline output — automated tests use synthetic 20×20 raster fixtures; full E2E against real generator requires a generated project"
   - test: "Toggle the Borders layer ON/OFF with a real Iberia project loaded"
-    expected: "When ON, baronies render as internal borders at 85% opacity above condados with subtle 0.25 stroke; when OFF, the BaronyLayer disappears immediately with no stutter"
-    why_human: "Visual verification of D-02 real-geometry delivery; opacity blending and stroke contrast are perceptual quality checks"
+    expected: "When ON, baronies render as internal borders at 85% opacity above condados with subtle 0.25 stroke from the new barony_colors.json sidecar; when OFF, the BaronyLayer disappears immediately. UAT item 2 was BLOCKED pre-02-04."
+    why_human: "Visual D-02 delivery verification; opacity blending and stroke contrast are perceptual checks"
   - test: "Drag-pan with the mouse across the canvas"
-    expected: "Map scrolls smoothly with the cursor; at map edges the pan clamps so the map never leaves the viewport; when map is smaller than viewport it stays centered"
-    why_human: "Pan feel (smoothness, clamp boundary behavior) is a perceptual UX check that dragBoundFunc tests cannot fully exercise"
-  - test: "Mouse-wheel zoom in and out over different cursor positions"
-    expected: "Zoom anchors on the cursor (point under cursor stays under cursor through zoom); clamps at fit-scale (no further zoom-out) and 4× fit-scale (no further zoom-in)"
-    why_human: "Cursor-anchored zoom math is tested in unit tests, but visual smoothness and anchor precision under real wheel events need human verification"
+    expected: "Map scrolls smoothly with cursor; at map edges pan clamps so the map never leaves viewport; when map is smaller than viewport it stays centered"
+    why_human: "Pan feel (smoothness, clamp boundary behavior) is a perceptual UX check dragBoundFunc unit tests cannot fully exercise"
+  - test: "Mouse-wheel zoom over different cursor positions"
+    expected: "Zoom anchors on cursor (point under cursor stays under cursor through zoom); clamps at fit-scale and 4× fit-scale"
+    why_human: "Cursor-anchored zoom math is tested, but anchor precision under real wheel events needs human verification"
   - test: "Click a condado polygon, then click a neighbor chip in the inspector"
-    expected: "Gold 3px outline appears on clicked condado; inspector shows 4 groups (hierarchy badges, path/area/centroid, capital, adjacent); clicking a neighbor chip moves selection AND pans the canvas so the new territory is centered"
-    why_human: "Pan-to-selected is a visible user-flow behavior — Pitfall 5 unit test asserts stage.position() is called, but the end-user experience of smooth re-centering is only visible in a real browser"
+    expected: "Gold 3px outline appears; inspector shows 4 groups (hierarchy badges, path/area/centroid, capital, adjacent); neighbor chip click moves selection AND pans the canvas. UAT item 5 was BLOCKED pre-02-04."
+    why_human: "Pan-to-selected is a visible user-flow behavior; Pitfall 5 unit test asserts stage.position() call but end-user re-centering smoothness is only visible in a real browser"
   - test: "Press Esc while selection is active, then click the empty Stage background"
-    expected: "Esc clears selection — inspector reverts to 'Project overview'; empty-Stage click also clears selection (Pitfall 6 canonical e.target.getStage() pattern)"
-    why_human: "Keyboard guard against INPUT/TEXTAREA/contentEditable focus needs a real browser focus model to validate; jsdom does not implement isContentEditable reliably"
-  - test: "Zoom to >= 2× minScale and toggle the Labels layer"
-    expected: "Labels appear as system-ui 12px text with white halo centered on capitals; at <2× minScale labels never render even with toggle ON"
+    expected: "Esc clears selection → inspector reverts to 'Project overview'; empty-Stage click also clears (Pitfall 6 e.target.getStage() canonical)"
+    why_human: "Keyboard guard against INPUT/TEXTAREA/contentEditable focus needs real browser focus model; jsdom does not implement isContentEditable reliably"
+  - test: "Zoom to ≥2× minScale and toggle the Labels layer"
+    expected: "Labels appear as system-ui 12px text with white halo centered on capitals; at <2× minScale labels never render even with toggle ON. UAT item 7 was BLOCKED pre-02-04."
     why_human: "Label centering uses post-mount getTextWidth() which requires a real Konva canvas context — jsdom cannot exercise the measurement pipeline"
   - test: "Click Fit-to-view button AND press Ctrl+0 from a zoomed-in state"
-    expected: "Both paths reset the canvas to show the full map centered with ~5% padding; minScale is recomputed; button is bottom-left with minHeight:44px"
-    why_human: "Visual confirmation of reset behavior and ~5% padding perception requires a real viewport"
+    expected: "Both paths reset canvas to full map view centered with ~5% padding; minScale recomputed; button bottom-left with minHeight:44px"
+    why_human: "Visual confirmation of reset behavior and padding perception requires a real viewport"
   - test: "Open a project with a condado that has a real capital_name set, and one without"
-    expected: "With-capital condado shows the capital city name + coords below; without-capital shows the exact literal string 'No capital assigned' (D-06.3 sentinel)"
-    why_human: "The sentinel path is unit-tested but the end-to-end flow (backend metadata emission → frontend render) with a real capital_name-bearing project requires a generated project fixture"
+    expected: "With-capital condado shows the capital city name + coords; without-capital shows the exact literal 'No capital assigned' (D-06.3 sentinel). UAT item 9 was BLOCKED pre-02-04."
+    why_human: "Sentinel path is unit-tested but end-to-end flow (backend metadata emission → frontend render) with real capital_name-bearing project requires a generated project fixture"
+  - test: "Corrupt a project's lookup_condado_colors.json and trigger generation"
+    expected: "Project status transitions to 'error_generating' (not silently 'generated'); last_error field populated with the ValueError message. G-02 fix unblocks this observable behavior."
+    why_human: "Requires running the live FastAPI background task against a corrupted fixture to observe the status machine transition end-to-end"
+deferred:
+  - truth: "MultiPolygon territories render all rings (islands/exclaves)"
+    addressed_in: "Phase 3+"
+    evidence: "02-REVIEW.md WR-04: continental Iberia has no exclaves; firstOuterRing at useCanvasArtifacts.ts:79 picks first ring only"
+  - truth: "Edge-length-based adjacency (reject single-point corner touches)"
+    addressed_in: "Phase 4+"
+    evidence: "02-REVIEW.md IN-03: admits single-point corner contact; edge-length filter deferred until editing phase"
+  - truth: "Capital coords distinct from centroid coords (capital_lat / capital_lon)"
+    addressed_in: "Phase 3+"
+    evidence: "02-03-SUMMARY.md Known Open Items + 02-04-SUMMARY.md Known Open Items inherited from earlier plans"
+  - truth: "InspectorSidebarWrapper single useCanvasArtifacts call"
+    addressed_in: "Phase 4+ refactor"
+    evidence: "02-REVIEW.md IN-01: current double-call works (TanStack dedups); consolidation is optional perf improvement"
 ---
 
-# Phase 2: Read-Only Canvas Viewer Verification Report
+# Phase 2: Read-Only Canvas Viewer Verification Report (Post-Gap-Closure)
 
-**Phase Goal:** Build a read-only Konva canvas viewer at `/projects/:id` that renders generated Iberia maps (terrain PNG + condado polygons + barony overlay) with layer toggles, zoom/pan, selection, and an inspector sidebar.
+**Phase Goal:** User can open a generated project and explore all territories on an interactive canvas — pan, zoom, click to inspect, toggle layers — with pixel-accurate polygon rendering and no editing capability yet.
 **Requirements:** CANVAS-01, CANVAS-02, CANVAS-03, CANVAS-04, CANVAS-05, CANVAS-06
-**Verified:** 2026-04-18T15:10:00Z
+**Verified:** 2026-04-18T19:30:00Z
 **Status:** human_needed
-**Re-verification:** No — initial verification
+**Re-verification:** Yes — after gap closure (plan 02-04 closed G-01/G-02/G-03)
+
+## Re-Verification Summary
+
+| Item | Previous (15:10 UTC) | Current (19:30 UTC) |
+|------|----------------------|---------------------|
+| Status | gaps_found | human_needed |
+| Automated truths verified | 26/26 | 31/31 (26 original + 5 plan 02-04 must_haves) |
+| Blocker gaps | 3 (G-01, G-02, G-03) | 0 |
+| Backend tests | 9 (build_* only — synthetic in-memory path) | 16 (9 original + 5 new adapter tests + 2 integration tests) |
+| Frontend tests | 86/86 | 86/86 |
+| D-04 black-box preserved | yes | yes (re-confirmed) |
+
+### Gap Closure Evidence
+
+**G-01 — format mismatch (`hexstr[1:3]` on an int).**
+- `backend/medieval_forge/services/territories_geojson.py:160-177` splits `"r,g,b"` keys, resolves `idx` via range check, writes `condado_colors.json` sidecar with `{id: "#rrggbb"}`
+- `backend/medieval_forge/services/baronies_geojson.py:93-113` — analogous rewrite for baronies + `barony_colors.json` sidecar
+- Sidecar shape verified: `#{r:02x}{g:02x}{b:02x}` produces zero-padded hex (e.g. `#0a141e`)
+- Frontend `useCanvasArtifacts.ts:150` + `:161` fetches `condado_colors.json` + `barony_colors.json` (not the original Unity-consumed lookup files)
+- Grep negative confirmation: `hexstr[1:3]` returns 0 matches in the services directory
+
+**G-02 — silent try/except swallow.**
+- `backend/medieval_forge/services/generator.py:349-356` now calls `emit_territories_from_disk` + `emit_baronies_from_disk` bare with a comment explicitly documenting the fail-loud contract
+- No `try/except` wrapping in lines 335-356 (verified by reading the file)
+- `api/generate.py::_run_and_update_status` already sets `status='error_generating'` + `last_error` on any exception from `run_generation` — the new bare-call pathway plugs into that existing handler
+- Integration test `test_emitter_error_propagates_to_caller` corrupts lookup_condado_colors.json with `"not-a-triple": 0` and asserts `pytest.raises(ValueError, match="malformed key")` bubbles out of `_run_pipeline_sync` — PASSES
+
+**G-03 — missing real-pipeline integration test.**
+- `backend/tests/test_generator_e2e.py` exists (164 lines, 2 test functions)
+- `test_run_generation_emits_both_geojson_artifacts` drives `_run_pipeline_sync` end-to-end with a 20×20 synthetic fixture (two-color lookup PNGs + real-format colors JSONs + territory_metadata.json) and 4 [BLOCKING] assertions for territories.geojson + baronies.geojson + condado_colors.json + barony_colors.json
+- Both tests PASS (confirmed via `python -m pytest tests/test_generator_e2e.py -v`)
+
+### D-04 Black-Box Constraint Verification
+
+Command: `git diff 0bf5bbd..HEAD -- backend/medieval_forge/lib/map_generator.py`
+Output: **empty** (zero bytes, zero diff lines)
+Interpretation: `lib/map_generator.py` is byte-identical to the pre-gap-closure baseline. Plan 02-04 honored the vendored black-box constraint. Unity's `lookup_*_colors.json` files continue to use the original `{"r,g,b": idx}` shape; the new `condado_colors.json` / `barony_colors.json` sidecars are additive, not replacements.
 
 ## Goal Achievement
 
-### Observable Truths (merged from ROADMAP Success Criteria + all three plans' must_haves)
+### Observable Truths (merged from ROADMAP SCs + plans 02-01..04 must_haves)
 
 | # | Truth | Status | Evidence |
 |---|-------|--------|----------|
-| 1 | Backend emits `territories.geojson` with per-condado polygon + neighbors | VERIFIED | `territories_geojson.py:71 build_territories_geojson`, rasterio.features.shapes + STRtree.touches; whitelist at `generator.py:63-67`; 5/5 pytest |
-| 2 | Backend emits `baronies.geojson` with per-barony polygon + fill color | VERIFIED | `baronies_geojson.py:21 build_baronies_geojson`; 4/4 pytest; fill from `lookup_barony_colors.json` |
-| 3 | FastAPI serves both geojson files via whitelist `/api/projects/{id}/preview/{filename}` | VERIFIED | whitelist contains both filenames at `generator.py:67`; existing `/preview/{filename}` route unchanged |
-| 4 | Frontend projection module converts lon/lat <-> canvas pixels with <1e-9 round-trip error | VERIFIED | `projection.ts` exports geoToCanvas/canvasToGeo/computeFitToView/geoRingToKonvaPoints; 8/8 projection.test.ts pass |
-| 5 | Konva Stage mounts inside `/projects/:id` and renders terrain PNG on Background layer | VERIFIED | `ProjectDetail.tsx:136 <CanvasViewer>`; `CanvasViewer.tsx` mounts `<BackgroundLayer>` inside `<Stage>`; 7/7 CanvasViewer tests pass |
-| 6 | Tailwind v4 + Radix overlay stays opaque over Konva Stage (Pitfall 2) | VERIFIED | Playwright `smoke-tailwind-radix.spec.ts` with baseline PNG + pngjs RGB sample — green per provided context |
-| 7 | Vitest + Playwright infra installed and wired to npm scripts | VERIFIED | `vitest.config.ts`, `playwright.config.ts`, test-setup.ts exist; `npm run test -- --run` executes 86 tests across 13 files |
-| 8 | User sees all condado polygons with fills from `lookup_condado_colors.json` | VERIFIED | `TerritoryLayer` → `TerritoryPolygon` with `condadoColors[id]` lookup and `'#666666'` fallback; 3/3 tests |
-| 9 | Territory borders render as rgba(0,0,0,0.35), 1px, closed polygons | VERIFIED | `TerritoryPolygon.tsx:30-33 closed stroke="rgba(0, 0, 0, 0.35)" strokeWidth=1`; asserted in test |
-| 10 | User sees all barony polygons at 85% opacity when Borders toggle ON (D-02 real geometry) | VERIFIED | `BaronyLayer.tsx:19 <Layer listening={false} opacity={0.85}>` with per-feature `fill={b.fill}`; fed by `baronies.geojson` from plan 2.1 backend pipeline; 4/4 tests |
-| 11 | Floating Radix Card top-left shows 5 layer checkboxes (Terrain/Territories/Borders/Capitals/Labels) | VERIFIED | `LayerTogglePanel.tsx` — Card variant="surface" at position:absolute top:12 left:12 zIndex:10; 5 checkboxes in fixed order; 5/5 tests |
-| 12 | Checkbox state persists in useUIStore; toggling hides Konva nodes immediately | VERIFIED | `uiStore.ts` layerVisibility + toggleLayer; `CanvasViewer` reads visibility per layer; 11/11 uiStore tests + CanvasViewer integration test |
-| 13 | Default layer state on open: terrain/territories/borders/capitals ON, labels OFF (D-09) | VERIFIED | `uiStore.ts:17-22 DEFAULT_LAYER_VISIBILITY`; asserted in uiStore + LayerTogglePanel tests |
-| 14 | TerritoryPolygon memoized so unrelated polygons don't re-render on selection change | VERIFIED | `TerritoryPolygon.tsx` wrapped in `memo(..., areEqual)`; narrow Zustand selector in TerritoryLayer; TerritoryLayer memo test |
-| 15 | Pan via dragging; pan clamped so map stays within viewport | VERIFIED | `Stage draggable dragBoundFunc={makeDragBoundFunc(...)}`; `applyPanClamp` + `makeDragBoundFunc` in useZoomPan.ts; 9/9 useZoomPan tests incl. clamp assertions |
-| 16 | Wheel zoom anchors on cursor position | VERIFIED | `makeWheelHandler` computes mousePointTo then sets stage position relative to pointer; unit test asserts new position |
-| 17 | Zoom clamped: minScale = fit scale, maxScale = 4× fit scale | VERIFIED | `MAX_SCALE_MULTIPLIER = 4`; CanvasViewer `makeWheelHandler(minScale, minScale * MAX_SCALE_MULTIPLIER, ...)`; useZoomPan test asserts clamp behavior |
-| 18 | Click condado → gold 3px outline on InteractionLayer + inspector fills with 4 groups | VERIFIED | `InteractionLayer.tsx:32-34 stroke="#f0c040" strokeWidth={3} listening={false}`; `InspectorSidebar` renders Hierarchy/Path-Area-Centroid/Capital/Adjacent; selection.test.tsx + InspectorSidebar 9/9 tests |
-| 19 | Esc clears selection; empty-Stage click deselects via `e.target.getStage()` (Pitfall 6) | VERIFIED | `useKeyboardShortcuts.ts` Esc guarded by INPUT/TEXTAREA/contentEditable; `CanvasViewer.tsx:188 if (e.target === e.target.getStage()) select(null)`; 7/7 shortcut tests |
-| 20 | Neighbor chip click moves selection AND pans canvas to center new territory (Pitfall 5) | VERIFIED | `CanvasViewer.tsx:132 panToGeoCenter(stage, condado.lon, condado.lat, projection, stage.scaleX(), cfg)` inside `useEffect([selectedId, projection, metadata])`; live scale read avoids wheel-zoom snap-back; CanvasViewer.panOnSelect.test.tsx 7/7 pass |
-| 21 | Capital dots render as D-04 dual-ring (outer dark ring + inner colored disk + white stroke) | VERIFIED | `DecorationsLayer.tsx:93-103` outer Circle radius=6.75 fill=rgba(0,0,0,0.6) + inner Circle radius=6 stroke="#ffffff" strokeWidth=1.5; zero `shadowBlur` matches (real ring not shadow); 8/8 DecorationsLayer tests |
-| 22 | Labels render only when `layerVisibility.labels && scale >= 2.0 * minScale` | VERIFIED | `LABEL_ZOOM_THRESHOLD_RELATIVE = 2.0`; `showLabels` gate at `DecorationsLayer.tsx:80`; test asserts label suppression below threshold |
-| 23 | Fit-to-view button + Ctrl+0 reset canvas to whole-map view | VERIFIED | `FitToViewButton.tsx` "Fit to view" copy at bottom-left minHeight 44px; `useKeyboardShortcuts(fitToView)` wires Ctrl/Cmd+0; `CanvasViewer.fitToView` uses computeFitToView + sets minScale |
-| 24 | Inspector shows project summary when nothing selected | VERIFIED | `InspectorSidebar.tsx:75-95` — heading "Project overview", 4 stat rows Kingdoms(amber)/Duchies(blue)/Condados(grass)/Baronies(gray) + project metadata |
-| 25 | Inspector capital group: real name when present OR exact "No capital assigned" sentinel (D-06.3) | VERIFIED | `InspectorSidebar.tsx:115-116` `typeof condado.capital_name === 'string' && condado.capital_name.trim().length > 0`; literal NO_CAPITAL constant at line 20; positive + negative path tests |
-| 26 | Empty-Stage click deselects using e.target.getStage() (Pitfall 6, race-free under StrictMode) | VERIFIED | `CanvasViewer.tsx:188 e.target === e.target.getStage()`; `stageRef.current` comparison deliberately absent (grep 0 matches); asserted in CanvasViewer.panOnSelect.test.tsx |
+| 1 | Backend emits territories.geojson with per-condado polygon + neighbors | VERIFIED | `territories_geojson.py:74 build_territories_geojson` + rasterio.features.shapes + STRtree.touches; whitelist at `generator.py:63-76`; 8/8 tests pass |
+| 2 | Backend emits baronies.geojson with per-barony polygon + fill color | VERIFIED | `baronies_geojson.py:24 build_baronies_geojson`; 6/6 tests pass |
+| 3 | FastAPI serves both geojson files via /api/projects/{id}/preview/{filename} | VERIFIED | whitelist includes both filenames + two new sidecars at `generator.py:63-76`; existing /preview/{filename} route unchanged |
+| 4 | Frontend projection module converts lon/lat <-> canvas pixels with <1e-9 round-trip error | VERIFIED | `projection.ts` + 8/8 tests pass at 1e-9 precision |
+| 5 | Konva Stage mounts inside /projects/:id and renders terrain PNG on Background layer | VERIFIED | `ProjectDetail.tsx` mounts `<CanvasViewer>`; 7/7 CanvasViewer tests pass |
+| 6 | Tailwind v4 + Radix overlay stays opaque over Konva Stage (Pitfall 2) | VERIFIED | Playwright smoke-tailwind-radix.spec.ts with baseline PNG + pngjs RGB sample |
+| 7 | Vitest + Playwright infra installed and wired | VERIFIED | `vitest.config.ts` + `playwright.config.ts` + 86/86 across 13 files |
+| 8 | User sees all condado polygons with fills from condado_colors.json sidecar | VERIFIED | `TerritoryLayer` + `TerritoryPolygon` with `condadoColors[id]` lookup; 3/3 tests pass |
+| 9 | Territory borders render as rgba(0,0,0,0.35), 1px, closed polygons | VERIFIED | `TerritoryPolygon.tsx` stroke="rgba(0, 0, 0, 0.35)" strokeWidth=1; asserted in tests |
+| 10 | User sees all barony polygons at 85% opacity when Borders toggle ON (D-02 real geometry) | VERIFIED | `BaronyLayer.tsx <Layer listening={false} opacity={0.85}>` with per-feature fill; 4/4 tests pass |
+| 11 | Floating Radix Card top-left shows 5 layer checkboxes | VERIFIED | `LayerTogglePanel.tsx` Card variant="surface" position:absolute top:12 left:12; 5/5 tests pass |
+| 12 | Checkbox state persists in useUIStore; toggling hides Konva nodes immediately | VERIFIED | `uiStore.ts` layerVisibility + toggleLayer; 11/11 tests pass |
+| 13 | Default layer state: terrain/territories/borders/capitals ON, labels OFF (D-09) | VERIFIED | `uiStore.ts` DEFAULT_LAYER_VISIBILITY asserted in tests |
+| 14 | TerritoryPolygon memoized (no sibling re-renders on selection change) | VERIFIED | `TerritoryPolygon.tsx` wrapped in memo(..., areEqual); narrow Zustand selector |
+| 15 | Pan via dragging; pan clamped so map stays within viewport | VERIFIED | `Stage draggable dragBoundFunc`; 9/9 useZoomPan tests pass |
+| 16 | Wheel zoom anchors on cursor position | VERIFIED | `makeWheelHandler` computes mousePointTo; unit test asserts correct new position |
+| 17 | Zoom clamped: minScale = fit scale, maxScale = 4× fit scale | VERIFIED | MAX_SCALE_MULTIPLIER = 4; clamp asserted in useZoomPan test |
+| 18 | Click condado → gold 3px outline + inspector with 4 groups | VERIFIED | `InteractionLayer.tsx` stroke="#f0c040" strokeWidth={3}; `InspectorSidebar` 9/9 tests pass |
+| 19 | Esc clears selection; empty-Stage click uses e.target.getStage() (Pitfall 6) | VERIFIED | `useKeyboardShortcuts` guard + `CanvasViewer` e.target comparison; 7/7 shortcut tests pass |
+| 20 | Neighbor chip click → select + pan to center (Pitfall 5) | VERIFIED | `CanvasViewer` panToGeoCenter inside useEffect([selectedId, projection, metadata]); 7/7 panOnSelect tests pass |
+| 21 | Capital dots: D-04 dual-ring (outer dark ring + inner colored disk + white stroke) | VERIFIED | `DecorationsLayer` outer r=6.75 + inner r=6; 0 shadowBlur matches; 8/8 tests pass |
+| 22 | Labels render only when layerVisibility.labels && scale >= 2.0 * minScale | VERIFIED | LABEL_ZOOM_THRESHOLD_RELATIVE = 2.0; showLabels gate asserted in test |
+| 23 | Fit-to-view button + Ctrl+0 reset canvas | VERIFIED | `FitToViewButton` + useKeyboardShortcuts Ctrl/Cmd+0; all tests pass |
+| 24 | Inspector shows project summary when nothing selected | VERIFIED | `InspectorSidebar` heading "Project overview" + 4 stat rows |
+| 25 | Capital group: real name OR exact "No capital assigned" sentinel (D-06.3) | VERIFIED | `InspectorSidebar` NO_CAPITAL literal + trim().length guard; positive + negative path tests pass |
+| 26 | Empty-Stage click deselects via e.target.getStage() (Pitfall 6) | VERIFIED | `CanvasViewer` canonical comparison; no stageRef.current pattern present |
+| **27** | **Running run_generation on real pipeline input produces territories.geojson + baronies.geojson on disk (G-01 closed)** | VERIFIED | Integration test `test_run_generation_emits_both_geojson_artifacts` drives `_run_pipeline_sync` end-to-end with [BLOCKING] asserts; PASSES |
+| **28** | **If emitter crashes, run_generation raises and background task records status='error_generating' + last_error (G-02 closed)** | VERIFIED | try/except removed at generator.py:349-356; `test_emitter_error_propagates_to_caller` asserts ValueError bubbles through _run_pipeline_sync; PASSES |
+| **29** | **Backend integration test exercises real emit_*_from_disk codepath and fails loudly on missing artifacts (G-03 closed)** | VERIFIED | `test_generator_e2e.py` exists with 2 tests, 4 [BLOCKING] assertions; PASSES |
+| **30** | **Frontend TerritoryLayer receives fills from backend-produced {condado_id: '#hex'} map — no #666666 fallback in happy path** | VERIFIED | `useCanvasArtifacts.ts:147-166` fetches `condado_colors.json` + `barony_colors.json` sidecars; both populate Record<string, string>; fallback only exercised when a condado id is truly missing |
+| **31** | **Unity-consumed lookup_condado_colors.json / lookup_barony_colors.json keep original {'r,g,b': idx} format (D-04 preserved)** | VERIFIED | `git diff 0bf5bbd..HEAD -- lib/map_generator.py` → empty; no service-layer code rewrites the Unity files; sidecars are additive only |
 
-**Score: 26/26 truths verified**
+**Score: 31/31 automated truths verified**
 
 ### Deferred Items
 
-Items not flagged as gaps because they are either (a) out of scope for Phase 2's Iberia milestone or (b) explicitly deferred in the code review for later phases.
+Items not yet met but explicitly addressed in later milestone phases or deferred in code review.
 
 | # | Item | Addressed In | Evidence |
 |---|------|-------------|----------|
-| 1 | MultiPolygon territories render all rings (islands/exclaves) | Phase 3+ | 02-REVIEW.md WR-04: "continental Iberia has no exclaves; correctness gap against real-world MultiPolygon data" — `firstOuterRing` at useCanvasArtifacts.ts:79 picks only first ring |
-| 2 | Edge-length-based adjacency (reject single-point corner touches) | Phase 4+ | 02-REVIEW.md IN-03: "admits single-point corner contact... if spec wants edge-adjacency only, replace with length check"; acknowledged in test suite |
-| 3 | Capital coords distinct from centroid coords | Phase 3+ | 02-03-SUMMARY.md Known Open Items: "backend does not yet emit a separate capital_lat / capital_lon pair" |
-| 4 | InspectorSidebarWrapper single useCanvasArtifacts call | Phase 4+ refactor | 02-REVIEW.md IN-01: current double-call works (TanStack dedups); consolidation is optional perf improvement |
+| 1 | MultiPolygon territories render all rings (islands/exclaves) | Phase 3+ | 02-REVIEW.md WR-04 — continental Iberia has no exclaves |
+| 2 | Edge-length-based adjacency (reject single-point corner touches) | Phase 4+ | 02-REVIEW.md IN-03 |
+| 3 | Capital coords distinct from centroid coords | Phase 3+ | 02-03-SUMMARY.md + 02-04-SUMMARY.md Known Open Items |
+| 4 | InspectorSidebarWrapper single useCanvasArtifacts call | Phase 4+ refactor | 02-REVIEW.md IN-01 |
 
-### Required Artifacts
+### Required Artifacts (Plan 02-04 delta)
 
-Level 1 (exists), Level 2 (substantive), Level 3 (wired), Level 4 (data flows).
+| Artifact | Level 1 exists | Level 2 substantive | Level 3 wired | Level 4 data flows | Status |
+|----------|---------------|--------------------|--------------|-------------------|--------|
+| `backend/medieval_forge/services/territories_geojson.py` (G-01 fix) | yes | yes (180+ lines, real-format parser + sidecar writer) | yes (imported in generator.py:339, called at :355 without try/except) | yes (reads real lookup PNG + colors JSON; 8/8 tests pass; 2 exercise `emit_territories_from_disk` with real format) | VERIFIED |
+| `backend/medieval_forge/services/baronies_geojson.py` (G-01 fix) | yes | yes (115+ lines) | yes (imported at :340, called at :356) | yes (6/6 tests; 2 exercise emit_baronies_from_disk) | VERIFIED |
+| `backend/medieval_forge/services/generator.py` (G-02 fix + whitelist) | yes | yes | yes (bare emitter calls; whitelist includes both sidecars at :67-75) | yes (manifest surfaces all 4 files; integration test validates end-to-end) | VERIFIED |
+| `backend/tests/test_generator_e2e.py` (G-03 new) | yes (164 lines) | yes (2 tests with [BLOCKING] asserts; fixture paints 20×20 synthetic maps) | yes (imports gen_mod; monkeypatches map_generator.generate_maps) | yes (both tests PASS) | VERIFIED |
+| `frontend/src/hooks/useCanvasArtifacts.ts` (sidecar URL switch) | yes | yes | yes (5-tuple consumers in CanvasViewer, InspectorSidebarWrapper, TerritoryLayer, BaronyLayer, DecorationsLayer) | yes (86/86 vitest tests pass; new URLs fetched: `condado_colors.json`, `barony_colors.json`) | VERIFIED |
 
-| Artifact | Level 1 | Level 2 | Level 3 | Level 4 | Status |
-|----------|---------|---------|---------|---------|--------|
-| `backend/medieval_forge/services/territories_geojson.py` | exists | substantive (170+ lines, rasterio + STRtree) | wired (imported in generator.py:331, called at :342) | data flows (reads real lookup PNG + metadata; 5/5 tests with synthetic raster) | VERIFIED |
-| `backend/medieval_forge/services/baronies_geojson.py` | exists | substantive (100+ lines) | wired (imported at generator.py:332, called at :343) | data flows (reads lookup_barony.png + colors; 4/4 tests) | VERIFIED |
-| `backend/medieval_forge/services/generator.py` (whitelist + emission hook) | exists | substantive | wired (emission called after _run_pipeline_sync; whitelist includes both geojson files) | data flows (both files served via /preview/{filename}) | VERIFIED |
-| `frontend/src/lib/projection.ts` | exists | substantive | wired (imported by useCanvasArtifacts, CanvasViewer, DecorationsLayer, useZoomPan) | data flows (8/8 round-trip tests at 1e-9 precision) | VERIFIED |
-| `frontend/src/stores/uiStore.ts` | exists | substantive | wired (imported by CanvasViewer, LayerTogglePanel, InspectorSidebar, InteractionLayer, TerritoryLayer, useKeyboardShortcuts) | data flows (11/11 tests; state drives visible layers) | VERIFIED |
-| `frontend/src/context/ProjectionContext.tsx` | exists | substantive | wired (ProjectionProvider in CanvasViewer; useProjection in DecorationsLayer) | data flows | VERIFIED |
-| `frontend/src/hooks/useCanvasArtifacts.ts` | exists | substantive (5-tuple with staleTime:Infinity) | wired (CanvasViewer + InspectorSidebarWrapper) | data flows (queries real /preview endpoints) | VERIFIED |
-| `frontend/src/components/canvas/CanvasViewer.tsx` | exists | substantive (268 lines) | wired (ProjectDetail mounts when status in {generated, exported}) | data flows (5 layers mounted; pan/zoom/fit/selection effects) | VERIFIED |
-| `frontend/src/components/canvas/BackgroundLayer.tsx` | exists | substantive | wired (inside Stage with visible={layerVisibility.terrain}) | data flows (loads terrain.png via use-image) | VERIFIED |
-| `frontend/src/components/canvas/TerritoryPolygon.tsx` | exists | substantive | wired (mapped in TerritoryLayer) | data flows (memo+areEqual stable identity) | VERIFIED |
-| `frontend/src/components/canvas/TerritoryLayer.tsx` | exists | substantive | wired (Stage child in CanvasViewer line 249) | data flows (territoriesQ.data + condadoColorsQ.data) | VERIFIED |
-| `frontend/src/components/canvas/BaronyLayer.tsx` | exists | substantive | wired (Stage child line 254) | data flows (baroniesQ.data with per-feature fill) | VERIFIED |
-| `frontend/src/components/canvas/LayerTogglePanel.tsx` | exists | substantive | wired (sibling of Stage inside canvas container, line 267) | data flows (reads + dispatches useUIStore) | VERIFIED |
-| `frontend/src/components/canvas/DecorationsLayer.tsx` | exists | substantive (dual-ring capitals + CenteredLabel) | wired (Stage child line 255) | data flows (metadata.condados + condadoColors + scale props) | VERIFIED |
-| `frontend/src/components/canvas/InteractionLayer.tsx` | exists | substantive | wired (Stage child line 265) | data flows (subscribes to selectedTerritoryId, finds territory points) | VERIFIED |
-| `frontend/src/components/canvas/FitToViewButton.tsx` | exists | substantive | wired (sibling line 268 with onFit callback) | data flows (triggers fitToView → computeFitToView) | VERIFIED |
-| `frontend/src/components/canvas/InspectorSidebar.tsx` | exists | substantive (project summary + 4-group detail + D-06.3 sentinel) | wired (InspectorSidebarWrapper in ProjectDetail line 142) | data flows (metadata + territories + project; dispatches select via neighbor chips) | VERIFIED |
-| `frontend/src/hooks/useZoomPan.ts` | exists | substantive (SCALE_BY=1.05, MAX_SCALE_MULTIPLIER=4, applyPanClamp, makeWheelHandler, makeDragBoundFunc, panToGeoCenter) | wired (CanvasViewer imports all 4 + constants) | data flows (9/9 tests) | VERIFIED |
-| `frontend/src/hooks/useKeyboardShortcuts.ts` | exists | substantive (Esc guard + Ctrl/Cmd+0) | wired (CanvasViewer.tsx:117 useKeyboardShortcuts(fitToView)) | data flows (7/7 tests) | VERIFIED |
-| `frontend/src/pages/ProjectDetail.tsx` (two-region layout + InspectorSidebar) | exists | substantive | wired (canvas-region + inspector-sidebar flex with InspectorSidebarWrapper) | data flows (inspector-sidebar-placeholder grep returns 0) | VERIFIED |
-| `frontend/e2e/smoke-tailwind-radix.spec.ts` + baseline | exists | substantive | wired (Playwright config) | data flows (Pitfall 2 regression still green per context) | VERIFIED |
-| `frontend/e2e/perf-panzoom.spec.ts` | exists | substantive (A5 FPS probe) | wired (env-gated by MF_PERF_FIXTURE_PROJECT_ID) | N/A (perf probe, not a correctness test) | VERIFIED |
-
-### Key Link Verification
+### Key Link Verification (Plan 02-04 must_haves)
 
 | From | To | Via | Status | Details |
-|------|-----|-----|--------|---------|
-| `generator.py` | `territories_geojson.build_territories_geojson` + `baronies_geojson.build_baronies_geojson` | called after map_generator.generate_maps | WIRED | generator.py:331-343 imports and calls both; both files appended to GENERATED_FILE_WHITELIST at line 67 |
-| `ProjectDetail.tsx` | `CanvasViewer` | rendered when status in {generated, exported} | WIRED | line 136 `<CanvasViewer projectId={project.id}>` inside `isGenerated` gate |
-| `useCanvasArtifacts.ts` | `/api/projects/{id}/preview/territories.geojson` + `.../baronies.geojson` | TanStack Query with staleTime:Infinity | WIRED | 5-tuple returned; queries use preview paths |
-| `projection.ts` | `map_generator.py geo_to_pixel` (affine math) | identical formula, sub-pixel floats | WIRED | 8/8 round-trip tests pass at 1e-9 precision; `inicio/map_generator.py` explicitly unmodified (D-04 honored) |
-| `TerritoryLayer` | `useCanvasArtifacts` | consumes TerritoryRender[] | WIRED | CanvasViewer destructures 5-tuple and passes territoriesQ.data |
-| `BaronyLayer` | `useCanvasArtifacts` | consumes BaronyRender[] with per-feature fill | WIRED | BaronyLayer line 19-29; fill=b.fill from server-resolved colors |
-| `TerritoryPolygon` | `lookup_condado_colors.json` | fill prop from JSON via condadoColors[id] | WIRED | TerritoryLayer passes fill={condadoColors[t.id] ?? FALLBACK_FILL} |
-| `LayerTogglePanel` | `useUIStore` | reads layerVisibility + dispatches toggleLayer | WIRED | lines 13 + 26; 5/5 tests |
-| `CanvasViewer` | `TerritoryLayer` + `BaronyLayer` + `LayerTogglePanel` + `DecorationsLayer` + `InteractionLayer` + `FitToViewButton` | all 6 mounted | WIRED | imports at lines 5-10; usages at lines 249-268 |
-| `CanvasViewer` | `useZoomPan` primitives | makeWheelHandler + makeDragBoundFunc + panToGeoCenter | WIRED | imports at line 16-21; all three wired into Stage + selection effect |
-| `CanvasViewer` | `useKeyboardShortcuts` | Esc-deselect + Ctrl/Cmd+0-fit | WIRED | line 117 `useKeyboardShortcuts(fitToView)` |
-| `InspectorSidebar` | `useUIStore.select` | neighbor chip click dispatches select(neighborId) | WIRED | chips render `onClick={() => select(chip.id)}` |
-| `ProjectDetail` | `InspectorSidebar` | replaces plan-2.2 placeholder | WIRED | InspectorSidebarWrapper at line 142; grep `inspector-sidebar-placeholder` returns 0 matches |
-| Selection change → canvas pan | `panToGeoCenter` | useEffect([selectedId, projection, metaQ.data]) | WIRED | CanvasViewer.tsx:125-140; scale read live from stage.scaleX() per advisor fix |
+|------|----|----|--------|---------|
+| generator.py `_run_pipeline_sync` | emit_territories_from_disk + emit_baronies_from_disk | direct call, no try/except | WIRED | lines 355-356 bare calls; grep `except Exception` in 330-360 range returns 0 matches |
+| emit_territories_from_disk | pc raster painted with idx from `{"r,g,b": idx}` directly | no hex parsing; int values from map_generator SECTION 10 | WIRED | `pc[mask] = idx` at territories_geojson.py:175 with `idx = int(idx_val)` range-checked |
+| frontend useCanvasArtifacts [2] | /api/projects/{id}/preview/condado_colors.json | TanStack Query; shape Record<condado_id, '#hex'> | WIRED | useCanvasArtifacts.ts:150 URL string + 3/3 consumer tests pass |
+| frontend useCanvasArtifacts [3] | /api/projects/{id}/preview/barony_colors.json | TanStack Query; shape Record<barony_name, '#hex'> | WIRED | useCanvasArtifacts.ts:161 URL string; test mock switched to match |
 
-### Data-Flow Trace (Level 4)
+### Data-Flow Trace (Level 4) — Plan 02-04 Artifacts
 
 | Artifact | Data Variable | Source | Produces Real Data | Status |
-|----------|---------------|--------|--------------------|--------|
-| TerritoryLayer | territoriesQ.data | useCanvasArtifacts → /preview/territories.geojson → territories_geojson.py rasterio pipeline | Yes (real polygon features + neighbors) | FLOWING |
-| BaronyLayer | baroniesQ.data | useCanvasArtifacts → /preview/baronies.geojson → baronies_geojson.py | Yes (per-feature fill + polygon) | FLOWING |
-| TerritoryPolygon fill | condadoColors[t.id] | useCanvasArtifacts → /preview/lookup_condado_colors.json | Yes (Unity-ready hex palette) | FLOWING |
-| DecorationsLayer | metadata.condados + condadoColors + currentScale/minScale | useCanvasArtifacts metaQ → /preview/territory_metadata.json; currentScale from stage.scaleX() live read | Yes | FLOWING |
-| InteractionLayer | territories[i].points where id === selectedTerritoryId | useUIStore selectedTerritoryId + TerritoryRender[] | Yes (null → 0 children; id → single gold outline) | FLOWING |
-| BackgroundLayer | terrain.png URL | CanvasViewer constructs /preview/terrain.png URL | Yes (use-image hook resolves image) | FLOWING |
-| InspectorSidebar (detail) | metadata.condados.find(id=selectedId) + project | InspectorSidebarWrapper metaQ + project prop | Yes (positive and NO_CAPITAL paths tested) | FLOWING |
-| InspectorSidebar (summary) | metadata.kingdoms/duchies/condados/baronies counts | useCanvasArtifacts metaQ | Yes (4 badges with real counts) | FLOWING |
+|----------|---------------|--------|-------------------|--------|
+| TerritoryLayer.tsx | condadoColors prop | useCanvasArtifacts[2] → fetch `/preview/condado_colors.json` → sidecar written by `emit_territories_from_disk` | YES (happy-path integration test PASSES with non-empty sidecar) | FLOWING |
+| BaronyLayer.tsx | baronies.fill (per-feature) | useCanvasArtifacts[1] → baronies.geojson properties.fill → resolved server-side from `{"r,g,b": idx}` → barony_colors sidecar | YES | FLOWING |
+| DecorationsLayer.tsx | condado-color dots | useCanvasArtifacts[2] → condado_colors.json | YES | FLOWING |
 
 ### Behavioral Spot-Checks
 
 | Behavior | Command | Result | Status |
 |----------|---------|--------|--------|
-| Frontend unit test suite | `cd frontend && npx vitest run` | 86/86 across 13 files (3.87s total) | PASS |
-| TypeScript build | `cd frontend && npx tsc -b` | exit 0, no output | PASS |
-| Backend phase-02 services | `cd backend && python -m pytest tests/test_territories_geojson.py tests/test_baronies_geojson.py -v` | 9/9 pass | PASS |
-| Playwright Pitfall-2 visual smoke | (per provided context) | 1/1 pass | PASS (context) |
-| Full backend suite | (per provided context) | 2 pre-existing failures from pre-phase-02 commits (test_sse_stream Portuguese-localized messages; test_country_qid_validation_rejects_bad_format) — NOT regressions from phase 02 | SKIP (non-regression) |
+| G-01 adapter tests pass | `python -m pytest tests/test_territories_geojson.py tests/test_baronies_geojson.py -v` | 14/14 pass | PASS |
+| G-02 + G-03 integration test passes | `python -m pytest tests/test_generator_e2e.py -v` | 2/2 pass | PASS |
+| Full backend suite (plan 02-04 scope) | `python -m pytest tests/test_territories_geojson.py tests/test_baronies_geojson.py tests/test_generator_e2e.py -v` | 16/16 pass, 0 failures | PASS |
+| Frontend vitest suite | `npx vitest run` | 86/86 across 13 files | PASS |
+| D-04 black-box constraint | `git diff 0bf5bbd..HEAD -- backend/medieval_forge/lib/map_generator.py` | empty output | PASS |
+| Commits in expected range | `git log --oneline 0bf5bbd..HEAD` | Shows 0a90b05 → 58664a6 (six commits) | PASS |
 
 ### Requirements Coverage
 
-| Requirement | Source Plan(s) | Description | Status | Evidence |
-|-------------|----------------|-------------|--------|----------|
-| CANVAS-01 | 02-01, 02-02 | User can view all territories on Konva canvas with correct colors and borders | SATISFIED | TerritoryLayer + TerritoryPolygon + lookup_condado_colors.json pipeline; rgba stroke 1px; real geojson from territories_geojson.py |
-| CANVAS-02 | 02-03 | User can pan and zoom (Stage drag + wheel zoom) | SATISFIED | Stage draggable + dragBoundFunc + makeWheelHandler (cursor-anchored, clamped [fit, 4×fit]) |
-| CANVAS-03 | 02-03 | User can click territory to select and see properties in right panel | SATISFIED | TerritoryPolygon click → select(id) → InteractionLayer gold outline + InspectorSidebar 4-group render; Pitfall 5 pan-on-select + Pitfall 6 empty-Stage deselect |
-| CANVAS-04 | 02-02 | Canvas shows layer toggles (terrain/territories/borders/capitals/labels) | SATISFIED | LayerTogglePanel with 5 checkboxes wired to useUIStore.layerVisibility; default per D-09 |
-| CANVAS-05 | 02-03 | Canvas shows territory labels at appropriate zoom levels | SATISFIED | DecorationsLayer gate `showLabels = layerVisibility.labels && currentScale >= 2.0 * minScale`; post-mount getTextWidth centering |
-| CANVAS-06 | 02-03 | User can fit map to view (reset zoom/pan) | SATISFIED | FitToViewButton bottom-left + Ctrl/Cmd+0 keyboard shortcut; both call same fitToView callback that uses computeFitToView + sets minScale |
-
-All 6 CANVAS-* requirements from ROADMAP Phase 2 are accounted for. Plans declared:
-- 02-01: CANVAS-01
-- 02-02: CANVAS-01, CANVAS-04
-- 02-03: CANVAS-02, CANVAS-03, CANVAS-05, CANVAS-06
-
-No orphaned requirements. No requirements claimed but unimplemented.
+| Requirement | Source Plan | Description | Status | Evidence |
+|-------------|------------|-------------|--------|----------|
+| CANVAS-01 | 02-01, 02-02, 02-04 | User can view all territories on a Konva canvas with correct colors and borders | SATISFIED (automated) | Truth 8 + 10 + 27 + 30 — polygons render with sidecar fills; integration test proves end-to-end pipeline produces non-empty territories.geojson |
+| CANVAS-02 | 02-03 | User can pan and zoom the canvas | SATISFIED (automated) | Truths 15-17 + useZoomPan 9/9 tests |
+| CANVAS-03 | 02-03, 02-04 | User can click a territory to select it and see its properties | SATISFIED (automated) | Truths 18-20, 24-26 + 9/9 InspectorSidebar tests |
+| CANVAS-04 | 02-02, 02-04 | Canvas shows layer toggles | SATISFIED (automated) | Truths 11-13 + LayerTogglePanel 5/5 tests |
+| CANVAS-05 | 02-03 | Canvas shows territory labels at appropriate zoom levels | SATISFIED (automated) | Truth 22 + DecorationsLayer 8/8 tests |
+| CANVAS-06 | 02-03 | User can fit the map to view | SATISFIED (automated) | Truth 23 + useKeyboardShortcuts + FitToViewButton tests |
 
 ### Anti-Patterns Found
 
-Per 02-REVIEW.md findings (incorporated here). Zero blockers, 5 warnings + 5 info items — all non-blocking for Phase 2 acceptance.
+| File | Line | Pattern | Severity | Impact |
+|------|------|---------|----------|--------|
+| `backend/medieval_forge/services/generator.py` | 89, 124 | Duplicate definition of `_cleanup_territory_module` (WR-01 from 02-REVIEW.md) | Warning (advisory) | The two definitions are functionally identical; second shadows the first. Pre-existing dead-code smell — not introduced by plan 02-04. Not blocking. |
+| `backend/medieval_forge/services/generator.py` | 107-121 | `_patch_reload_for_synthetic` mutates `importlib.reload` at the module level (WR-02 from 02-REVIEW.md) | Warning (advisory) | Concurrency hazard under parallel generations: nested context-manager calls can permanently install the safe-reload wrapper if threads finish in the wrong order. Pre-existing, not introduced by plan 02-04. Not exercised by the single-threaded Phase 2 pipeline. |
 
-| File | Severity | Pattern | Impact |
-|------|----------|---------|--------|
-| `generator.py:81,116` | Warning (WR-01) | Duplicated `_cleanup_territory_module` definition | Code-smell, harmless (second def wins); cleanup recommended before Phase 4 |
-| `generator.py:98-113` | Warning (WR-02) | `_patch_reload_for_synthetic` mutates global `importlib.reload` — concurrency race | Safe under current single-generation assumption; needs lock or module-scoped patch before concurrent generation |
-| `generator.py:213-220` | Warning (WR-03) | `_build_region_config` silently drops caller bbox when no territory data | Latent bug — unreachable today because `_run_pipeline_sync` requires non-empty territory_data at line 302-305 |
-| `useCanvasArtifacts.ts:79-83` | Warning (WR-04) | `firstOuterRing` discards all but first polygon of MultiPolygon | Deferred to Phase 3+ (continental Iberia has no exclaves) |
-| `pyproject.toml:10,27` | Warning (WR-05) | `rasterio>=1.4,<2.0` admits 1.5+ which requires Python 3.12+ while `requires-python = ">=3.11"` | Version pin tightening needed; runtime uses Python 3.14 so tests pass |
-| `ProjectDetail.tsx:405,424` | Info (IN-01) | Double useCanvasArtifacts call in InspectorSidebarWrapper | Acceptable perf; consolidate in Phase 4 refactor |
-| `baronies_geojson.py:80-82` | Info (IN-02) | Variable `b` reused for blue channel inside color loop | Readability; rename to `blue` |
-| `territories_geojson.py:117` | Info (IN-03) | `STRtree.touches()` admits single-point corner adjacency | Deferred; semantics explicitly documented in test |
-| `InteractionLayer.tsx:27-35` + `BaronyLayer.tsx:19-29` | Info (IN-04) | Redundant `listening={false}` on Line inside `listening={false}` Layer | Stylistic noise only |
-| `DecorationsLayer.tsx:32-41` | Info (IN-05) | `CenteredLabel` effect depends only on `[props.text]` (OK today; missing fontSize/fontFamily when parameterized) | Forward-looking nit |
-
-No blocker anti-patterns. Nothing that prevents goal achievement.
+Both flags are explicitly non-blocking per the advisory in the task prompt. Consider a Phase 4+ cleanup that (a) drops the duplicate and (b) replaces the global monkey-patch with a threading.local or per-call patch target.
 
 ### Human Verification Required
 
-All automated verification gates pass, but visual, perceptual, and full-E2E paths need human testing in a real browser with a generated Iberia project.
+Ten items need real-browser / real-pipeline testing. Items 1, 2, 5, 7, 9 (in the human_verification YAML) were FAILED or BLOCKED in the pre-02-04 verification and are now UNBLOCKED for human re-run against a freshly generated Iberia project. Item 10 is a new behavior introduced by the G-02 fix (error propagation to status machine).
 
-#### 1. Pixel-parity condado fills
+See the `human_verification:` frontmatter for the full list with test/expected/why-human triples.
 
-**Test:** Open a generated Iberia project at `/projects/:id` and compare the canvas rendering to `terrain.png` / `lookup_condado.png`.
-**Expected:** Every condado is painted with its color from `lookup_condado_colors.json`; 1px rgba(0,0,0,0.35) borders visible; no `#666666` fallback anywhere (would indicate a missing color lookup).
-**Why human:** Automated tests use synthetic raster fixtures. Full E2E path through the real Iberia pipeline requires a generated project.
+### Notable Observations
 
-#### 2. Barony overlay at 85% opacity
+1. **REQUIREMENTS.md table drift.** The traceability table at `.planning/REQUIREMENTS.md:120-125` still marks CANVAS-02, CANVAS-05, CANVAS-06 as `Pending`, but plans 02-01/02/03 landed those features and every supporting truth verifies automatically. This is a documentation drift, not a missing implementation. Recommend updating those rows to `Complete` as part of the Phase 2 milestone close-out. Not a verification gap.
 
-**Test:** With a real Iberia project loaded, toggle the Borders layer ON/OFF.
-**Expected:** When ON, baronies render as internal borders at 85% opacity above condados with subtle 0.25 stroke; when OFF, the BaronyLayer disappears immediately with no stutter.
-**Why human:** Opacity blending and stroke contrast are perceptual quality checks.
+2. **UAT sheet (02-HUMAN-UAT.md) still reads `status: gaps_found`.** This was true before 02-04 but is now stale — the gaps are closed. UAT items 1/2/5/7/9 should be re-run by the human and their status fields updated from FAILED/BLOCKED to PASSED (assuming the human run succeeds).
 
-#### 3. Drag-pan smoothness and clamp behavior
+3. **No regressions detected.** Every pre-02-04 test that previously passed (86 frontend + 9 build_* backend) still passes. Plan 02-04 added 7 backend tests (5 adapter + 2 integration) without breaking any pre-existing path.
 
-**Test:** Drag-pan with the mouse across the canvas to all edges.
-**Expected:** Map scrolls smoothly with the cursor; at map edges the pan clamps so the map never leaves the viewport; when map is smaller than viewport it stays centered.
-**Why human:** Pan feel (smoothness, clamp boundary behavior) cannot be fully exercised by dragBoundFunc unit tests.
-
-#### 4. Cursor-anchored wheel zoom
-
-**Test:** Mouse-wheel zoom in and out over different cursor positions.
-**Expected:** Zoom anchors on the cursor (point under cursor stays under cursor through zoom); clamps at fit-scale (no further zoom-out) and 4× fit-scale (no further zoom-in).
-**Why human:** Cursor-anchor precision under real wheel events only visible in a real browser.
-
-#### 5. Selection + neighbor chip pan-on-select flow
-
-**Test:** Click a condado polygon, then click a neighbor chip in the inspector.
-**Expected:** Gold 3px outline appears on clicked condado; inspector shows 4 groups (hierarchy badges, path/area/centroid, capital, adjacent); clicking a neighbor chip moves selection AND pans the canvas so the new territory is centered.
-**Why human:** Pan-to-selected smoothness is a user-visible behavior — unit test asserts `stage.position()` was called, but the end-user experience of smooth re-centering is only visible in a real browser.
-
-#### 6. Esc + empty-Stage click deselect
-
-**Test:** Press Esc while selection is active, then click the empty Stage background.
-**Expected:** Esc clears selection (inspector reverts to "Project overview"); empty-Stage click also clears selection (Pitfall 6 canonical `e.target.getStage()` pattern).
-**Why human:** The Esc guard against INPUT/TEXTAREA/contentEditable focus needs a real browser focus model; jsdom does not implement isContentEditable reliably.
-
-#### 7. Labels gated by zoom threshold
-
-**Test:** Zoom to >= 2× minScale and toggle the Labels layer.
-**Expected:** Labels appear as system-ui 12px text with white halo centered on capitals; at <2× minScale labels never render even with toggle ON.
-**Why human:** Post-mount getTextWidth() centering requires a real Konva canvas context; jsdom cannot exercise the measurement pipeline.
-
-#### 8. Fit-to-view button + Ctrl+0
-
-**Test:** Click Fit-to-view button AND press Ctrl+0 from a zoomed-in state.
-**Expected:** Both paths reset the canvas to show the full map centered with ~5% padding; minScale is recomputed; button is bottom-left with minHeight:44px.
-**Why human:** Visual confirmation of reset behavior and ~5% padding perception.
-
-#### 9. D-06.3 capital sentinel end-to-end
-
-**Test:** Open a project with a condado that has a real `capital_name` set, and one without.
-**Expected:** With-capital condado shows the capital city name + coords below; without-capital shows the exact literal string "No capital assigned".
-**Why human:** The sentinel path is unit-tested, but the end-to-end flow (backend metadata emission → frontend render) with a real capital_name-bearing project requires a generated fixture.
+4. **Plan 02-04 scope adherence verified.** All 5 must_haves declared in the plan frontmatter are independently confirmed present in code: sidecar emission on disk, exception propagation, integration test, frontend sidecar consumption, D-04 preservation.
 
 ### Gaps Summary
 
-No gaps. All 26 observable truths are verified, all 22 required artifacts exist, are substantive, wired, and have data flowing through them. All 6 CANVAS-* requirements are satisfied by real implementations backed by passing unit + integration tests. The review identified 10 non-blocking findings (5 warning + 5 info) which are either out-of-scope for Phase 2 (MultiPolygon islands, concurrent generation) or nit-level polish for future cleanup.
+**No actionable gaps.** All three pre-verification blockers (G-01 format mismatch, G-02 silent swallow, G-03 missing integration test) are closed with primary-source evidence (code changes + passing tests, not just SUMMARY claims). The remaining verification burden is purely human-UAT against a real generated Iberia project — the automated surface has been fully exercised.
 
-The only reason status is `human_needed` rather than `passed` is that visual, perceptual, and full-E2E-with-real-Iberia-pipeline checks cannot be exercised from the terminal. All automated gates pass.
+Status is `human_needed` (not `passed`) because the phase's success criteria explicitly depend on observable user behavior that cannot be automated: pixel-parity against the Iberia pipeline, pan smoothness, cursor-anchor precision, label centering via real Konva context, and the G-02 error-propagation path exercised through the FastAPI background-task status machine.
 
 ---
 
-_Verified: 2026-04-18T15:10:00Z_
+_Verified: 2026-04-18T19:30:00Z_
 _Verifier: Claude (gsd-verifier)_
+_Re-verification after plan 02-04 gap closure (commits 0a90b05 → 58664a6)_
