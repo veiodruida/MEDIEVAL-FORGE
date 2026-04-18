@@ -105,7 +105,10 @@ export function InspectorSidebar({
   const duchyName = duchy?.name ?? condado.duchy
   const baronyCount = condado.baronies.length
 
-  const territory = territories.find((t) => t.id === condado.id)
+  // `territories` is accepted as a prop so Phase 4+ can derive geometry-based
+  // area from the projected points (Shoelace formula) rather than pixel_count.
+  // Not used yet — pixel_count is still the authoritative area signal for Phase 2.
+  void territories
   const neighbors = condado.neighbors
 
   const hasCapital =
@@ -135,7 +138,7 @@ export function InspectorSidebar({
         <Flex justify="between" align="center">
           <Text size="1" color="gray">Area</Text>
           <Text size="2">
-            {(condado.pixel_count / 1000).toFixed(1)}k px{territory ? '' : ''}
+            {(condado.pixel_count / 1000).toFixed(1)}k px
           </Text>
         </Flex>
       </Box>
