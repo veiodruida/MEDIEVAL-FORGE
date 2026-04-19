@@ -34,6 +34,7 @@ def build_baronies_geojson(
     out_dir.mkdir(parents=True, exist_ok=True)
 
     pb32 = pb.astype(np.int32)
+    pb_H, pb_W = pb32.shape  # actual raster dims — lookup PNG is map_w × map_h (NOT upscaled)
     shapes_per_idx: dict[int, list] = {}
     for geom, idx in rasterio.features.shapes(pb32, mask=(pb32 >= 0)):
         i = int(idx)
@@ -45,7 +46,7 @@ def build_baronies_geojson(
         if not geoms:
             continue
         u = unary_union(geoms)
-        lonlat = _pixel_polygon_to_lonlat(mapping(u), cfg)
+        lonlat = _pixel_polygon_to_lonlat(mapping(u), cfg, pb_W, pb_H)
         condado_id = condados[b["condado_idx"]][0] if 0 <= b["condado_idx"] < len(condados) else ""
         features.append({
             "type": "Feature",

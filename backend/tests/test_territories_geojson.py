@@ -192,6 +192,83 @@ def test_emit_territories_from_disk_malformed_key_raises_value_error(
         emit_territories_from_disk(pid, gen, cfg)
 
 
+def test_pixel_polygon_to_lonlat_uses_actual_pc_shape_not_upscaled_dims(
+    tmp_path, monkeypatch,
+):
+    """Regression: BUG-1 — lookup PNG is at map_w×map_h (NOT map_w*upscale×map_h*upscale).
+
+    With upscale=2, the buggy code used W=map_w*2, H=map_h*2 for the inverse
+    projection, which compressed all lon/lat coords to ~50% of the valid range.
+    The fix reads W/H from pc.shape (the actual raster dimensions).
+
+    This test uses upscale=2 with a PNG painted at map_w×map_h (40×40, not 80×80)
+    so that the shapes rasterio emits are in 0..40 pixel space.  After the fix
+    the emitted polygon vertices must cover nearly the full geographic bounds.
+    """
+    pid = str(uuid.uuid4())
+    from medieval_forge.services import paths as _paths
+    monkeypatch.setattr(_paths, "PROJECTS_ROOT", tmp_path / "projects")
+    gen = _paths.PROJECTS_ROOT / pid / "generated"
+    gen.mkdir(parents=True)
+
+    map_w, map_h = 40, 40
+    # PNG is at map_w × map_h — NOT at map_w*upscale × map_h*upscale.
+    # This matches what map_generator.generate_lookup_map actually writes.
+    _paint_two_colors(gen / "lookup_condado.png", (10, 20, 30), (40, 50, 60),
+                      W=map_w, H=map_h)
+    (gen / "lookup_condado_colors.json").write_text(
+        json.dumps({"10,20,30": 0, "40,50,60": 1})
+    )
+
+    lon_min, lon_max = -10.0, 0.0
+    lat_min, lat_max = 36.0, 44.0
+    _write_metadata(gen, [
+        ("C_A", "Alpha", -7.5, 42.0, "D1", []),
+        ("C_B", "Beta",  -2.5, 42.0, "D1", []),
+    ])
+    # Overwrite the map_size in metadata to match map_w*upscale (upscaled terrain dims).
+    meta_path = gen / "territory_metadata.json"
+    meta = json.loads(meta_path.read_text())
+    meta["map_size"] = [map_w * 2, map_h * 2]  # upscaled terrain is 80×80
+    meta["bounds"] = {"lon_min": lon_min, "lon_max": lon_max,
+                      "lat_min": lat_min, "lat_max": lat_max}
+    meta_path.write_text(json.dumps(meta))
+
+    # upscale=2: the BUGGY code would divide by map_w*upscale=80 instead of 40.
+    cfg = _ProjCfg(lon_min, lon_max, lat_min, lat_max,
+                   map_w=map_w, map_h=map_h, upscale=2, lon_scale=0.78)
+    out = emit_territories_from_disk(pid, gen, cfg)
+    data = json.loads(out.read_text())
+
+    all_lons: list[float] = []
+    all_lats: list[float] = []
+    for feat in data["features"]:
+        geom = feat["geometry"]
+        rings = (geom["coordinates"] if geom["type"] == "Polygon"
+                 else [r for poly in geom["coordinates"] for r in poly])
+        for ring in rings:
+            for coord in ring:
+                all_lons.append(coord[0])
+                all_lats.append(coord[1])
+
+    # With the fix, vertices from the RIGHT half of the PNG must reach near lon_max.
+    # The right half starts at pixel x=20; in a 40-wide image that is x/40 = 0.5 of span.
+    # The rightmost pixels are at x≈40, so lon ≈ lon_max.  Allow 5% tolerance.
+    lon_range = max(all_lons) - min(all_lons)
+    lat_range = max(all_lats) - min(all_lats)
+    expected_lon_span = lon_max - lon_min  # 10.0
+    expected_lat_span = lat_max - lat_min  # 8.0
+
+    assert lon_range > expected_lon_span * 0.85, (
+        f"lon range {lon_range:.3f} < 85% of expected {expected_lon_span}; "
+        "territories still compressed — upscale mismatch not fixed"
+    )
+    assert lat_range > expected_lat_span * 0.85, (
+        f"lat range {lat_range:.3f} < 85% of expected {expected_lat_span}; "
+        "territories still compressed — upscale mismatch not fixed"
+    )
+
+
 def test_emit_territories_from_disk_out_of_range_idx_skipped_not_crashed(
     tmp_path, monkeypatch,
 ):

@@ -45,12 +45,16 @@ class _ProjCfg:
         self.lon_scale = lon_scale
 
 
-def _pixel_polygon_to_lonlat(geom: dict, cfg: _ProjCfg) -> dict:
+def _pixel_polygon_to_lonlat(geom: dict, cfg: _ProjCfg, W: int, H: int) -> dict:
     """Apply the inverse of map_generator.geo_to_pixel to every vertex.
-    The lookup PNG is at map_w*upscale x map_h*upscale — use that as W/H.
+
+    W and H must be the actual pixel dimensions of the raster array that
+    rasterio.features.shapes was run on (i.e. pc.shape[1] and pc.shape[0]).
+    These come from lookup_condado.png / lookup_barony.png which are written at
+    map_w × map_h (NOT map_w*upscale × map_h*upscale) by map_generator.py.
+    Do NOT substitute cfg.map_w * cfg.upscale here — that is the upscaled
+    terrain resolution, not the lookup raster resolution.
     """
-    W = cfg.map_w * cfg.upscale
-    H = cfg.map_h * cfg.upscale
     span = (cfg.lon_max - cfg.lon_min) * cfg.lon_scale
 
     def px_to_lonlat(px: float, py: float) -> tuple[float, float]:
@@ -82,6 +86,7 @@ def build_territories_geojson(
     out_dir.mkdir(parents=True, exist_ok=True)
 
     pc32 = pc.astype(np.int32)
+    pc_H, pc_W = pc32.shape  # actual raster dims — lookup PNG is map_w × map_h (NOT upscaled)
     shapes_per_idx: dict[int, list] = {}
     for geom, idx in rasterio.features.shapes(pc32, mask=(pc32 >= 0)):
         i = int(idx)
@@ -95,7 +100,7 @@ def build_territories_geojson(
             continue
         u = unary_union(geoms)
         unioned[ci] = u
-        lonlat_geojson = _pixel_polygon_to_lonlat(mapping(u), cfg)
+        lonlat_geojson = _pixel_polygon_to_lonlat(mapping(u), cfg, pc_W, pc_H)
         features.append({
             "type": "Feature",
             "id": c[0],
