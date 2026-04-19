@@ -291,3 +291,78 @@ def test_emit_territories_from_disk_out_of_range_idx_skipped_not_crashed(
     data = json.loads(out.read_text())
     # Only C_A emitted; the out-of-range entry is silently skipped.
     assert {f["id"] for f in data["features"]} == {"C_A"}
+
+
+# ---------------------------------------------------------------------------
+# Problem B fix: orig_idx → meta_ci remapping via original_condados parameter
+# ---------------------------------------------------------------------------
+
+
+def _paint_three_regions(path, color_a, color_b, color_c, W=30, H=20):
+    """Write a small RGB PNG split into three vertical thirds."""
+    arr = np.zeros((H, W, 3), dtype=np.uint8)
+    third = W // 3
+    arr[:, :third] = color_a
+    arr[:, third:2 * third] = color_b
+    arr[:, 2 * third:] = color_c
+    Image.fromarray(arr, mode="RGB").save(path)
+
+
+def test_emit_territories_orig_idx_remapped_to_meta_ci(tmp_path, monkeypatch):
+    """Problem B regression: survivors with original index >= n_survivors must be emitted.
+
+    Scenario: 100-entry original condados list. Only 3 survive (indices 5, 7, 99).
+    generate_lookup_map writes colors_raw = {color_A: 5, color_B: 7, color_C: 99}.
+    export_metadata writes 3 survivors re-indexed 0,1,2 in metadata.
+
+    Without the fix, pc stores values 5, 7, 99 and build_territories_geojson
+    loops ci in 0..2 — never matching 5, 7, or 99 → 0 features emitted.
+    With the fix, pc stores values 0, 1, 2 (meta positions) → 3 features emitted.
+    """
+    pid = str(uuid.uuid4())
+    from medieval_forge.services import paths as _paths
+    monkeypatch.setattr(_paths, "PROJECTS_ROOT", tmp_path / "projects")
+    gen = _paths.PROJECTS_ROOT / pid / "generated"
+    gen.mkdir(parents=True)
+
+    # Three survivors at original indices 5, 7, 99 in a 100-condado universe.
+    # Colors chosen so they don't collide with map_generator's formula.
+    color_a = (50, 60, 70)
+    color_b = (80, 90, 100)
+    color_c = (110, 120, 130)
+
+    _paint_three_regions(gen / "lookup_condado.png", color_a, color_b, color_c)
+
+    # colors_raw uses ORIGINAL indices as values (as generate_lookup_map writes them).
+    (gen / "lookup_condado_colors.json").write_text(json.dumps({
+        f"{color_a[0]},{color_a[1]},{color_a[2]}": 5,
+        f"{color_b[0]},{color_b[1]},{color_b[2]}": 7,
+        f"{color_c[0]},{color_c[1]},{color_c[2]}": 99,
+    }))
+
+    # Metadata has only the 3 survivors, re-indexed 0..2.
+    _write_metadata(gen, [
+        ("COND_5",  "Condado5",  -8.0, 42.0, "D1", []),
+        ("COND_7",  "Condado7",  -5.0, 42.0, "D1", []),
+        ("COND_99", "Condado99", -2.0, 42.0, "D1", []),
+    ])
+
+    # original_condados: 100-entry list; positions 5, 7, 99 are the survivors.
+    original_condados = [
+        [f"DROPPED_{i}", f"Dropped{i}", -10.0, 36.0, "D1", []]
+        for i in range(100)
+    ]
+    original_condados[5]  = ["COND_5",  "Condado5",  -8.0, 42.0, "D1", []]
+    original_condados[7]  = ["COND_7",  "Condado7",  -5.0, 42.0, "D1", []]
+    original_condados[99] = ["COND_99", "Condado99", -2.0, 42.0, "D1", []]
+
+    cfg = _ProjCfg(-10.0, 0.0, 36.0, 44.0, 30, 20, 1, 0.78)
+    out = emit_territories_from_disk(pid, gen, cfg, original_condados=original_condados)
+    data = json.loads(out.read_text())
+
+    ids = {f["id"] for f in data["features"]}
+    assert ids == {"COND_5", "COND_7", "COND_99"}, (
+        f"Expected 3 features (COND_5, COND_7, COND_99) but got: {ids}. "
+        "Survivors with orig_idx >= n_survivors must be emitted after remap."
+    )
+    assert len(data["features"]) == 3

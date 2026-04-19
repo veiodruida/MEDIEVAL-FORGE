@@ -135,6 +135,7 @@ def emit_territories_from_disk(
     project_id: str,
     generated_dir: Path,
     cfg: _ProjCfg,
+    original_condados: list[list[Any]] | None = None,
 ) -> Path:
     """Read-back orchestrator. Parses the REAL map_generator lookup format
     ``{"r,g,b": idx}`` (see lib/map_generator.py SECTION 10, generate_lookup_map).
@@ -145,6 +146,20 @@ def emit_territories_from_disk(
       * ``condado_colors.json`` sidecar — ``{condado_id: "#rrggbb"}`` for the
         frontend. The Unity-consumed ``lookup_condado_colors.json`` stays
         untouched (D-04 black-box preserved).
+
+    ``original_condados`` — the FULL condados list as passed to map_generator
+    (all entries including those with 0 pixels, in original order). When
+    supplied, the pixel values written by generate_lookup_map (which are
+    ORIGINAL condado indices, 0..n-1 across the full list) are correctly
+    remapped to the METADATA position (0..survivors-1) that
+    build_territories_geojson expects.  Without this remapping any surviving
+    condado whose original index >= number-of-survivors is silently lost
+    (Problem B root cause).
+
+    If ``original_condados`` is None the function falls back to the legacy
+    identity mapping (orig_idx == meta_ci), which is correct only when no
+    condados were dropped — safe for the existing unit-test scenarios where
+    every painted color maps to a consecutive metadata entry.
     """
     meta = json.loads((generated_dir / "territory_metadata.json").read_text())
     condados_meta = meta["condados"]  # list of dicts per export_metadata
@@ -155,6 +170,30 @@ def emit_territories_from_disk(
         for c in condados_meta
     ]
     colors_raw = json.loads((generated_dir / "lookup_condado_colors.json").read_text())
+
+    # Build orig_idx → meta_ci mapping when the full original list is available.
+    # generate_lookup_map() writes color_map[rgb] = i where i iterates range(n_total)
+    # (ORIGINAL index).  export_metadata() re-indexes survivors as 0..len(survivors)-1
+    # (METADATA position).  Without this remap, survivors at orig_idx >= n_survivors
+    # are silently lost because build_territories_geojson enumerates condados_meta
+    # (0..n_survivors-1) and calls shapes_per_idx.get(ci) — never reaching the
+    # higher original indices stored in pc.
+    orig_to_meta: dict[int, int] | None = None
+    if original_condados is not None:
+        # Map each surviving condado's id to its metadata position.
+        id_to_meta_ci: dict[str, int] = {c["id"]: ci for ci, c in enumerate(condados_meta)}
+        orig_to_meta = {}
+        for orig_idx, orig_c in enumerate(original_condados):
+            # original_condados entries are [id, name, lon, lat, duchy, baronies]
+            orig_id = orig_c[0]
+            meta_ci = id_to_meta_ci.get(orig_id)
+            if meta_ci is not None:
+                orig_to_meta[orig_idx] = meta_ci
+        logger.debug(
+            "emit_territories_from_disk: orig_to_meta built for %d survivors "
+            "out of %d original condados",
+            len(orig_to_meta), len(original_condados),
+        )
 
     from PIL import Image
     img = np.array(Image.open(generated_dir / "lookup_condado.png").convert("RGB"))
@@ -169,17 +208,37 @@ def emit_territories_from_disk(
                 f"lookup_condado_colors.json malformed key {rgb_key!r}; expected 'r,g,b'"
             )
         r, g, b = (int(p) for p in parts)
-        idx = int(idx_val)
-        if idx < 0 or idx >= len(condados):
-            logger.warning(
-                "lookup_condado_colors.json idx %d out of range (len=%d) — skipping",
-                idx, len(condados),
-            )
-            continue
+        orig_idx = int(idx_val)
+
+        if orig_to_meta is not None:
+            # Remap original index to metadata position.
+            meta_ci = orig_to_meta.get(orig_idx)
+            if meta_ci is None:
+                # This condado was dropped by map_generator (0 pixels) — skip.
+                logger.debug(
+                    "emit_territories_from_disk: orig_idx %d has no metadata entry "
+                    "(dropped by map_generator) — skipping color %s",
+                    orig_idx, rgb_key,
+                )
+                continue
+            pixel_val = meta_ci
+            condado_id = condados[meta_ci][0]
+        else:
+            # Legacy identity mapping: orig_idx == meta_ci (safe only when no drops).
+            idx = orig_idx
+            if idx < 0 or idx >= len(condados):
+                logger.warning(
+                    "lookup_condado_colors.json idx %d out of range (len=%d) — skipping",
+                    idx, len(condados),
+                )
+                continue
+            pixel_val = idx
+            condado_id = condados[idx][0]
+
         mask = (img[:, :, 0] == r) & (img[:, :, 1] == g) & (img[:, :, 2] == b)
-        pc[mask] = idx
+        pc[mask] = pixel_val
         # Build sidecar: condado id -> #rrggbb (for frontend fills)
-        sidecar[condados[idx][0]] = f"#{r:02x}{g:02x}{b:02x}"
+        sidecar[condado_id] = f"#{r:02x}{g:02x}{b:02x}"
 
     (generated_dir / "condado_colors.json").write_text(json.dumps(sidecar))
     return build_territories_geojson(project_id, pc, condados, cfg)

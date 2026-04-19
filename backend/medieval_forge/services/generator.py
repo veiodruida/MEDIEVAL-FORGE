@@ -574,7 +574,16 @@ def _run_pipeline_sync(
         # exception here propagates to run_generation, which lets
         # api/generate.py's background task set status='error_generating'
         # with last_error. (G-02: no silent swallow.)
-        emit_territories_from_disk(project_id, generated_dir, cfg_shim)
+        # Pass the FULL original condados list (all entries, including those with
+        # 0 pixels) so emit_territories_from_disk can remap generate_lookup_map's
+        # ORIGINAL indices to the METADATA positions that build_territories_geojson
+        # expects.  Without this, surviving condados whose original index >= number
+        # of survivors are silently lost (Problem B root cause).
+        _original_condados = territory_data.get("condados", [])
+        emit_territories_from_disk(
+            project_id, generated_dir, cfg_shim,
+            original_condados=_original_condados,
+        )
         emit_baronies_from_disk(project_id, generated_dir, cfg_shim)
     finally:
         _cleanup_territory_module(module_name)
