@@ -127,15 +127,15 @@ def _cleanup_territory_module(name: str) -> None:
 
 def _compute_padded_bbox(
     config: dict[str, Any],
-    padding_pct: float = 0.05,
+    padding_pct: float = 0.15,
 ) -> dict[str, float]:
     """Compute a render bbox that:
 
     1. Covers all territory centroid coordinates from territory_data (so no
        condado/barony falls outside the canvas).
-    2. Adds a symmetric padding margin (default 5 %) around that envelope so
-       the territory is framed by a thin border of visible ocean — tight enough
-       that the peninsula fills the viewport without a dominant ocean halo.
+    2. Adds a symmetric padding margin (default 15 %) around that envelope so
+       the territory is framed by visible ocean on all sides — matching the
+       visual style of the reference map.
 
     If the caller already supplied explicit lon/lat bounds in *config* AND
     those bounds already encompass every centroid, they are respected as-is
@@ -202,7 +202,7 @@ def _build_region_config(generated_dir: Path, config: dict[str, Any]) -> Any:
       1. Explicit lon/lat fields in *config* (caller override) — used as the
          *minimum* canvas; may be expanded to fit all territory centroids.
       2. Auto-expansion to cover all condado/barony centroids in territory_data.
-      3. 5 % ocean-framing padding added around the expanded envelope.
+      3. 15 % ocean-framing padding added around the expanded envelope.
 
     Se existir municipalities.geojson ingerido no projeto, aponta automaticamente
     municipality_pt_geojson para esse arquivo — necessário para construir a land mask.
