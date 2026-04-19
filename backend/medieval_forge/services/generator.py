@@ -195,6 +195,211 @@ def _compute_padded_bbox(
     }
 
 
+# Hardcoded PT/ES border polygon (same as map_generator.iberia_config).
+# Used as fallback when caller does not supply border_polygon in config.
+# Points define the Portuguese side (west); municipalities whose centroid
+# falls inside this polygon are routed to the PT rasterisation path.
+_IBERIA_PT_BORDER: list[tuple[float, float]] = [
+    (-9.50, 42.20), (-8.85, 41.88), (-8.16, 41.82), (-7.92, 41.88),
+    (-7.40, 41.87), (-7.17, 41.97), (-6.93, 41.94), (-6.81, 41.95),
+    (-6.55, 41.68), (-6.38, 41.65), (-6.19, 41.57), (-6.54, 41.37),
+    (-6.80, 41.13), (-6.93, 41.03), (-6.86, 40.89), (-6.86, 40.27),
+    (-6.90, 40.11), (-6.96, 39.91), (-7.04, 39.67), (-7.02, 39.47),
+    (-7.26, 39.21), (-7.42, 39.18), (-7.30, 39.05), (-7.16, 38.96),
+    (-7.07, 38.81), (-7.06, 38.65), (-7.17, 38.44), (-7.25, 38.24),
+    (-7.35, 38.14), (-7.42, 38.00), (-7.48, 37.82), (-7.44, 37.65),
+    (-7.50, 37.50), (-7.46, 37.38), (-7.43, 37.26), (-7.41, 37.18),
+    (-7.38, 37.08), (-7.40, 36.90), (-9.50, 36.90), (-9.50, 42.20),
+]
+
+
+def _geojson_centroid(feature: dict[str, Any]) -> tuple[float, float] | None:
+    """Return (lon, lat) representative centroid for a GeoJSON feature.
+
+    Uses the arithmetic mean of the outer ring vertices — fast and sufficient
+    for the PT/ES classification task (no need for shapely here).
+    """
+    geom = feature.get("geometry") or {}
+    gt = geom.get("type", "")
+    coords = geom.get("coordinates")
+    if not coords:
+        return None
+    try:
+        if gt == "Polygon":
+            ring = coords[0]
+        elif gt == "MultiPolygon":
+            # Largest polygon by vertex count
+            ring = max((p[0] for p in coords), key=len)
+        else:
+            return None
+        if not ring:
+            return None
+        lon = sum(c[0] for c in ring) / len(ring)
+        lat = sum(c[1] for c in ring) / len(ring)
+        return lon, lat
+    except Exception:
+        return None
+
+
+def _point_in_polygon(lon: float, lat: float, polygon: list) -> bool:
+    """Ray-casting point-in-polygon (mirrors map_generator.point_in_polygon)."""
+    n = len(polygon)
+    inside = False
+    j = n - 1
+    for i in range(n):
+        xi, yi = polygon[i]
+        xj, yj = polygon[j]
+        if (yi > lat) != (yj > lat) and lon < (xj - xi) * (lat - yi) / (yj - yi) + xi:
+            inside = not inside
+        j = i
+    return inside
+
+
+def _geojson_to_topojson(features: list[dict[str, Any]]) -> dict[str, Any]:
+    """Convert a list of GeoJSON Polygon/MultiPolygon features to minimal TopoJSON.
+
+    Uses identity transform (scale=[1,1], translate=[0,0]) so arc coordinates
+    are plain lon/lat values encoded as delta sequences, which
+    decode_topojson_municipalities in map_generator can parse correctly.
+
+    Each polygon ring becomes one arc (arc sharing is not required by the
+    decoder). The resulting structure matches what decode_topojson_municipalities
+    expects: topo['objects']['municipalities']['geometries'][i] with type
+    Polygon/MultiPolygon and arcs referencing topo['arcs'].
+    """
+    arcs: list[list[list[float]]] = []
+    geometries: list[dict[str, Any]] = []
+
+    def _ring_to_arc(ring: list) -> int:
+        """Encode one ring as a delta arc, append to arcs[], return arc index."""
+        deltas: list[list[float]] = []
+        prev_x, prev_y = 0.0, 0.0
+        for pt in ring:
+            dx = pt[0] - prev_x
+            dy = pt[1] - prev_y
+            deltas.append([dx, dy])
+            prev_x, prev_y = pt[0], pt[1]
+        arcs.append(deltas)
+        return len(arcs) - 1
+
+    for feat in features:
+        geom = feat.get("geometry") or {}
+        gt = geom.get("type", "")
+        coords = geom.get("coordinates")
+        if not coords:
+            continue
+        if gt == "Polygon":
+            arc_refs = [[_ring_to_arc(ring)] for ring in coords if ring]
+            if arc_refs:
+                geometries.append({"type": "Polygon", "arcs": arc_refs})
+        elif gt == "MultiPolygon":
+            # TopoJSON MultiPolygon arcs: [polygon1_rings, polygon2_rings, ...]
+            # Each polygon_rings: [[ring1_arc_idx, ...], [ring2_arc_idx, ...], ...]
+            # Each ring uses a single arc here (one arc per ring, no arc sharing).
+            # So: [[[arc0]], [[arc1]], ...]  — one polygon per sub-list, one ring
+            # per inner list, one arc index in the innermost list.
+            arc_refs = [
+                [[_ring_to_arc(ring)] for ring in poly if ring]
+                for poly in coords
+            ]
+            arc_refs = [r for r in arc_refs if r]
+            if arc_refs:
+                geometries.append({"type": "MultiPolygon", "arcs": arc_refs})
+
+    return {
+        "type": "Topology",
+        "transform": {"scale": [1.0, 1.0], "translate": [0.0, 0.0]},
+        "arcs": arcs,
+        "objects": {
+            "municipalities": {
+                "type": "GeometryCollection",
+                "geometries": geometries,
+            }
+        },
+    }
+
+
+def _split_municipalities_pt_es(
+    raw_geojson: Path,
+    generated_dir: Path,
+    border_polygon: list | None,
+) -> tuple[Path, Path] | None:
+    """Split municipalities.geojson into PT and ES subsets.
+
+    Uses border_polygon to classify each feature by its centroid.
+    Features inside the polygon → PT GeoJSON.
+    Features outside → ES TopoJSON (format expected by map_generator).
+
+    Returns (pt_path, es_path) or None if no border_polygon is available.
+
+    Raises ValueError if either split is empty (safety guard against
+    silently reintroducing a zero-ES or zero-PT configuration).
+    """
+    import json as _json
+
+    polygon = border_polygon if border_polygon else _IBERIA_PT_BORDER
+    if not polygon:
+        logger.warning(
+            "split_municipalities: no border_polygon available — "
+            "skipping PT/ES split, all municipalities go to PT path"
+        )
+        return None
+
+    with raw_geojson.open(encoding="utf-8") as f:
+        fc = _json.load(f)
+
+    all_features: list[dict[str, Any]] = fc.get("features", [])
+    pt_features: list[dict[str, Any]] = []
+    es_features: list[dict[str, Any]] = []
+
+    for feat in all_features:
+        centroid = _geojson_centroid(feat)
+        if centroid is None:
+            # No geometry — keep on PT side (safe default, will be filtered later)
+            pt_features.append(feat)
+            continue
+        lon, lat = centroid
+        if _point_in_polygon(lon, lat, polygon):
+            pt_features.append(feat)
+        else:
+            es_features.append(feat)
+
+    logger.info(
+        "split_municipalities: %d total → %d PT, %d ES",
+        len(all_features), len(pt_features), len(es_features),
+    )
+
+    if len(pt_features) == 0:
+        raise ValueError(
+            f"split_municipalities: PT bucket is empty after split "
+            f"({len(all_features)} total features). "
+            "Check border_polygon — all features landed on the ES side."
+        )
+    if len(es_features) == 0:
+        raise ValueError(
+            f"split_municipalities: ES bucket is empty after split "
+            f"({len(all_features)} total features). "
+            "Check border_polygon — all features landed on the PT side. "
+            "This would reintroduce the ghost-condado bug."
+        )
+
+    pt_path = generated_dir / "pt_municipalities.geojson"
+    es_path = generated_dir / "es_municipalities_topo.json"
+
+    pt_fc = {"type": "FeatureCollection", "features": pt_features}
+    pt_path.write_text(_json.dumps(pt_fc, ensure_ascii=False), encoding="utf-8")
+
+    es_topo = _geojson_to_topojson(es_features)
+    es_path.write_text(_json.dumps(es_topo, ensure_ascii=False), encoding="utf-8")
+
+    logger.info(
+        "split_municipalities: wrote %s (%d features) and %s (%d geometries)",
+        pt_path.name, len(pt_features),
+        es_path.name, len(es_topo["objects"]["municipalities"]["geometries"]),
+    )
+    return pt_path, es_path
+
+
 def _build_region_config(generated_dir: Path, config: dict[str, Any]) -> Any:
     """Construct a RegionConfig from caller-supplied overrides, defaulting output_dir.
 
@@ -228,11 +433,28 @@ def _build_region_config(generated_dir: Path, config: dict[str, Any]) -> Any:
             kwargs[k] = v
 
     # Apontar municipality_pt_geojson para o GeoJSON ingerido se não foi
-    # fornecido explicitamente e o arquivo existir
+    # fornecido explicitamente e o arquivo existir.
+    # Se municipality_es_topojson também não estiver definido, faz o split
+    # PT/ES do GeoJSON completo antes de injectar nos caminhos — corrige o bug
+    # de "ghost condados" onde municípios espanhóis eram rasterizados via KD-tree
+    # PT em vez do ES (root cause: generator enviava o GeoJSON completo apenas para
+    # municipality_pt_geojson; municipality_es_topojson ficava None → es_municipalities=[]).
     if "municipality_pt_geojson" not in kwargs:
         raw_geojson = generated_dir.parent / "raw" / "municipalities.geojson"
         if raw_geojson.exists():
-            kwargs["municipality_pt_geojson"] = str(raw_geojson)
+            if "municipality_es_topojson" not in kwargs:
+                _split_result = _split_municipalities_pt_es(
+                    raw_geojson, generated_dir, kwargs.get("border_polygon")
+                )
+                if _split_result is not None:
+                    pt_path, es_path = _split_result
+                    kwargs["municipality_pt_geojson"] = str(pt_path)
+                    kwargs["municipality_es_topojson"] = str(es_path)
+                else:
+                    # Fall back to original behaviour (no border_polygon available)
+                    kwargs["municipality_pt_geojson"] = str(raw_geojson)
+            else:
+                kwargs["municipality_pt_geojson"] = str(raw_geojson)
 
     # Wire bundled mountain/river data for templates that ship it.
     # The Iberia template ships mountain_river_data_iberia.json alongside
