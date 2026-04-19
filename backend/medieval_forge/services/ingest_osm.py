@@ -298,13 +298,22 @@ async def _post_query(
         await queue.put(f"data: Tentando endpoint: {endpoint}...\n\n")
         try:
             async with _factory() as client:
-                resp = await client.post(endpoint, data={"data": query})
-                if resp.status_code >= 500:
+                resp = await client.post(
+                    endpoint,
+                    data={"data": query},
+                    headers={"Accept": "application/json"},
+                )
+                # Overpass mirrors commonly respond with 429 (rate-limited),
+                # 504 (gateway timeout), or 406 (overloaded / query rejected).
+                # All of those should fall through to the next mirror instead
+                # of aborting the whole ingest.
+                retryable = {406, 408, 429, 502, 503, 504}
+                if resp.status_code >= 500 or resp.status_code in retryable:
                     await queue.put(
                         f"data: Endpoint retornou {resp.status_code}, tentando próximo...\n\n"
                     )
                     last_exc = httpx.HTTPStatusError(
-                        f"Server error {resp.status_code}", request=resp.request, response=resp
+                        f"HTTP {resp.status_code}", request=resp.request, response=resp
                     )
                     continue
                 resp.raise_for_status()

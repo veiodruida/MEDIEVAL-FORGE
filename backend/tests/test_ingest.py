@@ -63,7 +63,7 @@ class _FakeClient:
             return _FakeResponse({"results": {"bindings": []}})
         return _FakeResponse(self._payloads.pop(0))
 
-    async def post(self, url, data=None):
+    async def post(self, url, data=None, headers=None):
         return _FakeResponse(self._payloads.pop(0) if self._payloads else {})
 
 
