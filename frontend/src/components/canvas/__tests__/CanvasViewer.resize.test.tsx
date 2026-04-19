@@ -138,6 +138,19 @@ class CapturingRO {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Silent ResizeObserver — used for R5 (sync-measure belt-and-suspenders test).
+// Never fires the callback; simulates a browser that delivers no initial entry.
+// ---------------------------------------------------------------------------
+class SilentRO {
+  constructor(_cb: ResizeObserverCallback) {
+    // deliberately does not store cb — callback is never fired
+  }
+  observe(_el: Element) {}
+  unobserve() {}
+  disconnect() {}
+}
+
 // Import CanvasViewer AFTER mocks are declared.
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 import { CanvasViewer } from '../CanvasViewer'
@@ -222,6 +235,35 @@ describe('CanvasViewer — ResizeObserver wiring (GAP-05)', () => {
     // Stage stays at prior dimensions (no 0x0 write-through)
     expect(stagePropsRef.current?.width).toBe(initialW)
     expect(stagePropsRef.current?.width).not.toBe(0)
+  })
+
+  it('R5: sync-measures container via getBoundingClientRect when RO never fires (belt-and-suspenders)', () => {
+    // Switch to a silent RO that never fires the callback — simulates browsers
+    // that don't deliver an initial ResizeObserver entry for already-laid-out elements.
+    ;(globalThis as unknown as { ResizeObserver: typeof ResizeObserver }).ResizeObserver =
+      SilentRO as unknown as typeof ResizeObserver
+
+    // Stub getBoundingClientRect on HTMLElement so the sync-measure path sees
+    // real non-zero dims rather than jsdom's default 0×0.
+    const realGetBCR = HTMLElement.prototype.getBoundingClientRect
+    HTMLElement.prototype.getBoundingClientRect = function () {
+      return {
+        width: 1440, height: 810,
+        top: 0, left: 0, right: 1440, bottom: 810,
+        x: 0, y: 0,
+        toJSON() { return {} },
+      } as DOMRect
+    }
+
+    try {
+      renderWithProviders(<CanvasViewer projectId="p1" />)
+
+      // The RO callback is never fired — Stage dimensions must come from getBCR.
+      expect(stagePropsRef.current?.width).toBe(1440)
+      expect(stagePropsRef.current?.height).toBe(810)
+    } finally {
+      HTMLElement.prototype.getBoundingClientRect = realGetBCR
+    }
   })
 
   it('R4: attaches observer to the content container after metaQ resolves (B-1 fix)', () => {

@@ -94,6 +94,16 @@ export function CanvasViewer({ projectId, width = 800, height = 600 }: CanvasVie
       })
       ro.observe(el)
       roRef.current = ro
+      // GAP-05 belt-and-suspenders: some browsers deliver the initial
+      // ResizeObserver entry asynchronously (or not at all when the element
+      // is already laid out before observe() is called).  Read the live rect
+      // synchronously right after observe() so the Stage never stays locked
+      // at the 800×600 prop defaults if the observer fires late or is dropped.
+      const rect = el.getBoundingClientRect()
+      if (rect.width > 0 && rect.height > 0) {
+        setViewportW(Math.floor(rect.width))
+        setViewportH(Math.floor(rect.height))
+      }
     }
   }, [])
 
