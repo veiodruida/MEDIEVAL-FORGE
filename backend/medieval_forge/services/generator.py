@@ -319,6 +319,74 @@ def _geojson_to_topojson(features: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def _densify_ring(ring: list, min_vertices: int = 40) -> list:
+    """Insert linearly-interpolated midpoints into a coordinate ring until it
+    has at least *min_vertices* points.
+
+    Preserves closure (first == last when the input is closed).  If the ring
+    already has >= *min_vertices* points it is returned unchanged.
+
+    This is needed because map_generator's PT rasterisation path silently
+    skips any feature whose outer ring has fewer than 40 vertices
+    (``if not rings or len(rings[0]) < 40: continue``).  OSM-sourced
+    municipalities in rural areas can be simplified to well below that
+    threshold, causing their condados to receive zero direct pixels and be
+    subsequently eroded to nothing by cleanup_and_smooth.
+    """
+    if len(ring) >= min_vertices:
+        return ring
+
+    closed = len(ring) > 1 and ring[0] == ring[-1]
+    # Work on the open sequence (without the closing duplicate) so that
+    # midpoints are only inserted between genuine edges.
+    pts = ring[:-1] if closed else ring[:]
+
+    while len(pts) < (min_vertices - 1 if closed else min_vertices):
+        # One pass: insert a midpoint after every existing vertex.
+        new_pts: list = []
+        for i in range(len(pts)):
+            new_pts.append(pts[i])
+            next_i = (i + 1) % len(pts)
+            mid = [
+                (pts[i][0] + pts[next_i][0]) / 2,
+                (pts[i][1] + pts[next_i][1]) / 2,
+            ]
+            new_pts.append(mid)
+        pts = new_pts
+
+    if closed:
+        pts = pts + [pts[0]]  # re-close
+
+    return pts
+
+
+def _densify_feature(feature: dict[str, Any], min_vertices: int = 40) -> dict[str, Any]:
+    """Return a copy of *feature* with all outer rings densified to >= min_vertices.
+
+    Inner rings (holes) are left untouched — map_generator only uses the outer
+    ring for rasterisation routing.
+    """
+    import copy as _copy
+    feat = _copy.deepcopy(feature)
+    geom = feat.get("geometry") or {}
+    gt = geom.get("type", "")
+    coords = geom.get("coordinates")
+    if not coords:
+        return feat
+
+    if gt == "Polygon":
+        # coords = [outer_ring, *holes]
+        coords[0] = _densify_ring(coords[0], min_vertices)
+    elif gt == "MultiPolygon":
+        # coords = [poly1, poly2, ...]  each poly = [outer_ring, *holes]
+        for poly in coords:
+            if poly:
+                poly[0] = _densify_ring(poly[0], min_vertices)
+
+    geom["coordinates"] = coords
+    return feat
+
+
 def _split_municipalities_pt_es(
     raw_geojson: Path,
     generated_dir: Path,
@@ -327,13 +395,18 @@ def _split_municipalities_pt_es(
     """Split municipalities.geojson into PT and ES subsets.
 
     Uses border_polygon to classify each feature by its centroid.
-    Features inside the polygon → PT GeoJSON.
+    Features inside the polygon → PT GeoJSON (densified to >= 40 vertices).
     Features outside → ES TopoJSON (format expected by map_generator).
 
     Returns (pt_path, es_path) or None if no border_polygon is available.
 
     Raises ValueError if either split is empty (safety guard against
     silently reintroducing a zero-ES or zero-PT configuration).
+
+    A1 fix: PT features are densified so that no outer ring has fewer than 40
+    vertices.  map_generator's rasterise_baronies() skips any PT feature whose
+    outer ring is shorter than that threshold, causing baronies to receive zero
+    direct pixels and be eroded away by cleanup_and_smooth.
     """
     import json as _json
 
@@ -386,7 +459,33 @@ def _split_municipalities_pt_es(
     pt_path = generated_dir / "pt_municipalities.geojson"
     es_path = generated_dir / "es_municipalities_topo.json"
 
-    pt_fc = {"type": "FeatureCollection", "features": pt_features}
+    # A1 fix: densify PT features so map_generator's 40-vertex filter never
+    # silently drops a municipality.  Idempotent: rings already >= 40 are
+    # left unchanged.
+    n_densified = 0
+    densified_pt: list[dict[str, Any]] = []
+    for feat in pt_features:
+        geom = feat.get("geometry") or {}
+        gt = geom.get("type", "")
+        coords = geom.get("coordinates")
+        needs_densify = False
+        if gt == "Polygon" and coords:
+            needs_densify = len(coords[0]) < 40
+        elif gt == "MultiPolygon" and coords:
+            needs_densify = any(poly and len(poly[0]) < 40 for poly in coords)
+        if needs_densify:
+            feat = _densify_feature(feat)
+            n_densified += 1
+        densified_pt.append(feat)
+
+    if n_densified:
+        logger.info(
+            "split_municipalities: densified %d PT features to >= 40 vertices "
+            "(A1 fix — prevents map_generator 40-vertex filter drops)",
+            n_densified,
+        )
+
+    pt_fc = {"type": "FeatureCollection", "features": densified_pt}
     pt_path.write_text(_json.dumps(pt_fc, ensure_ascii=False), encoding="utf-8")
 
     es_topo = _geojson_to_topojson(es_features)
@@ -394,10 +493,35 @@ def _split_municipalities_pt_es(
 
     logger.info(
         "split_municipalities: wrote %s (%d features) and %s (%d geometries)",
-        pt_path.name, len(pt_features),
+        pt_path.name, len(densified_pt),
         es_path.name, len(es_topo["objects"]["municipalities"]["geometries"]),
     )
     return pt_path, es_path
+
+
+def _municipality_centroids(raw_geojson: Path) -> tuple[list[float], list[float]]:
+    """Return (lons, lats) of all municipality centroids in raw_geojson.
+
+    Uses the same centroid formula as map_generator's decode_topojson_municipalities
+    (mean of outer-ring vertices) so the returned points match exactly what the
+    bbox filter in that function tests against.  This ensures the expanded bbox
+    includes every municipality centroid that decode_topojson_municipalities will
+    encounter — preventing edge-centroid municipalities from being silently dropped.
+    """
+    import json as _json
+    lons: list[float] = []
+    lats: list[float] = []
+    try:
+        with raw_geojson.open(encoding="utf-8") as f:
+            fc = _json.load(f)
+        for feat in fc.get("features", []):
+            c = _geojson_centroid(feat)
+            if c is not None:
+                lons.append(c[0])
+                lats.append(c[1])
+    except Exception as exc:
+        logger.warning("_municipality_centroids: could not read %s: %s", raw_geojson, exc)
+    return lons, lats
 
 
 def _build_region_config(generated_dir: Path, config: dict[str, Any]) -> Any:
@@ -407,7 +531,11 @@ def _build_region_config(generated_dir: Path, config: dict[str, Any]) -> Any:
       1. Explicit lon/lat fields in *config* (caller override) — used as the
          *minimum* canvas; may be expanded to fit all territory centroids.
       2. Auto-expansion to cover all condado/barony centroids in territory_data.
-      3. 5 % ocean-framing padding added around the expanded envelope.
+      3. A2 fix: further expansion to include all municipality centroids, so
+         decode_topojson_municipalities's bbox filter never drops an ES
+         municipality whose centroid sits near the padded edge.
+      4. 5 % ocean-framing padding is already baked into _compute_padded_bbox;
+         the municipality expansion adds a small epsilon (0.1 deg) guard on top.
 
     Se existir municipalities.geojson ingerido no projeto, aponta automaticamente
     municipality_pt_geojson para esse arquivo — necessário para construir a land mask.
@@ -450,6 +578,50 @@ def _build_region_config(generated_dir: Path, config: dict[str, Any]) -> Any:
                     pt_path, es_path = _split_result
                     kwargs["municipality_pt_geojson"] = str(pt_path)
                     kwargs["municipality_es_topojson"] = str(es_path)
+
+                    # A2 fix: expand the render bbox so that every ES municipality
+                    # centroid falls inside cfg.lon_min..cfg.lon_max × cfg.lat_min..
+                    # cfg.lat_max.  decode_topojson_municipalities() in map_generator
+                    # silently excludes any municipality whose centroid lies outside
+                    # that window; a tight (5 %-padded) bbox derived from condado
+                    # centroids can clip municipalities near the boundary, leaving
+                    # their baronies with zero pixels → cleanup erodes them away.
+                    #
+                    # We use all centroids (PT + ES) from raw_geojson so the check
+                    # uses the same arithmetic-mean formula as decode_topojson_municipalities.
+                    # A 0.1-degree epsilon is added beyond the outermost centroid to
+                    # ensure strict-inequality filters in the black-box pass.
+                    _CENTROID_EPSILON = 0.1
+                    mlon, mlat = _municipality_centroids(raw_geojson)
+                    if mlon and mlat:
+                        cur_lon_min = kwargs.get("lon_min")
+                        cur_lon_max = kwargs.get("lon_max")
+                        cur_lat_min = kwargs.get("lat_min")
+                        cur_lat_max = kwargs.get("lat_max")
+                        new_lon_min = min(mlon) - _CENTROID_EPSILON
+                        new_lon_max = max(mlon) + _CENTROID_EPSILON
+                        new_lat_min = min(mlat) - _CENTROID_EPSILON
+                        new_lat_max = max(mlat) + _CENTROID_EPSILON
+                        expanded = False
+                        if cur_lon_min is None or new_lon_min < cur_lon_min:
+                            kwargs["lon_min"] = new_lon_min
+                            expanded = True
+                        if cur_lon_max is None or new_lon_max > cur_lon_max:
+                            kwargs["lon_max"] = new_lon_max
+                            expanded = True
+                        if cur_lat_min is None or new_lat_min < cur_lat_min:
+                            kwargs["lat_min"] = new_lat_min
+                            expanded = True
+                        if cur_lat_max is None or new_lat_max > cur_lat_max:
+                            kwargs["lat_max"] = new_lat_max
+                            expanded = True
+                        if expanded:
+                            logger.info(
+                                "A2 fix: expanded render bbox to include all municipality "
+                                "centroids → lon [%.3f, %.3f] lat [%.3f, %.3f]",
+                                kwargs["lon_min"], kwargs["lon_max"],
+                                kwargs["lat_min"], kwargs["lat_max"],
+                            )
                 else:
                     # Fall back to original behaviour (no border_polygon available)
                     kwargs["municipality_pt_geojson"] = str(raw_geojson)
