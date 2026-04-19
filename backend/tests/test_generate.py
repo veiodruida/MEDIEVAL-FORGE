@@ -172,18 +172,18 @@ def _minimal_territory_data() -> dict:
 def _write_minimal_geojson(path) -> str:
     """Write a minimal PT-format GeoJSON covering the test barony region.
 
-    The service layer recomputes the render bbox from territory centroids + 15%
+    The service layer recomputes the render bbox from territory centroids + 5%
     padding (via _compute_padded_bbox). For the minimal territory data
     (_minimal_territory_data), centroids are at lon -3.0..-3.5, lat 38.8..41.2,
-    giving a padded bbox of roughly lon -3.58..-2.92, lat 38.44..41.56.
+    giving a padded bbox of roughly lon -3.53..-2.97, lat 38.68..41.32.
 
     build_land_mask filters polygon points to cfg.lon_min-1 <= lo <= cfg.lon_max+1.
-    With the padded bbox that filter window is approximately lon -4.58..-1.92,
-    lat 37.44..42.56. The GeoJSON polygon MUST have its vertices inside this
+    With the padded bbox that filter window is approximately lon -4.53..-1.97,
+    lat 37.68..42.32. The GeoJSON polygon MUST have its vertices inside this
     window so that at least 3 points survive and Pillow can rasterise the polygon.
 
-    We use a rectangle centred on the barony region with ~1° margin on each side
-    so all 5 ring points survive the filter regardless of exact padding arithmetic.
+    We use a rectangle centred on the barony region that stays well inside the
+    filter window so all 5 ring points survive regardless of exact padding arithmetic.
     """
     import json
     import pathlib
@@ -196,12 +196,12 @@ def _write_minimal_geojson(path) -> str:
                     "type": "Polygon",
                     "coordinates": [[
                         # Rectangle centred on barony centroids (lon ~-3.25, lat ~40.0)
-                        # with ~1° margin so all 5 points survive the bbox filter.
-                        [-4.5, 37.5],
-                        [-2.0, 37.5],
-                        [-2.0, 42.5],
-                        [-4.5, 42.5],
-                        [-4.5, 37.5],
+                        # sized to fit inside the narrower 5%-padded filter window.
+                        [-4.3, 38.0],
+                        [-2.2, 38.0],
+                        [-2.2, 42.0],
+                        [-4.3, 42.0],
+                        [-4.3, 38.0],
                     ]],
                 },
                 "properties": {"name": "test-region"},
