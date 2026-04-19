@@ -138,7 +138,7 @@ export function ProjectDetail() {
             className="canvas-region"
             style={{ flex: 1, background: '#1a1a2e', overflow: 'hidden', position: 'relative' }}
           >
-            <CanvasViewer projectId={project.id} />
+            <CanvasViewer projectId={project.id} cacheVersion={project.updated_at} />
           </Box>
           <Box
             className="inspector-sidebar"

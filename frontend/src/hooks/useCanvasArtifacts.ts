@@ -98,15 +98,22 @@ function firstOuterRing(
 export function useCanvasArtifacts(
   projectId: string | undefined,
   projection: ProjectionConfig | null,
+  // Cache-bust token: pass project.updated_at so that when the pipeline
+  // regenerates, the queryKey AND the URL both change. The queryKey change
+  // invalidates TanStack's in-memory cache; the URL change (?v=…) invalidates
+  // the browser HTTP cache. Without this, staleTime: Infinity would hold the
+  // prior map forever until a hard-refresh.
+  cacheVersion?: string,
 ) {
+  const v = cacheVersion ? `?v=${encodeURIComponent(cacheVersion)}` : ''
   return useQueries({
     queries: [
       {
         // [0] territories.geojson → TerritoryRender[]
-        queryKey: ['territories-geojson', projectId] as const,
+        queryKey: ['territories-geojson', projectId, cacheVersion] as const,
         queryFn: () =>
           fetchJson<FC<CondadoFeature>>(
-            `/api/projects/${projectId}/preview/territories.geojson`,
+            `/api/projects/${projectId}/preview/territories.geojson${v}`,
           ),
         enabled: Boolean(projectId && projection),
         staleTime: Infinity,
@@ -123,10 +130,10 @@ export function useCanvasArtifacts(
       },
       {
         // [1] baronies.geojson → BaronyRender[]
-        queryKey: ['baronies-geojson', projectId] as const,
+        queryKey: ['baronies-geojson', projectId, cacheVersion] as const,
         queryFn: () =>
           fetchJson<FC<BaronyFeature>>(
-            `/api/projects/${projectId}/preview/baronies.geojson`,
+            `/api/projects/${projectId}/preview/baronies.geojson${v}`,
           ),
         enabled: Boolean(projectId && projection),
         staleTime: Infinity,
@@ -144,10 +151,10 @@ export function useCanvasArtifacts(
       },
       {
         // [2] condado_colors.json sidecar — {condado_id: '#rrggbb'}
-        queryKey: ['condado-colors', projectId] as const,
+        queryKey: ['condado-colors', projectId, cacheVersion] as const,
         queryFn: () =>
           fetchJson<Record<string, string>>(
-            `/api/projects/${projectId}/preview/condado_colors.json`,
+            `/api/projects/${projectId}/preview/condado_colors.json${v}`,
           ),
         enabled: Boolean(projectId),
         staleTime: Infinity,
@@ -155,10 +162,10 @@ export function useCanvasArtifacts(
       },
       {
         // [3] barony_colors.json sidecar — {barony_name: '#rrggbb'}
-        queryKey: ['barony-colors', projectId] as const,
+        queryKey: ['barony-colors', projectId, cacheVersion] as const,
         queryFn: () =>
           fetchJson<Record<string, string>>(
-            `/api/projects/${projectId}/preview/barony_colors.json`,
+            `/api/projects/${projectId}/preview/barony_colors.json${v}`,
           ),
         enabled: Boolean(projectId),
         staleTime: Infinity,
@@ -166,10 +173,10 @@ export function useCanvasArtifacts(
       },
       {
         // [4] territory_metadata.json
-        queryKey: ['territory-metadata', projectId] as const,
+        queryKey: ['territory-metadata', projectId, cacheVersion] as const,
         queryFn: () =>
           fetchJson<TerritoryMetadata>(
-            `/api/projects/${projectId}/preview/territory_metadata.json`,
+            `/api/projects/${projectId}/preview/territory_metadata.json${v}`,
           ),
         enabled: Boolean(projectId),
         staleTime: Infinity,

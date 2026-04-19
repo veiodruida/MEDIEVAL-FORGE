@@ -28,6 +28,12 @@ interface CanvasViewerProps {
   projectId: string
   width?: number
   height?: number
+  // Cache-bust param: pass project.updated_at here so that when the pipeline
+  // regenerates artifacts, both the TanStack queryKey AND the fetched URLs
+  // change — forcing both the in-memory cache and the browser HTTP cache to
+  // miss. Without this, /preview/*.json stays stale after regeneration and
+  // the user sees the prior map until they hard-refresh.
+  cacheVersion?: string
 }
 
 const PADDING_PCT = 0.05
@@ -62,7 +68,7 @@ const PADDING_PCT = 0.05
  * NOTE: Stage is NOT passed scaleX/scaleY props — scale is managed imperatively
  * via stage.scale() so wheel-zoom doesn't get reset on every React re-render.
  */
-export function CanvasViewer({ projectId, width = 800, height = 600 }: CanvasViewerProps) {
+export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersion }: CanvasViewerProps) {
   const stageRef = useRef<Konva.Stage | null>(null)
 
   // --- B-1 callback-ref ResizeObserver ------------------------------------
@@ -128,6 +134,7 @@ export function CanvasViewer({ projectId, width = 800, height = 600 }: CanvasVie
   const [territoriesQ, baroniesQ, condadoColorsQ, , metaQ] = useCanvasArtifacts(
     projectId,
     projection,
+    cacheVersion,
   )
 
   // Build projection once metadata loads
@@ -302,7 +309,8 @@ export function CanvasViewer({ projectId, width = 800, height = 600 }: CanvasVie
     )
   }
 
-  const terrainSrc = `/api/projects/${projectId}/preview/terrain.png`
+  const vSuffix = cacheVersion ? `?v=${encodeURIComponent(cacheVersion)}` : ''
+  const terrainSrc = `/api/projects/${projectId}/preview/terrain.png${vSuffix}`
 
   return (
     <ProjectionProvider value={projection}>
