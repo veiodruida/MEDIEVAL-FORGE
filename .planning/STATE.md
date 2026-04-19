@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: "Phase 02 plan 02-05 Task 1/5 done (GAP-05 keystone, commit 1f95f99); paused at human-verify checkpoint for GAP-04 diagnosis — see .planning/phases/02-read-only-canvas-viewer/.continue-here.md"
-last_updated: "2026-04-18T20:23:57.512Z"
-last_activity: 2026-04-18 -- Phase 02 execution started
+stopped_at: "2026-04-19 20:59 — stabilization session closed. BUG-1 (territories NW clump) fixed. BUG-2 (dead zone) partially fixed + ocean-framing trade-off understood. Ghost-condados Fix B kept (index remap). PT/ES split + padding 5% reverted due to regression with sparse OSM data (admin_level=6). Cache-busting via project.updated_at shipped. asa now shows 91/92 condados, 91/91 geojson features. BLOCKED on: Overpass API external outage (needed to re-ingest at admin_level=7+ for denser coverage, then the split/densify/padding-5% fixes can be re-applied cleanly)."
+last_updated: "2026-04-19T20:59:00.000Z"
+last_activity: 2026-04-19 -- stabilization session: 7 shipped fixes, 3 reverts after regression analysis
 progress:
   total_phases: 7
   completed_phases: 1

@@ -1,0 +1,55 @@
+{
+  "status": "paused",
+  "paused_at": "2026-04-19T20:59:00Z",
+  "phase": "02-read-only-canvas-viewer",
+  "plan": "02-05-canvas-sizing-color-ux-fixes",
+  "task": "stabilization-session-complete",
+  "total_tasks": 5,
+  "next_action": "Wait for Overpass API to recover, then re-ingest asa/new projects at admin_level=7+, then re-apply PT/ES split + densify + 5% padding (see deferred items).",
+  "context_notes": [
+    "Session goal evolved from fixing 2 canvas bugs (misalignment + dead zone) into a cascade of 6+ related fixes + reverts.",
+    "Root insight: current OSM data is sparse (66 admin_level=6 polygons for Iberia). Many services/layer 'fixes' that should help with denser data actively hurt with sparse data (condados erode to 0 pixels).",
+    "The working baseline is: 15% padding + no PT/ES split + no densification + Fix B index remap + cache-busting. This gives 91/92 condados with halo of ocean.",
+    "When Overpass recovers, re-ingest with admin_level=7 or 8, then re-apply reverted commits (1ee40bc, 46499ed, 0daffe3) in order. Verify condado count stays >=90 at each step."
+  ],
+  "shipped_commits": [
+    "43b1e14 fix(02-05): territories_geojson uses actual pc.shape for pixel->lonlat (GAP-04)",
+    "c88cbc4 fix(02-05): CanvasViewer sync-measures container on observe (GAP-05 belt-and-suspenders)",
+    "a6747e3 fix(ingest): retry Overpass mirrors on 4xx rate-limit/overload codes",
+    "acb85bc fix(territories_geojson): remap orig_idx -> meta_ci (Problem B — kept)",
+    "8a9d2eb fix(canvas): version preview URLs with project.updated_at to bust caches"
+  ],
+  "reverted_commits": [
+    "1ee40bc fix(generator): split municipalities.geojson PT/ES — reverted by a94f4c1 (correct routing hurt with sparse data)",
+    "46499ed fix(generator): densify PT rings + bbox-expand ES centroids — reverted by 9d05376 (built on the split, also hurt)",
+    "0daffe3 fix(02-05): reduce generator padding 15%->5% — reverted by becf3af (tighter bbox caused condado erosion regression)"
+  ],
+  "deferred": [
+    {
+      "item": "Re-apply PT/ES split + densification + 5% padding with denser OSM data",
+      "blocker": "Overpass API external outage at session end (all 3 mirrors returning 5xx/dispatcher errors)",
+      "unblock_test": "curl POST /api/interpreter with a small admin_level=8 query — if 200, proceed",
+      "order": "1. Re-ingest one test project with admin_level=8. 2. Cherry-pick 1ee40bc and 46499ed. 3. Re-apply padding 5%. 4. Verify condado count stays at 92."
+    },
+    {
+      "item": "Ocean gradient in visual_barony.png",
+      "blocker": "D-04 black-box (map_generator.py). Reference image has gradient; ours is flat steel-blue.",
+      "impact": "Visual polish only. Non-blocking."
+    },
+    {
+      "item": "GAP-08 zoom threshold 1.5 + tooltip, GAP-07 ErrorBoundary around Stage",
+      "blocker": "Tasks 4 and 5 of plan 02-05 not executed — deferred for focus on the stabilization chain.",
+      "impact": "UX polish."
+    }
+  ],
+  "blockers": [
+    "Overpass API external outage (transient, retry in hours)"
+  ],
+  "human_actions_pending": [
+    "When Overpass is back, test the deferred re-apply sequence (see deferred[0].order)"
+  ],
+  "uncommitted_files": [],
+  "current_condado_count": {
+    "asa": {"metadata": 91, "geojson": 91, "territory_iberia_defined": 92, "missing_in_cleanup": 1}
+  }
+}

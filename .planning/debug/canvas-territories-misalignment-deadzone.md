@@ -1,21 +1,34 @@
 ---
-status: awaiting_human_verify
+status: investigating
 trigger: "canvas-territories-misalignment-deadzone — Two CanvasViewer bugs: navy dead zone right of Stage, territories compressed into top-left corner"
 created: 2026-04-19T00:00:00Z
-updated: 2026-04-19T02:00:00Z
+updated: 2026-04-19T03:00:00Z
 ---
 
 ## Current Focus
 
-hypothesis: CONFIRMED — both root causes diagnosed, fixed, tested, and committed.
+hypothesis: |
+  The perceived "horizontal letterbox / dead zone" in project 75712720 is OCEAN area
+  within the terrain.png frame, not a Stage sizing bug. The generator pads the ingest
+  bbox by 15%, producing a wide geographic frame that makes the peninsula (~49% of image
+  width) appear small inside the Stage. The Stage itself correctly fills the container.
 
-test: Awaiting human visual verification in browser.
+  OPEN GAP: Visual description says peninsula "looks roughly square" but computed content
+  aspect is 1.336 (wider-than-tall). Either (a) user phrasing is imprecise, or (b) there
+  is a second bug (non-uniform scale). Need user pixel measurement to resolve.
+
+test: |
+  User measures peninsula pixel width vs height in the browser Stage.
+  If ratio ~1.34 → geometry analysis is complete (it's ocean, not a code bug).
+  If ratio ~1.0 → non-uniform scale bug exists and needs investigation.
 
 expecting: |
-  BUG-1: Territories now span full Iberian Peninsula instead of NW quadrant.
-  BUG-2: No navy dead zone — Stage fills the full canvas-region container.
+  Ratio ~1.34 confirms: horizontal appearance is ocean bbox padding, not rendering bug.
+  Ratio ~1.0 would mean Konva Stage or BackgroundLayer is applying incorrect aspect ratio.
 
-next_action: Human refreshes browser tab and confirms both symptoms are gone.
+next_action: |
+  User reports measured peninsula pixel dimensions from DevTools or visual inspection.
+  Then decide: fix generator 15% padding, change fit mode, or accept current framing.
 
 ## Symptoms
 
@@ -48,6 +61,24 @@ started: After commit 1f95f99 (GAP-05 ResizeObserver fix). Territory misalignmen
 
 - hypothesis: territories.geojson data path broken
   evidence: GET /api/projects/{PID}/preview/territories.geojson → 200, 90 features; condado_colors.json → 200, 90 keys
+  timestamp: 2026-04-19
+
+- hypothesis: H-A — DOM reuse / viewportW stuck at 800 default (BUG-2 dead zone)
+  evidence: DevTools on project 75712720 — wrapper div getBoundingClientRect={w:946,h:771},
+            Stage attrs width=946 height=771. Stage IS receiving correct runtime dims.
+            viewportW is NOT stuck at 800. FALSIFIED by direct measurement.
+  timestamp: 2026-04-19
+
+- hypothesis: H-B — flex layout causing Stage to not fill container (BUG-2 dead zone)
+  evidence: Same DevTools measurement. Stage fills canvas-region box correctly. FALSIFIED.
+  timestamp: 2026-04-19
+
+- hypothesis: Stage sizing is the cause of perceived horizontal letterbox
+  evidence: |
+    computeFitToView(3840, 2160, 946, 771, 0.05) produces scale=0.234, x=23.7, y=132.8.
+    Stage renders map at 899×505 inside 946×771 — only 24px left/right margin from Stage
+    edge, 133px top/bottom. The side margins from the Stage itself are SMALL.
+    The navy bars perceived as "left/right dead zone" are ocean within the terrain image.
   timestamp: 2026-04-19
 
 ## Evidence
@@ -144,6 +175,76 @@ started: After commit 1f95f99 (GAP-05 ResizeObserver fix). Territory misalignmen
     (Coordinates don't reach the full metadata bbox -16.41..11.41 / 34.02..45.98
     because territory polygons only cover the actual Iberian landmass, not open sea.)
   implication: BUG-1 confirmed fixed. Coordinate space mismatch eliminated.
+
+- timestamp: 2026-04-19 (new investigation — project 75712720)
+  checked: DevTools measurements reported by user for project 75712720-6a0b-4969-858e-0703b1d4deb2
+  found: |
+    wrapper div getBoundingClientRect: {w:946, h:771}
+    canvas element attrs: width=946, height=771
+    Both match. Stage IS receiving correct runtime dims.
+    H-A (DOM reuse) and H-B (flex layout) are FALSIFIED.
+  implication: The perceived dead zone / letterbox is NOT caused by viewport sizing.
+
+- timestamp: 2026-04-19 (new investigation — project 75712720)
+  checked: territory_metadata.json for project 75712720 at ~/.medieval-forge/projects/75712720-6a0b-4969-858e-0703b1d4deb2/generated/
+  found: |
+    map_size: [3840, 2160]
+    bounds: lon_min=-16.41, lon_max=11.41, lat_min=34.02, lat_max=45.98
+    lon_span = 27.82 degrees, lat_span = 11.96 degrees
+    centerLat = 40, lonScale = cos(40deg) = 0.766
+    effective geographic aspect = (27.82*0.766) / 11.96 = 21.31/11.96 = 1.782 (16:9)
+  implication: Map is correctly 16:9. The metadata bounds are wider than the DB ingest bbox.
+
+- timestamp: 2026-04-19 (new investigation — project 75712720)
+  checked: Project DB record in medieval_forge.db for project 75712720
+  found: |
+    bbox_lon_min=-13.2, bbox_lon_max=8.2, bbox_lat_min=35.4, bbox_lat_max=44.6
+    DB bbox span: lon 21.4 deg, lat 9.2 deg
+  implication: |
+    DB bbox is tighter than metadata bounds. Generator (api/generate.py lines 75-79)
+    injects DB bbox into config, then _compute_padded_bbox in generator.py expands by 15%:
+      pad_lon = 21.4 * 0.15 = 3.21 deg per side → -13.2-3.21=-16.41, 8.2+3.21=11.41
+      pad_lat = 9.2 * 0.15 = 1.38 deg per side  → 35.4-1.38=34.02, 44.6+1.38=45.98
+    These EXACTLY match territory_metadata.json bounds. Generator works as designed.
+
+- timestamp: 2026-04-19 (new investigation — project 75712720)
+  checked: terrain.png content bbox via PIL pixel analysis
+  found: |
+    Image size: 1920x1080 (16:9 aspect 1.778)
+    Background/ocean color: [45, 90, 140] (dark blue)
+    Content (landmass) bbox: rows 197-901, cols 490-1431
+    Content width: 942 px (49.1% of image width)
+    Content height: 705 px (65.3% of image height)
+    Content aspect ratio (W/H): 942/705 = 1.336
+  implication: |
+    Peninsula fills only 49% of image width. When terrain is rendered at full map scale,
+    ~25% of rendered width on each side is ocean. This is what the user perceives as
+    "horizontal letterbox / dead zone inside the Stage."
+
+- timestamp: 2026-04-19 (new investigation — project 75712720)
+  checked: computeFitToView math for project 75712720 in current viewport
+  found: |
+    computeFitToView(3840, 2160, 946, 771, 0.05):
+      usableW = 946 * 0.95 = 898.7
+      usableH = 771 * 0.95 = 732.45
+      scaleW = 898.7 / 3840 = 0.2340
+      scaleH = 732.45 / 2160 = 0.3390
+      scale = min(0.234, 0.339) = 0.234 (fit by WIDTH)
+      x = (946 - 3840*0.234) / 2 = 23.7 px left/right Stage margin
+      y = (771 - 2160*0.234) / 2 = 132.8 px top/bottom Stage margin
+    Rendered map at 899x505 inside 946x771 Stage.
+    Ocean left of peninsula: 899 * 0.255 = 229 px
+    Ocean right of peninsula: 899 * 0.255 = 229 px
+    Total perceived horizontal "dead zone" per side: 24 (Stage) + 229 (ocean) = 253 px
+    Peninsula rendered width: ~441 px
+    Peninsula rendered height: ~329 px
+    Peninsula content aspect in Stage: 441/329 = 1.34 (should visually appear wider than tall)
+  implication: |
+    The rendering is GEOMETRICALLY CORRECT. The "horizontal letterbox" is ocean from a
+    wide geographic frame (15% bbox padding on top of an already-generous ingest bbox).
+    OPEN GAP: User described peninsula as "roughly square" but computed content aspect is
+    1.336 (wider than tall). Either imprecise user phrasing or a separate non-uniform
+    scale bug. Need user pixel measurement to resolve.
 
 ## Resolution
 
