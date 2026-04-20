@@ -177,7 +177,7 @@ export function InspectorSidebar({
             </Text>
           </>
         ) : (
-          <Text size="2" as="p">{COPY.NO_CAPITAL}</Text>
+          <Text size="2" color="gray" as="p">{condado.name}</Text>
         )}
       </Box>
 
