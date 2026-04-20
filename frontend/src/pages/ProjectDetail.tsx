@@ -6,6 +6,7 @@ import { useProject, useUpdateProject, useIngestStream, useGenerate, useExport, 
 import { TerritoryEditor, type TerritoryData } from './TerritoryEditor'
 import { CanvasViewer } from '../components/canvas/CanvasViewer'
 import { InspectorSidebar } from '../components/canvas/InspectorSidebar'
+import { LegendCard } from '../components/canvas/LegendCard'
 import { useCanvasArtifacts } from '../hooks/useCanvasArtifacts'
 import { buildProjectionConfig } from '../lib/projection'
 
@@ -139,6 +140,7 @@ export function ProjectDetail() {
             style={{ flex: 1, background: '#1a1a2e', overflow: 'hidden', position: 'relative' }}
           >
             <CanvasViewer projectId={project.id} cacheVersion={project.updated_at} />
+            <LegendCard />
           </Box>
           <Box
             className="inspector-sidebar"
