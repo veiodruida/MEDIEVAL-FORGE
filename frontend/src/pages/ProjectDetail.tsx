@@ -434,13 +434,13 @@ function InspectorSidebarWrapper({
   if (metaQ.isPending || territoriesQ.isPending) {
     return <Text size="2" color="gray">Loading…</Text>
   }
-  if (!metaQ.data || !territoriesQ.data) {
+  if (!artifacts[4].data || !territoriesQ.data) {
     return <Text size="2" color="gray">No inspector data.</Text>
   }
 
   return (
     <InspectorSidebar
-      metadata={metaQ.data}
+      metadata={artifacts[4].data}
       territories={territoriesQ.data}
       project={{
         name: project.name,
