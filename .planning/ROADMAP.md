@@ -69,24 +69,26 @@ Six phases take Medieval Forge from zero to a fully validated, Unity-ready map p
 ---
 
 ### Phase 3: LLM Research Integration
-**Goal**: User can trigger historical research from inside a project and receive structured kingdoms/duchies/counties/baronies JSON assigned to territories, with progress feedback, caching, and automatic retry on invalid responses.
+**Goal**: User can trigger historical research from inside a project and receive a structured kingdoms/duchies/counties/baronies JSON assigned to territories, using one of several LLM providers (Claude, OpenAI, Gemini, Ollama) via a plugin-style architecture that supports browser OAuth where available, local CLI piggyback for Claude, and API-key paste as fallback — with progress feedback, caching, and automatic retry on invalid responses.
 **Depends on**: Phase 1
-**Requirements**: RESEARCH-01, RESEARCH-02, RESEARCH-03, RESEARCH-04, RESEARCH-05
+**Requirements**: RESEARCH-01, RESEARCH-02, RESEARCH-03, RESEARCH-04, RESEARCH-05, RESEARCH-06, RESEARCH-07, RESEARCH-08, RESEARCH-09
 **UI hint**: yes
 
-**Note**: No canvas dependency. Can be developed in parallel with Phase 2 if bandwidth allows. Develops against Phase 1 API contracts only.
+**Note**: No canvas dependency. Scope expanded on 2026-04-20 to include OpenAI + Gemini providers, browser OAuth (Google), `claude-code` CLI auth piggyback, and a plugin architecture for future provider additions.
 
 ### Success Criteria
-1. User can open the research dialog, enter a country and period, select Claude API as the provider, and receive a structured political hierarchy response that is persisted to the project.
-2. User can switch to Ollama as the LLM provider and trigger research using a locally running model with the same structured output format.
-3. When the LLM returns malformed JSON, the system automatically retries up to 3 times with corrective prompting before surfacing an error to the user.
-4. Triggering research on the same country+period a second time returns the cached result instantly without making a new API call.
-5. The research dialog shows a spinner and streaming progress tokens while the LLM is responding; the UI does not freeze.
+1. User can open the research dialog, enter a country and period, select any of the four built-in providers (Claude, OpenAI, Gemini, Ollama), and receive a structured political hierarchy response persisted to the project.
+2. User can switch providers on a per-research basis; each provider uses its natural auth flow (Anthropic: env var / `claude-code` CLI / session key; Google: env var / OAuth / session key; OpenAI: env var / session key; Ollama: no auth).
+3. When the LLM returns malformed JSON, the system automatically retries up to 3 times with corrective prompting before surfacing an error to the user; failure path allows manual JSON edit.
+4. Triggering research on the same country+period+provider+model a second time returns the cached result instantly without making a new API call.
+5. The research dialog shows a spinner (or streaming tokens where supported) while the LLM is responding; the UI does not freeze.
+6. Adding a new LLM provider in the future requires only a new adapter class plus a registry entry — no core code or UI changes required.
 
 ### Plans
-- **3.1** LLM service layer — `services/llm.py` unified adapter interface, Claude async streaming client (Anthropic SDK 0.94.1), Ollama REST adapter (`stream: false`, `format: "json"`), Pydantic schema with `extra=forbid`, 3-retry validation loop (RESEARCH-01, RESEARCH-02, RESEARCH-03)
-- **3.2** Research API + cache — `api/research.py` SSE endpoint, per-project result cache in SQLite, QID normalization, `zundo temporal.pause/resume` wrapping to prevent LLM polling from creating undo steps (RESEARCH-04)
-- **3.3** Research UI — research trigger dialog, SSE token stream display, spinner/progress, provider selector, cached result display (RESEARCH-05)
+- **3.1** Multi-provider adapter layer — `services/llm/` package (base Protocol, registry, claude/openai/gemini/ollama modules), Pydantic schema with `extra='forbid'`, 3-retry validation loop, SSE streaming where supported (RESEARCH-01, RESEARCH-02, RESEARCH-03, RESEARCH-06, RESEARCH-07, RESEARCH-09)
+- **3.2** Auth layer — env-var startup, API-key input + session memory store, Google OAuth installed-app flow with PKCE, `claude-code` CLI credential piggyback, `/api/auth/oauth/*` callback routes, per-provider health + auth status endpoint (RESEARCH-08)
+- **3.3** Research API + cache — `api/research.py` POST trigger + SSE, per-project `research_cache` table in SQLite, QID normalization, `zundo temporal.pause/resume` wrapping (RESEARCH-04)
+- **3.4** Research UI — provider dropdown (auto-populated from `/api/llm/providers`), per-provider auth setup sheet (OAuth button / API key input / CLI status), country+period inputs, streaming progress view, cached-result badge + force-refresh, failure recovery with manual JSON editor (RESEARCH-05)
 
 ---
 

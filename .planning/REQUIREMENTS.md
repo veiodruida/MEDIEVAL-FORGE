@@ -45,6 +45,10 @@
 - [ ] **RESEARCH-03**: System validates LLM response against Pydantic schema and retries up to 3 times on invalid JSON
 - [ ] **RESEARCH-04**: Research results are cached per project (no re-fetch for same country+period)
 - [ ] **RESEARCH-05**: Research dialog shows progress / spinner while waiting for LLM
+- [ ] **RESEARCH-06**: User can use OpenAI (GPT-4o/5) as an additional cloud LLM provider
+- [ ] **RESEARCH-07**: User can use Google Gemini (1.5 Pro / 2.0) as an additional cloud LLM provider
+- [ ] **RESEARCH-08**: User can sign in via browser OAuth where the provider supports it (Google for Gemini; piggyback on local `claude-code` CLI auth for Anthropic if installed); API-key paste is always available as fallback
+- [ ] **RESEARCH-09**: Provider architecture is plugin-based — adding a new LLM provider requires only a new adapter class + registry entry; no core changes, no UI hardcoding
 
 ### VALIDATE — Validation
 - [ ] **VALIDATE-01**: System detects orphan baronies (barony without a parent county)
@@ -128,6 +132,10 @@
 | RESEARCH-03 | Phase 3 | Pending | Pydantic schema validation + 3-retry |
 | RESEARCH-04 | Phase 3 | Pending | Per-project cache |
 | RESEARCH-05 | Phase 3 | Pending | Progress spinner / SSE stream UI |
+| RESEARCH-06 | Phase 3 | Pending | OpenAI provider (GPT-4o/5) |
+| RESEARCH-07 | Phase 3 | Pending | Google Gemini provider (1.5 Pro / 2.0) |
+| RESEARCH-08 | Phase 3 | Pending | OAuth (Google) + CLI piggyback (Anthropic); API-key fallback |
+| RESEARCH-09 | Phase 3 | Pending | Plugin architecture — registry + adapter pattern |
 | EDIT-01 | Phase 4 | Pending | Capital drag + Voronoi recalc <500ms |
 | EDIT-02 | Phase 4 | Pending | Border vertex drag |
 | EDIT-03 | Phase 4 | Pending | Territory merge |

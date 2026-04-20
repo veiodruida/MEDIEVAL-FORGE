@@ -61,6 +61,25 @@
 
 ---
 
+## E. Scope expansion — multi-provider + browser auth (added 2026-04-20)
+
+| Decision | Choice |
+|----------|--------|
+| Add OpenAI provider | ✓ |
+| Add Gemini provider | ✓ |
+| Additional future providers | Plugin architecture, not shipped in v1 |
+| Auth approach | Mixture: OAuth where available + CLI piggyback + API key fallback |
+| Path for change | Expand Phase 3 now (not Phase 3.5, not backlog) |
+
+**User's choice:** Expand now; multi-provider with extensibility.
+**Notes:** Provider adapter becomes genuinely pluggable via registry pattern. OpenAI: API key only (no OAuth available). Gemini: API key + Google OAuth "installed app" flow. Anthropic: API key + `claude-code` CLI piggyback for users who have that installed. Full Anthropic OAuth deferred due to app-registration overhead.
+
+**Added requirements:** RESEARCH-06 (OpenAI), RESEARCH-07 (Gemini), RESEARCH-08 (OAuth + CLI piggyback), RESEARCH-09 (plugin architecture).
+
+**Scope growth:** ~3 plans → ~4-5 plans (split adapter layer + auth layer + research API + UI).
+
+---
+
 ## Implicit decisions confirmed
 
 - **Cache key:** `(country_qid, period_start, period_end, provider, model)` — re-ingest does NOT invalidate.
