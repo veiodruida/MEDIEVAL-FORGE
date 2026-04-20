@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { useQueries } from '@tanstack/react-query'
 import { geoRingToKonvaPoints, type ProjectionConfig } from '../lib/projection'
 
@@ -26,8 +27,10 @@ export interface TerritoryMetadataCondado {
   pixel_center: [number, number]
   pixel_count: number
   baronies: string[]
-  // neighbors is populated by Task 1 territories.geojson emission (hoisted client-side
-  // when merging territories.geojson with metadata); always string[] for Phase 2 condados.
+  // neighbors is NOT present on condados in territory_metadata.json; it is hoisted
+  // client-side from territories.geojson .properties.neighbors by useCanvasArtifacts.
+  // Callers see a merged TerritoryMetadata where every condado has neighbors: string[]
+  // (empty array fallback if territories.geojson is not yet loaded). Quick-task 260420-hkr.
   neighbors: string[]
   // Optional capital city name (D-06.3). Present when the generator has a curated
   // capital name; absent triggers the "No capital assigned" sentinel in InspectorSidebar.
@@ -106,7 +109,7 @@ export function useCanvasArtifacts(
   cacheVersion?: string,
 ) {
   const v = cacheVersion ? `?v=${encodeURIComponent(cacheVersion)}` : ''
-  return useQueries({
+  const results = useQueries({
     queries: [
       {
         // [0] territories.geojson → TerritoryRender[]
@@ -184,4 +187,44 @@ export function useCanvasArtifacts(
       },
     ],
   })
+
+  // Quick-task 260420-hkr: hoist neighbors from territories.geojson into
+  // metadata.condados. The server's territory_metadata.json does NOT include
+  // neighbor adjacency on condados; only territories.geojson features carry
+  // .properties.neighbors. InspectorSidebar reads condado.neighbors.length,
+  // which would crash on undefined. We merge here so every consumer of [4].data
+  // sees a TerritoryMetadata with neighbors: string[] on every condado.
+  const territoriesData = results[0].data
+  const metaData = results[4].data
+  const mergedMeta = useMemo<TerritoryMetadata | undefined>(() => {
+    if (!metaData) return metaData
+    if (!territoriesData) {
+      return {
+        ...metaData,
+        condados: metaData.condados.map((c) => ({ ...c, neighbors: [] })),
+      }
+    }
+    const neighborMap = new Map<string, string[]>()
+    for (const t of territoriesData) {
+      neighborMap.set(t.id, t.neighbors ?? [])
+    }
+    return {
+      ...metaData,
+      condados: metaData.condados.map((c) => ({
+        ...c,
+        neighbors: neighborMap.get(c.id) ?? [],
+      })),
+    }
+  }, [territoriesData, metaData])
+
+  // Preserve the 5-tuple shape so consumers destructuring by index keep
+  // working (CanvasViewer.tsx, ProjectDetail.tsx). Use `as const` on the
+  // final tuple so TanStack's typed result shape survives.
+  return [
+    results[0],
+    results[1],
+    results[2],
+    results[3],
+    { ...results[4], data: mergedMeta },
+  ] as const
 }
