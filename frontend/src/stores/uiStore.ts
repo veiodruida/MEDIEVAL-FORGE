@@ -1,8 +1,11 @@
 import { create } from 'zustand'
 
-// Layer names per D-09 spec. Downstream plans (2.2/2.3) add their own
-// rendering logic; this slice shape must NOT be changed without updating all consumers.
-export type LayerName = 'terrain' | 'territories' | 'borders' | 'capitals' | 'labels'
+// Quick-task 260420-hkr rename:
+// - 'terrain' layer belongs to Phase 05 (not yet implemented); removed here.
+// - 'baronies' added so the BaronyLayer can be toggled independently of borders.
+// Downstream plans (2.2/2.3) depend on this shape; do not change without
+// updating all consumers (CanvasViewer, LayerTogglePanel, uiStore.test).
+export type LayerName = 'condados' | 'baronies' | 'borders' | 'capitals' | 'labels'
 
 interface UIState {
   selectedTerritoryId: string | null
@@ -11,11 +14,12 @@ interface UIState {
   toggleLayer: (name: LayerName) => void
 }
 
-// D-09 initial visibility: terrain=true, territories=true, borders=true,
-// capitals=true, labels=false
+// Initial visibility: condados/borders/capitals on; baronies/labels off.
+// baronies defaults to off so the denser barony polygons do not obscure the
+// condado colors on first view — the user opts in via the "Baronias" toggle.
 const DEFAULT_LAYER_VISIBILITY: Record<LayerName, boolean> = {
-  terrain: true,
-  territories: true,
+  condados: true,
+  baronies: false,
   borders: true,
   capitals: true,
   labels: false,

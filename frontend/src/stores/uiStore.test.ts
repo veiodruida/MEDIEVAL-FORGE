@@ -2,13 +2,14 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { useUIStore } from './uiStore'
 import { act } from 'react'
 
-// Reset store between tests
+// Reset store between tests. Mirrors DEFAULT_LAYER_VISIBILITY after the
+// 260420-hkr rename: condados/borders/capitals on; baronies/labels off.
 beforeEach(() => {
   useUIStore.setState({
     selectedTerritoryId: null,
     layerVisibility: {
-      terrain: true,
-      territories: true,
+      condados: true,
+      baronies: false,
       borders: true,
       capitals: true,
       labels: false,
@@ -16,17 +17,17 @@ beforeEach(() => {
   })
 })
 
-describe('uiStore default state (D-09)', () => {
+describe('uiStore default state (post-260420-hkr rename)', () => {
   it('selectedTerritoryId is null', () => {
     expect(useUIStore.getState().selectedTerritoryId).toBeNull()
   })
 
-  it('terrain is visible by default', () => {
-    expect(useUIStore.getState().layerVisibility.terrain).toBe(true)
+  it('condados is visible by default', () => {
+    expect(useUIStore.getState().layerVisibility.condados).toBe(true)
   })
 
-  it('territories is visible by default', () => {
-    expect(useUIStore.getState().layerVisibility.territories).toBe(true)
+  it('baronies is hidden by default', () => {
+    expect(useUIStore.getState().layerVisibility.baronies).toBe(false)
   })
 
   it('borders is visible by default', () => {
@@ -56,9 +57,9 @@ describe('select action', () => {
 })
 
 describe('toggleLayer action', () => {
-  it('toggles terrain from true to false', () => {
-    act(() => useUIStore.getState().toggleLayer('terrain'))
-    expect(useUIStore.getState().layerVisibility.terrain).toBe(false)
+  it('toggles condados from true to false', () => {
+    act(() => useUIStore.getState().toggleLayer('condados'))
+    expect(useUIStore.getState().layerVisibility.condados).toBe(false)
   })
 
   it('toggles labels from false to true', () => {
@@ -66,9 +67,9 @@ describe('toggleLayer action', () => {
     expect(useUIStore.getState().layerVisibility.labels).toBe(true)
   })
 
-  it('double toggle restores original value', () => {
-    act(() => useUIStore.getState().toggleLayer('territories'))
-    act(() => useUIStore.getState().toggleLayer('territories'))
-    expect(useUIStore.getState().layerVisibility.territories).toBe(true)
+  it('double toggle on baronies restores original (false) value', () => {
+    act(() => useUIStore.getState().toggleLayer('baronies'))
+    act(() => useUIStore.getState().toggleLayer('baronies'))
+    expect(useUIStore.getState().layerVisibility.baronies).toBe(false)
   })
 })

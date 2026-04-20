@@ -15,7 +15,14 @@ vi.mock('@radix-ui/themes', () => ({
   ),
 }))
 
-const DEFAULT_VISIBILITY = { terrain: true, territories: true, borders: true, capitals: true, labels: false }
+// Quick-task 260420-hkr: vocabulary + defaults updated.
+const DEFAULT_VISIBILITY = {
+  condados: true,
+  baronies: false,
+  borders: true,
+  capitals: true,
+  labels: false,
+}
 
 describe('LayerTogglePanel', () => {
   beforeEach(() => {
@@ -29,25 +36,25 @@ describe('LayerTogglePanel', () => {
 
   it('renders 5 layer rows in the correct order', () => {
     render(<LayerTogglePanel />)
-    expect(screen.getByText('Terrain')).toBeTruthy()
-    expect(screen.getByText('Territories')).toBeTruthy()
-    expect(screen.getByText('Borders')).toBeTruthy()
-    expect(screen.getByText('Capitals')).toBeTruthy()
-    expect(screen.getByText('Labels')).toBeTruthy()
+    expect(screen.getByText('Condados')).toBeTruthy()
+    expect(screen.getByText('Baronias')).toBeTruthy()
+    expect(screen.getByText('Fronteiras')).toBeTruthy()
+    expect(screen.getByText('Capitais')).toBeTruthy()
+    expect(screen.getByText('Nomes')).toBeTruthy()
     expect(screen.getAllByRole('checkbox').length).toBe(5)
   })
 
-  it('default D-09 state: terrain/territories/borders/capitals ON, labels OFF', () => {
+  it('default state: condados/borders/capitals ON, baronies/labels OFF', () => {
     render(<LayerTogglePanel />)
     const boxes = screen.getAllByRole('checkbox') as HTMLInputElement[]
-    expect(boxes[0].checked).toBe(true)  // terrain
-    expect(boxes[1].checked).toBe(true)  // territories
+    expect(boxes[0].checked).toBe(true)  // condados
+    expect(boxes[1].checked).toBe(false) // baronies
     expect(boxes[2].checked).toBe(true)  // borders
     expect(boxes[3].checked).toBe(true)  // capitals
     expect(boxes[4].checked).toBe(false) // labels
   })
 
-  it('clicking Labels checkbox toggles store', () => {
+  it('clicking Nomes (labels) checkbox toggles store', () => {
     render(<LayerTogglePanel />)
     const boxes = screen.getAllByRole('checkbox') as HTMLInputElement[]
     act(() => { fireEvent.click(boxes[4]) })
@@ -64,8 +71,8 @@ describe('LayerTogglePanel', () => {
     expect(Number(card.style.zIndex)).toBe(10)
   })
 
-  it('header text reads "Layers"', () => {
+  it('header text reads "Camadas"', () => {
     render(<LayerTogglePanel />)
-    expect(screen.getByText('Layers')).toBeTruthy()
+    expect(screen.getByText('Camadas')).toBeTruthy()
   })
 })

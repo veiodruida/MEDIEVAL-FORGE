@@ -339,14 +339,14 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
             src={terrainSrc}
             mapW={projection.mapW}
             mapH={projection.mapH}
-            visible={layerVisibility.terrain}
+            visible={layerVisibility.condados}
           />
           <TerritoryLayer
             territories={territoriesQ.data}
             condadoColors={condadoColorsQ.data}
-            visible={layerVisibility.territories}
+            visible={layerVisibility.condados}
           />
-          <BaronyLayer baronies={baroniesQ.data} visible={layerVisibility.borders} />
+          <BaronyLayer baronies={baroniesQ.data} visible={layerVisibility.baronies} />
           <DecorationsLayer
             condados={metaQ.data.condados}
             condadoColors={condadoColorsQ.data}

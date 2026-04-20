@@ -123,7 +123,7 @@ describe('CanvasViewer', () => {
     vi.clearAllMocks()
     useUIStore.setState({
       selectedTerritoryId: null,
-      layerVisibility: { terrain: true, territories: true, borders: true, capitals: true, labels: false },
+      layerVisibility: { condados: true, baronies: false, borders: true, capitals: true, labels: false },
     })
   })
 
@@ -178,9 +178,11 @@ describe('CanvasViewer', () => {
     expect(stage.contains(panel)).toBe(false)
   })
 
-  it('BaronyLayer visible prop tracks layerVisibility.borders', async () => {
+  it('BaronyLayer visible prop tracks layerVisibility.baronies (260420-hkr)', async () => {
+    // After 260420-hkr BaronyLayer is gated by its own `baronies` key,
+    // independent of the `borders` toggle. Default baronies=false → hidden.
     useUIStore.setState({
-      layerVisibility: { terrain: true, territories: true, borders: false, capitals: true, labels: false },
+      layerVisibility: { condados: true, baronies: false, borders: true, capitals: true, labels: false },
     })
     setupFetchMock()
     render(<CanvasViewer projectId="00000000-0000-4000-8000-000000000001" />, { wrapper })

@@ -162,8 +162,8 @@ describe('CanvasViewer — Pitfall 5 pan-on-select', () => {
     useUIStore.setState({
       selectedTerritoryId: null,
       layerVisibility: {
-        terrain: true,
-        territories: true,
+        condados: true,
+        baronies: false,
         borders: true,
         capitals: true,
         labels: false,
@@ -214,8 +214,8 @@ describe('CanvasViewer — Pitfall 6 empty-Stage click deselect', () => {
     useUIStore.setState({
       selectedTerritoryId: 'C_LUGO',
       layerVisibility: {
-        terrain: true,
-        territories: true,
+        condados: true,
+        baronies: false,
         borders: true,
         capitals: true,
         labels: false,
@@ -262,8 +262,8 @@ describe('CanvasViewer — Stage wiring for zoom/pan/fit', () => {
     useUIStore.setState({
       selectedTerritoryId: null,
       layerVisibility: {
-        terrain: true,
-        territories: true,
+        condados: true,
+        baronies: false,
         borders: true,
         capitals: true,
         labels: false,

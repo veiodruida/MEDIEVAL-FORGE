@@ -78,8 +78,8 @@ describe('InspectorSidebar — project overview (no selection)', () => {
     useUIStore.setState({
       selectedTerritoryId: null,
       layerVisibility: {
-        terrain: true,
-        territories: true,
+        condados: true,
+        baronies: false,
         borders: true,
         capitals: true,
         labels: false,
@@ -113,8 +113,8 @@ describe('InspectorSidebar — territory detail (D-06.3 capital sentinel)', () =
     useUIStore.setState({
       selectedTerritoryId: 'C_CORUNA',
       layerVisibility: {
-        terrain: true,
-        territories: true,
+        condados: true,
+        baronies: false,
         borders: true,
         capitals: true,
         labels: false,
@@ -183,8 +183,8 @@ describe('InspectorSidebar — neighbor chips', () => {
     useUIStore.setState({
       selectedTerritoryId: 'C_CORUNA',
       layerVisibility: {
-        terrain: true,
-        territories: true,
+        condados: true,
+        baronies: false,
         borders: true,
         capitals: true,
         labels: false,

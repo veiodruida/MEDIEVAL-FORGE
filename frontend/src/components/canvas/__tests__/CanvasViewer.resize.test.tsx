@@ -170,8 +170,8 @@ beforeEach(() => {
   useUIStore.setState({
     selectedTerritoryId: null,
     layerVisibility: {
-      terrain: true,
-      territories: true,
+      condados: true,
+      baronies: false,
       borders: true,
       capitals: true,
       labels: false,
