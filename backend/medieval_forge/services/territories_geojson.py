@@ -161,7 +161,7 @@ def emit_territories_from_disk(
     condados were dropped — safe for the existing unit-test scenarios where
     every painted color maps to a consecutive metadata entry.
     """
-    meta = json.loads((generated_dir / "territory_metadata.json").read_text())
+    meta = json.loads((generated_dir / "territory_metadata.json").read_text(encoding='utf-8'))
     condados_meta = meta["condados"]  # list of dicts per export_metadata
     # Rehydrate the tuple/list shape build_territories_geojson expects:
     # [id, name, lon, lat, duchy, baronies]
@@ -169,7 +169,7 @@ def emit_territories_from_disk(
         [c["id"], c["name"], c["lon"], c["lat"], c.get("duchy", ""), c.get("baronies", [])]
         for c in condados_meta
     ]
-    colors_raw = json.loads((generated_dir / "lookup_condado_colors.json").read_text())
+    colors_raw = json.loads((generated_dir / "lookup_condado_colors.json").read_text(encoding='utf-8'))
 
     # Build orig_idx → meta_ci mapping when the full original list is available.
     # generate_lookup_map() writes color_map[rgb] = i where i iterates range(n_total)

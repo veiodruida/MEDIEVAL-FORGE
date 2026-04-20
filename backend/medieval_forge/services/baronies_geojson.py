@@ -77,13 +77,13 @@ def emit_baronies_from_disk(project_id: str, generated_dir: Path, cfg: _ProjCfg)
         untouched (D-04 black-box preserved).
     """
     from PIL import Image
-    meta = json.loads((generated_dir / "territory_metadata.json").read_text())
+    meta = json.loads((generated_dir / "territory_metadata.json").read_text(encoding='utf-8'))
     baronies = meta.get("baronies", [])
     condados = [
         [c["id"], c["name"], c["lon"], c["lat"], c.get("duchy", ""), c.get("baronies", [])]
         for c in meta["condados"]
     ]
-    colors_raw = json.loads((generated_dir / "lookup_barony_colors.json").read_text())
+    colors_raw = json.loads((generated_dir / "lookup_barony_colors.json").read_text(encoding='utf-8'))
 
     img = np.array(Image.open(generated_dir / "lookup_barony.png").convert("RGB"))
     H, W, _ = img.shape
