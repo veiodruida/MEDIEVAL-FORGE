@@ -57,7 +57,7 @@ describe('TerritoryLayer', () => {
   })
 
   it('renders exactly 3 Line elements with correct fills and stroke', () => {
-    render(<TerritoryLayer territories={T} condadoColors={COLORS} visible />)
+    render(<TerritoryLayer territories={T} condadoColors={COLORS} visible showBorders />)
     const lines = screen.getAllByTestId('territory-line')
     expect(lines.length).toBe(3)
     expect(lines[0].getAttribute('data-fill')).toBe('#ff0000')
@@ -71,7 +71,7 @@ describe('TerritoryLayer', () => {
   })
 
   it('falls back to #666666 for missing color id', () => {
-    render(<TerritoryLayer territories={T} condadoColors={COLORS} visible />)
+    render(<TerritoryLayer territories={T} condadoColors={COLORS} visible showBorders />)
     const lines = screen.getAllByTestId('territory-line')
     // C_C is at index 2 (missing from COLORS)
     expect(lines[2].getAttribute('data-fill')).toBe('#666666')
@@ -81,12 +81,12 @@ describe('TerritoryLayer', () => {
     // TerritoryPolygon passes isSelected down; the test verifies via a data attr
     // We just verify render doesn't crash when selection changes
     const { rerender } = render(
-      <TerritoryLayer territories={T} condadoColors={COLORS} visible />,
+      <TerritoryLayer territories={T} condadoColors={COLORS} visible showBorders />,
     )
     await act(async () => {
       mockStore.selectedTerritoryId = 'C_A'
     })
-    rerender(<TerritoryLayer territories={T} condadoColors={COLORS} visible />)
+    rerender(<TerritoryLayer territories={T} condadoColors={COLORS} visible showBorders />)
     // Still 3 lines rendered after selection change
     expect(screen.getAllByTestId('territory-line').length).toBe(3)
   })
