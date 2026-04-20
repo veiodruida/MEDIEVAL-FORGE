@@ -251,7 +251,7 @@ def load_municipalities(cfg: RegionConfig) -> Tuple[dict, list]:
         print(f"  Loaded PT municipalities: {len(pt_data.get('features', []))} features")
     
     if cfg.municipality_es_topojson and os.path.exists(cfg.municipality_es_topojson):
-        with open(cfg.municipality_es_topojson, 'r') as f:
+        with open(cfg.municipality_es_topojson, 'r', encoding='utf-8') as f:
             es_municipalities = decode_topojson_municipalities(json.load(f), cfg)
         print(f"  Loaded ES municipalities: {len(es_municipalities)} features")
     
@@ -736,7 +736,7 @@ def render_mountains(cfg, land_2x):
     if not cfg.mountain_river_json or not os.path.exists(cfg.mountain_river_json):
         return None
     
-    with open(cfg.mountain_river_json, 'r') as f:
+    with open(cfg.mountain_river_json, 'r', encoding='utf-8') as f:
         data = json.load(f)
     
     mountains = data.get('mountains', {})
@@ -768,7 +768,7 @@ def render_rivers(cfg):
     if not cfg.mountain_river_json or not os.path.exists(cfg.mountain_river_json):
         return None
     
-    with open(cfg.mountain_river_json, 'r') as f:
+    with open(cfg.mountain_river_json, 'r', encoding='utf-8') as f:
         data = json.load(f)
     
     rivers = data.get('rivers', {})
