@@ -345,6 +345,7 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
             territories={territoriesQ.data}
             condadoColors={condadoColorsQ.data}
             visible={layerVisibility.condados}
+            showBorders={layerVisibility.borders}
           />
           <BaronyLayer baronies={baroniesQ.data} visible={layerVisibility.baronies} />
           <DecorationsLayer

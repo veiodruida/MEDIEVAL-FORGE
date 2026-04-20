@@ -10,6 +10,7 @@ interface TerritoryLayerProps {
   territories: TerritoryRender[]
   condadoColors: Record<string, string>
   visible: boolean
+  showBorders: boolean
 }
 
 /**
@@ -24,6 +25,7 @@ export function TerritoryLayer({
   territories,
   condadoColors,
   visible,
+  showBorders,
 }: TerritoryLayerProps) {
   const selectedTerritoryId = useUIStore((s) => s.selectedTerritoryId)
   const select = useUIStore((s) => s.select)
@@ -41,6 +43,7 @@ export function TerritoryLayer({
           territory={t}
           fill={condadoColors[t.id] ?? FALLBACK_FILL}
           isSelected={selectedTerritoryId === t.id}
+          showBorders={showBorders}
           onClick={handleClick}
         />
       ))}

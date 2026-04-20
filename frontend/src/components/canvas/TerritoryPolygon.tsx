@@ -6,6 +6,7 @@ interface TerritoryPolygonProps {
   territory: TerritoryRender
   fill: string
   isSelected: boolean
+  showBorders: boolean
   onClick: (id: string) => void
 }
 
@@ -21,6 +22,7 @@ function TerritoryPolygonBase({
   territory,
   fill,
   isSelected,
+  showBorders,
   onClick,
 }: TerritoryPolygonProps) {
   return (
@@ -29,8 +31,8 @@ function TerritoryPolygonBase({
       points={territory.points}
       closed
       fill={fill}
-      stroke="rgba(0, 0, 0, 0.35)"
-      strokeWidth={isSelected ? 2.5 : 1}
+      stroke={showBorders ? "rgba(0, 0, 0, 0.35)" : "transparent"}
+      strokeWidth={showBorders ? (isSelected ? 2.5 : 1) : 0}
       onClick={() => onClick(territory.id)}
       listening
     />
@@ -46,6 +48,7 @@ function areEqual(
     prev.territory.points === next.territory.points &&
     prev.fill === next.fill &&
     prev.isSelected === next.isSelected &&
+    prev.showBorders === next.showBorders &&
     prev.onClick === next.onClick
   )
 }
