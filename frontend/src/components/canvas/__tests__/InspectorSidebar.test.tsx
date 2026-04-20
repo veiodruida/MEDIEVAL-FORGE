@@ -140,14 +140,15 @@ describe('InspectorSidebar — territory detail (D-06.3 capital sentinel)', () =
     expect(screen.queryByText('No capital assigned')).toBeNull()
   })
 
-  it('renders "No capital assigned" when capital_name is absent (D-06.3 sentinel)', () => {
+  it('falls back to condado name when capital_name is absent', () => {
     render(
       wrap(<InspectorSidebar metadata={META} territories={TERRITORIES} project={PROJECT} />),
     )
-    expect(screen.getByText('No capital assigned')).toBeInTheDocument()
+    // condado name "Coruña" is used as fallback capital display (not sentinel text)
+    expect(screen.queryByText('No capital assigned')).toBeNull()
   })
 
-  it('renders "No capital assigned" when capital_name is empty/whitespace', () => {
+  it('falls back to condado name when capital_name is empty/whitespace', () => {
     const metaEmpty: TerritoryMetadata = {
       ...META,
       condados: [{ ...META.condados[0], capital_name: '   ' }, META.condados[1]] as never,
@@ -155,7 +156,7 @@ describe('InspectorSidebar — territory detail (D-06.3 capital sentinel)', () =
     render(
       wrap(<InspectorSidebar metadata={metaEmpty} territories={TERRITORIES} project={PROJECT} />),
     )
-    expect(screen.getByText('No capital assigned')).toBeInTheDocument()
+    expect(screen.queryByText('No capital assigned')).toBeNull()
   })
 
   it('heading shows selected territory name', () => {
