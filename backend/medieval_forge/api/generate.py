@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/projects", tags=["generate"])
 
 
-_MEDIA_TYPES = {".png": "image/png", ".json": "application/json"}
+_MEDIA_TYPES = {".png": "image/png", ".json": "application/json; charset=utf-8"}
 
 
 async def _run_and_update_status(project_id: str, config: dict) -> None:

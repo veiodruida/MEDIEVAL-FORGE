@@ -1025,13 +1025,13 @@ def generate_maps(cfg: RegionConfig = None, territory_module: str = "territory_d
     for label, level_map, n_items in [("barony", result, nb), ("condado", pc, nc)]:
         lk, cmap = generate_lookup_map(result, level_map, n_items, cfg, label)
         Image.fromarray(lk).save(f"{cfg.output_dir}/lookup_{label}.png")
-        with open(f"{cfg.output_dir}/lookup_{label}_colors.json", 'w') as f:
+        with open(f"{cfg.output_dir}/lookup_{label}_colors.json", 'w', encoding='utf-8') as f:
             json.dump(cmap, f, indent=2)
     
     # 11. Metadata
     print("[12] Exporting metadata...")
     metadata = export_metadata(condados, duchies, kingdoms, bars, result, pc, cfg)
-    with open(f"{cfg.output_dir}/territory_metadata.json", 'w') as f:
+    with open(f"{cfg.output_dir}/territory_metadata.json", 'w', encoding='utf-8') as f:
         json.dump(metadata, f, indent=2, ensure_ascii=False)
     
     # 12. Mountains
@@ -1066,7 +1066,7 @@ def generate_maps(cfg: RegionConfig = None, territory_module: str = "territory_d
         land, cfg, mtn_mask=mtn_mask, rivers_img=rivers_img
     )
     Image.fromarray(terrain_arr).save(f"{cfg.output_dir}/terrain_lookup.png")
-    with open(f"{cfg.output_dir}/terrain_types.json", 'w') as f:
+    with open(f"{cfg.output_dir}/terrain_types.json", 'w', encoding='utf-8') as f:
         json.dump(terrain_types, f, indent=2)
     unique_types = len({tuple(terrain_arr[land][i]) for i in range(0, int(land.sum()), max(1, int(land.sum())//1000))})
     print(f"    Terrain types written: {len(terrain_types)} types, ~{unique_types} unique colors sampled")
