@@ -6,6 +6,17 @@ import type {
   TerritoryRender,
 } from '../../hooks/useCanvasArtifacts'
 
+function pixelsToKm2(pixelCount: number, metadata: TerritoryMetadata): number {
+  const { bounds, map_size } = metadata
+  const centerLat = (bounds.lat_min + bounds.lat_max) / 2
+  const lonScale = Math.cos((centerLat * Math.PI) / 180)
+  const latKm = (bounds.lat_max - bounds.lat_min) * 111.32
+  const lonKm = (bounds.lon_max - bounds.lon_min) * lonScale * 111.32
+  const totalKm2 = latKm * lonKm
+  const totalPixels = map_size[0] * map_size[1]
+  return (pixelCount * totalKm2) / totalPixels
+}
+
 /**
  * UI-SPEC Copywriting Contract — exact strings the inspector MUST render.
  * D-06.3 "No capital assigned" is a functional sentinel (not just copy), so
@@ -138,7 +149,7 @@ export function InspectorSidebar({
         <Flex justify="between" align="center">
           <Text size="1" color="gray">Area</Text>
           <Text size="2">
-            {(condado.pixel_count / 1000).toFixed(1)}k px
+            {`~${Math.round(pixelsToKm2(condado.pixel_count, metadata)).toLocaleString()} km²`}
           </Text>
         </Flex>
       </Box>
