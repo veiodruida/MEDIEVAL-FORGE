@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 import { ProjectList } from './pages/ProjectList'
 import { ProjectNew } from './pages/ProjectNew'
 import { ProjectDetail } from './pages/ProjectDetail'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import { CanvasRadixOverlaySmoke } from './components/canvas/__smoke__/CanvasRadixOverlaySmoke'
 
 export default function App() {
@@ -10,7 +11,14 @@ export default function App() {
       <Route path="/" element={<Navigate to="/projects" replace />} />
       <Route path="/projects" element={<ProjectList />} />
       <Route path="/projects/new" element={<ProjectNew />} />
-      <Route path="/projects/:id" element={<ProjectDetail />} />
+      <Route
+        path="/projects/:id"
+        element={
+          <ErrorBoundary>
+            <ProjectDetail />
+          </ErrorBoundary>
+        }
+      />
       {import.meta.env.DEV && (
         <Route path="/canvas-smoke" element={<CanvasRadixOverlaySmoke />} />
       )}
