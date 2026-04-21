@@ -23,10 +23,12 @@ ASSETS_DIR: Path = STATIC_DIR / "assets"
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: validate DB connectivity (tables come from Alembic).
+    # Startup: create all tables (idempotent CREATE TABLE IF NOT EXISTS).
+    # This covers Project, ResearchCache, and any future models added to Base.
+    # No Alembic in this repo — consistent with project zero-migration approach.
+    from .models import Base  # noqa: F401 — ensure ResearchCache is registered
     async with engine.begin() as conn:
-        # No-op: just exercises the connection so a broken URL fails fast.
-        pass
+        await conn.run_sync(Base.metadata.create_all)
     # Initialize in-memory credential stores (D-14: never written to disk).
     app.state.credentials = {}   # provider_id -> {"key"|"access_token"|..., "source": ...}
     app.state.oauth_states = {}  # state_token -> {"flow": Flow, "provider": str, "expires_at": float}
