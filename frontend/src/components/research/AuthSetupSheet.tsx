@@ -132,6 +132,15 @@ export function AuthSetupSheet() {
               </Badge>
             )}
 
+            {/* Persistent status badge — shows whether the provider has a credential saved */}
+            {!isOllama && !isClaudeWithCli && provider && (
+              <Badge color={provider.configured ? "green" : "amber"} size="2">
+                {provider.configured
+                  ? "✓ Credencial salva nesta sessão"
+                  : "⚠ Nenhuma credencial configurada"}
+              </Badge>
+            )}
+
             {/* OAuth button — only for Gemini */}
             {isGemini && (
               <Flex direction="column" gap="2">

@@ -1,29 +1,47 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ResearchResult } from "../api/research";
 
-type Status = "idle" | "streaming" | "cached" | "success" | "error";
+type Status = "idle" | "streaming" | "cached" | "success" | "error" | "cancelled";
+
+export type StreamMessage = { text: string; ts: number };
 
 export function useResearchStream(projectId: string) {
-  const [messages, setMessages] = useState<string[]>([]);
+  const [messages, setMessages] = useState<StreamMessage[]>([]);
   const [retryNotices, setRetryNotices] = useState<string[]>([]);
   const [result, setResult] = useState<ResearchResult | null>(null);
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
+  const [startedAt, setStartedAt] = useState<number | null>(null);
+  const [now, setNow] = useState<number>(() => Date.now());
   const abortRef = useRef<AbortController | null>(null);
+
+  // Tick "now" every 500ms while streaming so the elapsed counter updates.
+  useEffect(() => {
+    if (status !== "streaming") return;
+    const id = window.setInterval(() => setNow(Date.now()), 500);
+    return () => window.clearInterval(id);
+  }, [status]);
+
+  const elapsedMs = startedAt !== null ? now - startedAt : 0;
 
   const cancel = useCallback(() => {
     abortRef.current?.abort();
     abortRef.current = null;
+    setStatus("cancelled");
   }, []);
 
   const start = useCallback(
     async (provider: string, forceRefresh = false) => {
-      cancel();
+      abortRef.current?.abort();
+      abortRef.current = null;
       setMessages([]);
       setRetryNotices([]);
       setResult(null);
       setError(null);
       setStatus("streaming");
+      const t0 = Date.now();
+      setStartedAt(t0);
+      setNow(t0);
       const ac = new AbortController();
       abortRef.current = ac;
       try {
@@ -75,7 +93,7 @@ export function useResearchStream(projectId: string) {
               setRetryNotices((prev) => [...prev, payload]);
               continue;
             }
-            setMessages((prev) => [...prev, payload]);
+            setMessages((prev) => [...prev, { text: payload, ts: Date.now() }]);
           }
         }
       } catch (e: unknown) {
@@ -85,8 +103,8 @@ export function useResearchStream(projectId: string) {
         }
       }
     },
-    [projectId, cancel]
+    [projectId]
   );
 
-  return { start, cancel, messages, retryNotices, result, status, error };
+  return { start, cancel, messages, retryNotices, result, status, error, elapsedMs };
 }

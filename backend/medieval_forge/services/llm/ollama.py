@@ -44,11 +44,33 @@ class OllamaProvider:
         model = (credentials or {}).get("model") or DEFAULT_MODEL
         if queue is not None:
             await queue.put(f"data: Aguardando Ollama ({model})...\n\n")
-        response = await client.chat(
-            model=model,
-            messages=[{"role": "user", "content": prompt}],
-            format="json",
-            stream=False,
-        )
+
+        # Ollama.chat(stream=False) is a single blocking call that can take 30-120s
+        # on local hardware. Emit a heartbeat every 3s so the user sees activity.
+        async def heartbeat() -> None:
+            elapsed = 0
+            while queue is not None:
+                await asyncio.sleep(3.0)
+                elapsed += 3
+                await queue.put(f"data: ainda processando... ({elapsed}s)\n\n")
+
+        hb_task = asyncio.create_task(heartbeat()) if queue is not None else None
+        try:
+            response = await client.chat(
+                model=model,
+                messages=[{"role": "user", "content": prompt}],
+                format="json",
+                stream=False,
+            )
+        finally:
+            if hb_task is not None:
+                hb_task.cancel()
+                try:
+                    await hb_task
+                except (asyncio.CancelledError, Exception):
+                    pass
+
+        if queue is not None:
+            await queue.put("data: resposta recebida, validando JSON...\n\n")
         content = response["message"]["content"]
         return schema.model_validate_json(content)

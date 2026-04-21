@@ -55,11 +55,28 @@ export function ResearchDialog({ projectId }: ResearchDialogProps) {
 
   const renderProgressArea = () => {
     if (stream.status === "streaming") {
+      const secs = (stream.elapsedMs / 1000).toFixed(1);
+      const dots = ".".repeat((Math.floor(stream.elapsedMs / 500) % 3) + 1);
+      const lines = [
+        ...stream.messages.map((m) => {
+          const t = new Date(m.ts);
+          const hh = String(t.getHours()).padStart(2, "0");
+          const mm = String(t.getMinutes()).padStart(2, "0");
+          const ss = String(t.getSeconds()).padStart(2, "0");
+          return `[${hh}:${mm}:${ss}] ${m.text}`;
+        }),
+        ...stream.retryNotices,
+      ];
       return (
         <Flex direction="column" gap="2">
-          <Text size="2" color="gray">
-            Pesquisando…
-          </Text>
+          <Flex align="center" gap="2">
+            <Text size="2" color="blue" weight="bold">
+              Pesquisando{dots}
+            </Text>
+            <Text size="1" color="gray">
+              {secs}s decorridos
+            </Text>
+          </Flex>
           <pre
             style={{
               padding: 8,
@@ -71,10 +88,28 @@ export function ResearchDialog({ projectId }: ResearchDialogProps) {
               whiteSpace: "pre-wrap",
             }}
           >
-            {[...stream.messages, ...stream.retryNotices].join("\n") || (
-              <span style={{ color: "#999" }}>Aguardando resposta…</span>
+            {lines.length > 0 ? lines.join("\n") : (
+              <span style={{ color: "#999" }}>
+                Aguardando o modelo responder. Modelos locais grandes podem levar 30-120s{dots}
+              </span>
             )}
           </pre>
+          <Button variant="soft" color="red" onClick={() => stream.cancel()}>
+            Cancelar pesquisa
+          </Button>
+        </Flex>
+      );
+    }
+
+    if (stream.status === "cancelled") {
+      return (
+        <Flex direction="column" gap="2">
+          <Badge color="gray" size="2">
+            Pesquisa cancelada
+          </Badge>
+          <Text size="2" color="gray">
+            Você pode iniciar uma nova pesquisa a qualquer momento.
+          </Text>
         </Flex>
       );
     }
