@@ -125,5 +125,12 @@ async def set_ollama_model(payload: OllamaModelPayload, request: Request) -> dic
     if creds is None:
         request.app.state.credentials = {}
         creds = request.app.state.credentials
-    creds["ollama"] = {"model": name, "source": "session"}
+    creds["ollama"] = {"type": "none", "model": name, "source": "disk"}
+
+    # Persist to DB so the model choice survives restarts.
+    from ..database import AsyncSessionLocal
+    from ..services import credential_store
+    async with AsyncSessionLocal() as session:
+        await credential_store.save_ollama_model(session, name)
+
     return {"ok": True, "model": name}

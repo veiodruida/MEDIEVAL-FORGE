@@ -27,8 +27,12 @@ async def lifespan(app: FastAPI):
     from .models import Base  # noqa: F401 — ensure ResearchCache is registered
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-    # Initialize in-memory credential stores (D-14: never written to disk).
-    app.state.credentials = {}   # provider_id -> {"key"|"access_token"|..., "source": ...}
+    # Initialize credential state. Persistent credentials live in the
+    # llm_credentials table; we preload them into app.state at startup.
+    from .database import AsyncSessionLocal
+    from .services import credential_store
+    async with AsyncSessionLocal() as session:
+        app.state.credentials = await credential_store.load_all(session)
     app.state.oauth_states = {}  # state_token -> {"flow": Flow, "provider": str, "expires_at": float}
     yield
     # Shutdown: close pool.

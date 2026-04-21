@@ -23,7 +23,9 @@ from fastapi import APIRouter, HTTPException, Request, Response
 from google_auth_oauthlib.flow import Flow
 from pydantic import BaseModel
 
+from ..database import AsyncSessionLocal
 from ..services.llm.registry import PROVIDERS
+from ..services import credential_store
 
 router = APIRouter(tags=["auth"])
 
@@ -79,9 +81,13 @@ async def store_credential(
     # Gemini stores api_key under "api_key" field; others under "key"
     # (matches what resolve_credentials() and provider adapters expect)
     if provider == "gemini":
-        creds[provider] = {"type": "api_key", "api_key": payload.api_key, "source": "session"}
+        creds[provider] = {"type": "api_key", "api_key": payload.api_key, "source": "disk"}
     else:
-        creds[provider] = {"type": "api_key", "key": payload.api_key, "source": "session"}
+        creds[provider] = {"type": "api_key", "key": payload.api_key, "source": "disk"}
+
+    # Persist to DB so the key survives server restarts.
+    async with AsyncSessionLocal() as session:
+        await credential_store.save_api_key(session, provider, payload.api_key)
 
     return Response(status_code=204)
 
@@ -94,6 +100,11 @@ async def clear_credential(provider: str, request: Request) -> Response:
 
     creds = getattr(request.app.state, "credentials", {}) or {}
     creds.pop(provider, None)
+
+    # Also remove from DB so it does not reappear on next restart.
+    async with AsyncSessionLocal() as session:
+        await credential_store.delete_credential(session, provider)
+
     return Response(status_code=204)
 
 
@@ -172,6 +183,16 @@ async def oauth_callback(
         "type": "oauth",
         "access_token": flow.credentials.token,
         "refresh_token": flow.credentials.refresh_token,
-        "source": "oauth",
+        "source": "disk",
     }
+
+    # Persist OAuth tokens to DB so the user stays logged in across restarts.
+    async with AsyncSessionLocal() as session:
+        await credential_store.save_oauth(
+            session,
+            provider,
+            flow.credentials.token,
+            flow.credentials.refresh_token,
+        )
+
     return {"status": "authenticated", "provider": provider}
