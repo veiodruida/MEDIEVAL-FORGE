@@ -37,15 +37,23 @@ async def async_session_factory(async_engine):
 
 @pytest_asyncio.fixture
 async def async_client(async_session_factory):
-    """AsyncClient wired to in-memory DB."""
+    """AsyncClient wired to in-memory DB.
+
+    Also sets app.state._test_session_factory so run_research uses the
+    same in-memory engine (not the global AsyncSessionLocal).
+    """
     async def _override():
         async with async_session_factory() as session:
             yield session
 
     app.dependency_overrides[get_db] = _override
+    # Wire the runner to use the same in-memory factory
+    app.state._test_session_factory = async_session_factory
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         yield c
     app.dependency_overrides.clear()
+    if hasattr(app.state, "_test_session_factory"):
+        del app.state._test_session_factory
 
 
 @pytest_asyncio.fixture
@@ -190,10 +198,6 @@ async def test_sse_endpoint_returns_cached_result(monkeypatch, async_client, pro
 
     monkeypatch.setitem(PROVIDERS, "claude", _FakeProvider())
 
-    # Wire the research runner to use our in-memory session factory
-    import medieval_forge.services.research_runner as runner_mod
-    monkeypatch.setattr(runner_mod, "AsyncSessionLocal", async_session_factory)
-
     pid = project_with_territories
     body_chunks = []
     async with async_client.stream("POST", f"/api/projects/{pid}/research?provider=claude") as resp:
@@ -249,9 +253,6 @@ async def test_sse_endpoint_force_refresh_bypasses_cache(monkeypatch, async_clie
             return valid_result
 
     monkeypatch.setitem(PROVIDERS, "claude", _FakeProvider())
-
-    import medieval_forge.services.research_runner as runner_mod
-    monkeypatch.setattr(runner_mod, "AsyncSessionLocal", async_session_factory)
 
     pid = project_with_territories
     body_chunks = []

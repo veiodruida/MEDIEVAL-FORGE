@@ -48,12 +48,16 @@ from .api.ingest import router as ingest_router  # noqa: E402
 from .api.generate import router as generate_router  # noqa: E402
 from .api.export import router as export_router  # noqa: E402
 from .api.auth import router as auth_router  # noqa: E402
+from .api.research import router as research_router  # noqa: E402
+from .api.llm import router as llm_router  # noqa: E402
 
 app.include_router(projects_router, prefix="/api")
 app.include_router(ingest_router, prefix="/api")
 app.include_router(generate_router, prefix="/api")
 app.include_router(export_router, prefix="/api")
 app.include_router(auth_router, prefix="/api")
+app.include_router(research_router, prefix="/api")
+app.include_router(llm_router, prefix="/api")
 
 # /assets/* — JS/CSS bundles. Only mount if directory exists (frontend may
 # not be built yet during early development).

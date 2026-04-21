@@ -83,13 +83,18 @@ async def test_get_providers_marks_configured_when_env_var_set(monkeypatch, asyn
 
 
 async def test_get_providers_marks_unconfigured_when_no_credentials(monkeypatch, async_client):
-    """No env keys + empty session → non-Ollama providers show configured=False."""
+    """No env keys + empty session + no CLI token → non-Ollama providers show configured=False."""
     # Clear all relevant env vars
     for var in ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GOOGLE_API_KEY", "GEMINI_API_KEY"]:
         monkeypatch.delenv(var, raising=False)
 
     # Ensure app.state.credentials is empty
     app.state.credentials = {}
+
+    # Also block CLI piggyback so the claude-code credential file on disk
+    # doesn't make Claude appear configured in CI / dev environments.
+    import medieval_forge.services.llm.auth as auth_mod
+    monkeypatch.setattr(auth_mod, "read_claude_cli_token", lambda: None)
 
     resp = await async_client.get("/api/llm/providers")
     assert resp.status_code == 200
