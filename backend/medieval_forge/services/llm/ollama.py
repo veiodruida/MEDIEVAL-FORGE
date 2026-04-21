@@ -1,0 +1,50 @@
+"""OllamaProvider — Local Ollama via async client with format='json'.
+
+D-19: No auth required for local Ollama instance.
+Uses qwen2.5:7b as default model; format='json' enforces JSON output.
+"""
+from __future__ import annotations
+
+import asyncio
+import json
+
+from ollama import AsyncClient
+from pydantic import BaseModel
+
+from .base import HealthStatus, LLMProvider, NoAuth
+
+OLLAMA_HOST = "http://localhost:11434"
+DEFAULT_MODEL = "qwen2.5:7b"
+
+
+class OllamaProvider:
+    provider_id = "ollama"
+    display_name = "Ollama (local)"
+    auth_methods = [NoAuth()]
+
+    async def health_check(self, credentials: dict | None) -> HealthStatus:
+        try:
+            client = AsyncClient(host=OLLAMA_HOST)
+            await client.list()
+            return HealthStatus(healthy=True, message=f"Reachable at {OLLAMA_HOST}")
+        except Exception as exc:
+            return HealthStatus(healthy=False, message=f"Unreachable: {exc}")
+
+    async def research(
+        self,
+        prompt: str,
+        schema: type[BaseModel],
+        credentials: dict | None,
+        queue: asyncio.Queue[str | None] | None,
+    ) -> BaseModel:
+        client = AsyncClient(host=OLLAMA_HOST)
+        if queue is not None:
+            await queue.put(f"data: Aguardando Ollama ({DEFAULT_MODEL})...\n\n")
+        response = await client.chat(
+            model=DEFAULT_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            format="json",
+            stream=False,
+        )
+        content = response["message"]["content"]
+        return schema.model_validate_json(content)

@@ -9,6 +9,8 @@ from .base import (
     NoAuth,
 )
 from .schemas import ResearchResult, CondadoAssignment, Barony
+from .registry import PROVIDERS
+from .retry import run_with_retry, ResearchValidationError
 
 __all__ = [
     "LLMProvider",
@@ -21,4 +23,7 @@ __all__ = [
     "ResearchResult",
     "CondadoAssignment",
     "Barony",
+    "PROVIDERS",
+    "run_with_retry",
+    "ResearchValidationError",
 ]
