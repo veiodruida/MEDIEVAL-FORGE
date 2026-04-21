@@ -39,3 +39,17 @@ class Project(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=_utcnow, onupdate=_utcnow, nullable=False
     )
+
+
+class ResearchCache(Base):
+    """Per-research cache (RESEARCH-04, D-25). Key: SHA-256 of (country_qid:period_start:period_end:provider:model)."""
+    __tablename__ = "research_cache"
+
+    cache_key_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    payload: Mapped[dict] = mapped_column(JSON, nullable=False)
+    provider: Mapped[str] = mapped_column(String(50), nullable=False)
+    model: Mapped[str] = mapped_column(String(100), nullable=False)
+    country_qid: Mapped[str] = mapped_column(String(20), nullable=False)
+    period_start: Mapped[int] = mapped_column(nullable=False)
+    period_end: Mapped[int] = mapped_column(nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, nullable=False)
