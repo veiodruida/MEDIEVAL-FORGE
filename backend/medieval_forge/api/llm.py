@@ -1,17 +1,20 @@
 """LLM provider discovery endpoints (RESEARCH-05, RESEARCH-09, D-05, D-17).
 
-GET /llm/providers  — machine-readable list of all registered providers (auto-discovered from PROVIDERS)
-GET /llm/health     — per-provider health check results
-
-Both endpoints iterate PROVIDERS.values() so adding a new provider adapter
-automatically appears here — no code changes needed in this file (RESEARCH-09).
+GET /llm/providers       — list all registered providers (auto-discovered from PROVIDERS)
+GET /llm/health          — per-provider health check results
+GET /llm/ollama/models   — list models available on the local Ollama instance
+POST /llm/ollama/model   — set the active Ollama model for this session
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Request
+import asyncio
+
+from fastapi import APIRouter, HTTPException, Request
+from pydantic import BaseModel
 
 from ..services.llm import PROVIDERS
 from ..services.llm.auth import resolve_credentials
+from ..services.llm.ollama import OLLAMA_HOST
 from ..services.research_runner import PROVIDER_DEFAULT_MODEL
 
 router = APIRouter(tags=["llm"])
@@ -63,3 +66,64 @@ async def health_all(request: Request) -> dict:
         except Exception as e:
             result[pid] = {"healthy": False, "message": str(e)}
     return result
+
+
+@router.get("/llm/ollama/models")
+async def list_ollama_models(request: Request) -> dict:
+    """Return models installed on the local Ollama instance.
+
+    Response shape:
+      {"models": ["llama3.2:3b", "qwen2.5:14b", ...], "selected": "qwen2.5:14b" | null,
+       "default": "qwen2.5:7b", "healthy": bool, "message": str | null}
+    """
+    from ollama import AsyncClient
+
+    default = PROVIDER_DEFAULT_MODEL.get("ollama", "")
+    creds = getattr(request.app.state, "credentials", {}).get("ollama") or {}
+    selected = creds.get("model")
+
+    try:
+        client = AsyncClient(host=OLLAMA_HOST)
+        resp = await asyncio.wait_for(client.list(), timeout=3.0)
+        models_data = resp.get("models") if isinstance(resp, dict) else getattr(resp, "models", [])
+        names: list[str] = []
+        for m in models_data or []:
+            name = m.get("name") if isinstance(m, dict) else getattr(m, "model", None) or getattr(m, "name", None)
+            if name:
+                names.append(name)
+        return {
+            "models": names,
+            "selected": selected,
+            "default": default,
+            "healthy": True,
+            "message": None,
+        }
+    except asyncio.TimeoutError:
+        return {"models": [], "selected": selected, "default": default, "healthy": False,
+                "message": f"Ollama não respondeu em {OLLAMA_HOST} (timeout 3s). Inicia 'ollama serve'."}
+    except Exception as exc:
+        return {"models": [], "selected": selected, "default": default, "healthy": False,
+                "message": f"Falha ao conectar no Ollama: {exc}"}
+
+
+class OllamaModelPayload(BaseModel):
+    model: str
+
+
+@router.post("/llm/ollama/model")
+async def set_ollama_model(payload: OllamaModelPayload, request: Request) -> dict:
+    """Set the active Ollama model for this session.
+
+    Stores the choice in app.state.credentials["ollama"] = {"model": ...} so that
+    research_runner and the Ollama provider pick it up. Never written to disk.
+    """
+    name = payload.model.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Empty model name")
+
+    creds = getattr(request.app.state, "credentials", None)
+    if creds is None:
+        request.app.state.credentials = {}
+        creds = request.app.state.credentials
+    creds["ollama"] = {"model": name, "source": "session"}
+    return {"ok": True, "model": name}

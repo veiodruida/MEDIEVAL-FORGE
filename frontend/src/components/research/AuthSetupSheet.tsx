@@ -6,6 +6,7 @@ import {
   Dialog,
   Flex,
   Heading,
+  Select,
   Text,
   TextField,
 } from "@radix-ui/themes";
@@ -14,6 +15,8 @@ import {
   useStoreCredentialMutation,
   useClearCredentialMutation,
   useOAuthStartMutation,
+  useOllamaModelsQuery,
+  useSetOllamaModelMutation,
 } from "../../api/research";
 import { useResearchStore } from "../../stores/useResearchStore";
 
@@ -81,6 +84,23 @@ export function AuthSetupSheet() {
     provider.configured === true;
 
   const isGemini = provider?.provider_id === "gemini";
+  const isOllama = provider?.provider_id === "ollama";
+
+  const ollamaModels = useOllamaModelsQuery(isOllama && isOpen);
+  const setOllamaModel = useSetOllamaModelMutation();
+  const [pickedOllamaModel, setPickedOllamaModel] = useState<string>("");
+
+  const activeOllamaModel =
+    pickedOllamaModel ||
+    ollamaModels.data?.selected ||
+    ollamaModels.data?.models[0] ||
+    "";
+
+  const handleSaveOllamaModel = async () => {
+    if (!activeOllamaModel) return;
+    await setOllamaModel.mutateAsync(activeOllamaModel);
+    setSaveSuccess(true);
+  };
 
   return (
     <>
@@ -131,36 +151,96 @@ export function AuthSetupSheet() {
               </Flex>
             )}
 
-            {/* API key input — always shown */}
-            <Flex direction="column" gap="2">
-              <Heading size="3">Chave de API</Heading>
-              <TextField.Root
-                type="password"
-                placeholder="Cola a chave aqui (apenas nesta sessão)"
-                value={apiKey}
-                onChange={(e) => {
-                  setApiKey(e.target.value);
-                  setSaveSuccess(false);
-                }}
-              />
-              {saveSuccess && (
-                <Text size="1" color="green">
-                  Chave salva com sucesso.
+            {/* Ollama: model picker instead of API key */}
+            {isOllama && (
+              <Flex direction="column" gap="2">
+                <Heading size="3">Modelo local (Ollama)</Heading>
+                <Text size="1" color="gray">
+                  Ollama roda localmente e não precisa de chave de API. Escolha um dos modelos que você já baixou com <code>ollama pull</code>.
                 </Text>
-              )}
-              {storeCred.isError && (
-                <Text size="1" color="red">
-                  Erro ao salvar chave: {(storeCred.error as Error).message}
-                </Text>
-              )}
-              <Button
-                onClick={handleSaveKey}
-                disabled={!apiKey.trim() || storeCred.isPending}
-                color="blue"
-              >
-                {storeCred.isPending ? "Salvando…" : "Usar esta chave"}
-              </Button>
-            </Flex>
+                {ollamaModels.isLoading && (
+                  <Text size="2" color="gray">Detectando modelos...</Text>
+                )}
+                {ollamaModels.data && !ollamaModels.data.healthy && (
+                  <Text size="2" color="red">
+                    {ollamaModels.data.message ?? "Ollama indisponível."}
+                  </Text>
+                )}
+                {ollamaModels.data && ollamaModels.data.healthy && ollamaModels.data.models.length === 0 && (
+                  <Text size="2" color="amber">
+                    Nenhum modelo encontrado. Rode <code>ollama pull qwen2.5</code> (ou outro) e recarrega.
+                  </Text>
+                )}
+                {ollamaModels.data && ollamaModels.data.models.length > 0 && (
+                  <>
+                    <Select.Root
+                      value={activeOllamaModel}
+                      onValueChange={(v) => {
+                        setPickedOllamaModel(v);
+                        setSaveSuccess(false);
+                      }}
+                    >
+                      <Select.Trigger placeholder="Escolhe um modelo..." />
+                      <Select.Content>
+                        {ollamaModels.data.models.map((m) => (
+                          <Select.Item key={m} value={m}>
+                            {m}
+                          </Select.Item>
+                        ))}
+                      </Select.Content>
+                    </Select.Root>
+                    {ollamaModels.data.selected && (
+                      <Text size="1" color="gray">
+                        Modelo ativo: <strong>{ollamaModels.data.selected}</strong>
+                      </Text>
+                    )}
+                    {saveSuccess && (
+                      <Text size="1" color="green">Modelo selecionado com sucesso.</Text>
+                    )}
+                    <Button
+                      onClick={handleSaveOllamaModel}
+                      disabled={!activeOllamaModel || setOllamaModel.isPending}
+                      color="blue"
+                    >
+                      {setOllamaModel.isPending ? "Salvando..." : "Usar este modelo"}
+                    </Button>
+                  </>
+                )}
+              </Flex>
+            )}
+
+            {/* API key input — hidden for Ollama (local, no auth) */}
+            {!isOllama && (
+              <Flex direction="column" gap="2">
+                <Heading size="3">Chave de API</Heading>
+                <TextField.Root
+                  type="password"
+                  placeholder="Cola a chave aqui (apenas nesta sessão)"
+                  value={apiKey}
+                  onChange={(e) => {
+                    setApiKey(e.target.value);
+                    setSaveSuccess(false);
+                  }}
+                />
+                {saveSuccess && (
+                  <Text size="1" color="green">
+                    Chave salva com sucesso.
+                  </Text>
+                )}
+                {storeCred.isError && (
+                  <Text size="1" color="red">
+                    Erro ao salvar chave: {(storeCred.error as Error).message}
+                  </Text>
+                )}
+                <Button
+                  onClick={handleSaveKey}
+                  disabled={!apiKey.trim() || storeCred.isPending}
+                  color="blue"
+                >
+                  {storeCred.isPending ? "Salvando..." : "Usar esta chave"}
+                </Button>
+              </Flex>
+            )}
 
             {/* Destructive clear credentials — at the bottom */}
             <Flex mt="auto" pt="4" style={{ borderTop: "1px solid var(--gray-4)" }}>

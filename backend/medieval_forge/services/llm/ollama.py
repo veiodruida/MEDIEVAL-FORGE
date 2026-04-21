@@ -40,10 +40,12 @@ class OllamaProvider:
         queue: asyncio.Queue[str | None] | None,
     ) -> BaseModel:
         client = AsyncClient(host=OLLAMA_HOST)
+        # Pick the model: user-selected via credentials > DEFAULT_MODEL.
+        model = (credentials or {}).get("model") or DEFAULT_MODEL
         if queue is not None:
-            await queue.put(f"data: Aguardando Ollama ({DEFAULT_MODEL})...\n\n")
+            await queue.put(f"data: Aguardando Ollama ({model})...\n\n")
         response = await client.chat(
-            model=DEFAULT_MODEL,
+            model=model,
             messages=[{"role": "user", "content": prompt}],
             format="json",
             stream=False,

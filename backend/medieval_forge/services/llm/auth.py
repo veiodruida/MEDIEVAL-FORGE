@@ -121,6 +121,10 @@ def resolve_credentials(provider_id: str, app_state: Any) -> dict[str, Any]:
         return {}
 
     if provider_id == "ollama":
+        # Ollama needs no API key, but we reuse the credentials slot to carry
+        # the user's selected local model (set via POST /llm/ollama/model).
+        if session and session.get("model"):
+            return {"type": "none", "model": session["model"], "source": "session"}
         return {"type": "none", "source": "none"}
 
     return {}

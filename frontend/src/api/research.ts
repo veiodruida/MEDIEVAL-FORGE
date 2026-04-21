@@ -90,6 +90,44 @@ export const useClearCredentialMutation = () => {
   });
 };
 
+export type OllamaModelsResponse = {
+  models: string[];
+  selected: string | null;
+  default: string;
+  healthy: boolean;
+  message: string | null;
+};
+
+export const useOllamaModelsQuery = (enabled: boolean) =>
+  useQuery<OllamaModelsResponse>({
+    queryKey: ["llm", "ollama", "models"],
+    queryFn: async () => {
+      const r = await fetch("/api/llm/ollama/models");
+      if (!r.ok) throw new Error(`ollama-models ${r.status}`);
+      return r.json();
+    },
+    enabled,
+    staleTime: 5_000,
+  });
+
+export const useSetOllamaModelMutation = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (model: string) => {
+      const r = await fetch("/api/llm/ollama/model", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model }),
+      });
+      if (!r.ok) throw new Error(`set-ollama-model ${r.status}`);
+      return r.json() as Promise<{ ok: boolean; model: string }>;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["llm"] });
+    },
+  });
+};
+
 export const useOAuthStartMutation = () =>
   useMutation({
     mutationFn: async (provider: string) => {

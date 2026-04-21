@@ -107,6 +107,11 @@ async def run_research(
             return
         provider = PROVIDERS[provider_id]
         model = PROVIDER_DEFAULT_MODEL.get(provider_id, provider_id)
+        # Ollama: let the user override the model via app.state.credentials["ollama"]["model"]
+        if provider_id == "ollama" and app_state is not None:
+            session_ollama = (getattr(app_state, "credentials", {}) or {}).get("ollama") or {}
+            if session_ollama.get("model"):
+                model = session_ollama["model"]
 
         # Load project from DB
         async with factory() as session:
