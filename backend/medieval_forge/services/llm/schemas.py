@@ -15,6 +15,12 @@ class Barony(BaseModel):
     lat: float
 
 
+class Duchy(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    kingdom_id: str
+    name: str
+
+
 class CondadoAssignment(BaseModel):
     model_config = ConfigDict(extra="forbid")
     condado_id: str           # OSM id; validated post-parse against provided list (D-09)
@@ -25,6 +31,6 @@ class CondadoAssignment(BaseModel):
 class ResearchResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
     kingdoms: dict[str, str]                       # id -> display_name
-    duchies: dict[str, tuple[str, str]]            # id -> (kingdom_id, display_name)
+    duchies: dict[str, Duchy]                      # id -> Duchy(kingdom_id, name)
     condados_assignment: list[CondadoAssignment]
     baronies: dict[str, list[Barony]]              # condado_id -> baronies

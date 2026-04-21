@@ -169,7 +169,37 @@ export function ResearchDialog({ projectId }: ResearchDialogProps) {
               Falha após 3 tentativas
             </Heading>
             <Text size="2">
-              O modelo retornou JSON inválido 3 vezes. Edita o JSON manualmente ou cancela.
+              O modelo retornou JSON que não passou na validação 3 vezes seguidas.
+              Veja os erros de cada tentativa abaixo — o problema costuma ser um
+              campo faltando, um tipo errado ou um condado_id inventado.
+            </Text>
+
+            {stream.retryNotices.length > 0 && (
+              <pre
+                style={{
+                  padding: 8,
+                  background: "#fff5f5",
+                  border: "1px solid #fecaca",
+                  borderRadius: 4,
+                  maxHeight: 160,
+                  overflow: "auto",
+                  fontSize: 11,
+                  whiteSpace: "pre-wrap",
+                }}
+              >
+                {stream.retryNotices.join("\n\n")}
+              </pre>
+            )}
+
+            {stream.error && (
+              <Text size="1" color="red" style={{ whiteSpace: "pre-wrap" }}>
+                <strong>Erro final:</strong> {stream.error}
+              </Text>
+            )}
+
+            <Text size="2" color="gray">
+              Opções: tente outro provedor (Claude costuma ser mais confiável com JSON estruturado),
+              ou cole/edite um JSON manualmente abaixo:
             </Text>
             <TextArea
               value={manualJson}
@@ -183,10 +213,27 @@ export function ResearchDialog({ projectId }: ResearchDialogProps) {
       }
 
       return (
-        <Text size="2" color="red">
-          Erro ao comunicar com {selectedProviderId}: {stream.error}. Verifica as
-          credenciais e tenta novamente.
-        </Text>
+        <Flex direction="column" gap="2">
+          <Text size="2" color="red" style={{ whiteSpace: "pre-wrap" }}>
+            <strong>Erro ao comunicar com {selectedProviderId}:</strong> {stream.error}
+          </Text>
+          {stream.retryNotices.length > 0 && (
+            <pre
+              style={{
+                padding: 8,
+                background: "#fff5f5",
+                border: "1px solid #fecaca",
+                borderRadius: 4,
+                maxHeight: 120,
+                overflow: "auto",
+                fontSize: 11,
+                whiteSpace: "pre-wrap",
+              }}
+            >
+              {stream.retryNotices.join("\n\n")}
+            </pre>
+          )}
+        </Flex>
       );
     }
 

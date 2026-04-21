@@ -173,8 +173,10 @@ async def run_research(
                 _ValidatingWrapper(), prompt, ResearchResult, credentials, queue, max_retries=3
             )
         except ResearchValidationError as e:
-            # T-3-12: truncate error message to 200 chars; full trace goes to stderr only.
-            await queue.put(f"data: ERROR: {e.last_error[:200]}\n\n")
+            # Keep error long enough to diagnose schema mismatches (common with Gemini).
+            # Credentials never leak here — last_error is Pydantic/JSON validation text only.
+            msg = e.last_error[:600].replace("\n", " ")
+            await queue.put(f"data: ERROR: validação falhou após 3 tentativas — {msg}\n\n")
             return
 
         # Cache the successful result
