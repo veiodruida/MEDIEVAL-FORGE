@@ -9,6 +9,8 @@ import { InspectorSidebar } from '../components/canvas/InspectorSidebar'
 import { LegendCard } from '../components/canvas/LegendCard'
 import { useCanvasArtifacts } from '../hooks/useCanvasArtifacts'
 import { buildProjectionConfig } from '../lib/projection'
+import { ResearchDialog } from '../components/research/ResearchDialog'
+import { useResearchStore } from '../stores/useResearchStore'
 
 const STATUS_LABEL: Record<string, string> = {
   created: 'Criado',
@@ -45,6 +47,7 @@ export function ProjectDetail() {
   const renderModern = useRenderModern(id)
   const qc = useQueryClient()
   const [modernTs, setModernTs] = useState(0)
+  const setResearchDialogOpen = useResearchStore((s) => s.setDialogOpen)
 
   // Detectar template de território baseado no país do projeto
   const iberiaQids = new Set(['Q29', 'Q45'])
@@ -322,6 +325,18 @@ export function ProjectDetail() {
                 {!isGenerated && (
                   <Button variant="soft" color="green" disabled>3. Exportar ZIP</Button>
                 )}
+                <Button
+                  color="blue"
+                  disabled={!isGenerated}
+                  onClick={() => setResearchDialogOpen(true)}
+                  title={
+                    !isGenerated
+                      ? 'Requer mapa gerado — execute "2. Gerar mapa" primeiro'
+                      : 'Iniciar pesquisa histórica com LLM'
+                  }
+                >
+                  Pesquisa histórica
+                </Button>
               </Flex>
 
               {ingest.error && <Text color="red" size="2" mb="2">Erro: {ingest.error.message}</Text>}
@@ -388,6 +403,9 @@ export function ProjectDetail() {
           </Tabs.Content>
         </Tabs.Root>
       </Card>
+
+      {/* ResearchDialog — mounted once outside Tabs; reads open state from useResearchStore */}
+      <ResearchDialog projectId={project.id} />
     </Box>
   )
 }
