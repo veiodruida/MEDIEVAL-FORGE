@@ -190,10 +190,13 @@ export function ResearchDialog({ projectId }: ResearchDialogProps) {
                 País (QID Wikidata)
               </Text>
               <TextField.Root
-                placeholder="Ex.: Q29 (Espanha)"
+                placeholder="Ex.: Q29 (Espanha) ou Q29,Q45 para vários"
                 value={country}
                 onChange={(e) => setCountry(e.target.value)}
               />
+              <Text size="1" color="gray">
+                Use vírgula para múltiplos países — ex.: Q29,Q45 para Península Ibérica
+              </Text>
             </Flex>
 
             <Flex gap="3" align="end">

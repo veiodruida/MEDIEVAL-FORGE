@@ -25,8 +25,10 @@ class OllamaProvider:
     async def health_check(self, credentials: dict | None) -> HealthStatus:
         try:
             client = AsyncClient(host=OLLAMA_HOST)
-            await client.list()
+            await asyncio.wait_for(client.list(), timeout=3.0)
             return HealthStatus(healthy=True, message=f"Reachable at {OLLAMA_HOST}")
+        except asyncio.TimeoutError:
+            return HealthStatus(healthy=False, message="Unreachable: timeout after 3s")
         except Exception as exc:
             return HealthStatus(healthy=False, message=f"Unreachable: {exc}")
 

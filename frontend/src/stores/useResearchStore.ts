@@ -3,6 +3,7 @@ import { create } from "zustand";
 type State = {
   dialogOpen: boolean;
   setDialogOpen: (v: boolean) => void;
+  openDialog: (init: { country: string; periodStart: number; periodEnd: number }) => void;
   sheetOpenForProvider: string | null;
   openSheet: (p: string) => void;
   closeSheet: () => void;
@@ -27,6 +28,8 @@ type State = {
 export const useResearchStore = create<State>((set) => ({
   dialogOpen: false,
   setDialogOpen: (v) => set({ dialogOpen: v }),
+  openDialog: ({ country, periodStart, periodEnd }) =>
+    set({ dialogOpen: true, country, periodStart, periodEnd }),
   sheetOpenForProvider: null,
   openSheet: (p) => set({ sheetOpenForProvider: p }),
   closeSheet: () => set({ sheetOpenForProvider: null }),

@@ -47,7 +47,7 @@ export function ProjectDetail() {
   const renderModern = useRenderModern(id)
   const qc = useQueryClient()
   const [modernTs, setModernTs] = useState(0)
-  const setResearchDialogOpen = useResearchStore((s) => s.setDialogOpen)
+  const openResearchDialog = useResearchStore((s) => s.openDialog)
 
   // Detectar template de território baseado no país do projeto
   const iberiaQids = new Set(['Q29', 'Q45'])
@@ -328,7 +328,11 @@ export function ProjectDetail() {
                 <Button
                   color="blue"
                   disabled={!isGenerated}
-                  onClick={() => setResearchDialogOpen(true)}
+                  onClick={() => project && openResearchDialog({
+                    country: project.country_qid,
+                    periodStart: project.period_start,
+                    periodEnd: project.period_end,
+                  })}
                   title={
                     !isGenerated
                       ? 'Requer mapa gerado — execute "2. Gerar mapa" primeiro'
