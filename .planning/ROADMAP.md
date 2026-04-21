@@ -84,11 +84,13 @@ Six phases take Medieval Forge from zero to a fully validated, Unity-ready map p
 5. The research dialog shows a spinner (or streaming tokens where supported) while the LLM is responding; the UI does not freeze.
 6. Adding a new LLM provider in the future requires only a new adapter class plus a registry entry — no core code or UI changes required.
 
+**Plans:** 4 plans
+
 ### Plans
-- **3.1** Multi-provider adapter layer — `services/llm/` package (base Protocol, registry, claude/openai/gemini/ollama modules), Pydantic schema with `extra='forbid'`, 3-retry validation loop, SSE streaming where supported (RESEARCH-01, RESEARCH-02, RESEARCH-03, RESEARCH-06, RESEARCH-07, RESEARCH-09)
-- **3.2** Auth layer — env-var startup, API-key input + session memory store, Google OAuth installed-app flow with PKCE, `claude-code` CLI credential piggyback, `/api/auth/oauth/*` callback routes, per-provider health + auth status endpoint (RESEARCH-08)
-- **3.3** Research API + cache — `api/research.py` POST trigger + SSE, per-project `research_cache` table in SQLite, QID normalization, `zundo temporal.pause/resume` wrapping (RESEARCH-04)
-- **3.4** Research UI — provider dropdown (auto-populated from `/api/llm/providers`), per-provider auth setup sheet (OAuth button / API key input / CLI status), country+period inputs, streaming progress view, cached-result badge + force-refresh, failure recovery with manual JSON editor (RESEARCH-05)
+- [ ] `03-01-PLAN.md` — Multi-provider LLM adapter layer (services/llm/ package: base Protocol, registry, claude/openai/gemini/ollama modules, Pydantic schema with extra=forbid, 3-retry validation loop) (RESEARCH-01, RESEARCH-02, RESEARCH-03, RESEARCH-06, RESEARCH-07, RESEARCH-09)
+- [ ] `03-02-PLAN.md` — Auth layer (in-memory credential store on app.state, API-key endpoints, Google OAuth installed-app flow with PKCE + state TTL, claude-code CLI credential piggyback) (RESEARCH-08)
+- [ ] `03-03-PLAN.md` — Research API + SQLite cache (POST /api/projects/{id}/research SSE, /api/llm/providers + /api/llm/health discovery endpoints, research_cache table created in lifespan, condado_id validation triggering retry on mismatch) (RESEARCH-04, RESEARCH-05)
+- [ ] `03-04-PLAN.md` — Research UI (Radix Dialog + per-provider AuthSetupSheet auto-populated from /api/llm/providers, useResearchStream SSE hook, cached badge + force-refresh, failure recovery with manual JSON editor, ProjectDetail Pipeline tab integration) (RESEARCH-05)
 
 ---
 
@@ -173,7 +175,7 @@ Six phases take Medieval Forge from zero to a fully validated, Unity-ready map p
 |-------|----------------|--------|-----------|
 | 1. Data Pipeline + Backend Scaffold | 0/5 | Not started | - |
 | 2. Read-Only Canvas Viewer | 4/5 | Gap closure planning (02-05) | - |
-| 3. LLM Research Integration | 0/3 | Not started | - |
+| 3. LLM Research Integration | 0/4 | Not started | - |
 | 4. Canvas Editing — Basic | 0/4 | Not started | - |
 | 5. Canvas Editing — Advanced | 0/2 | Not started | - |
 | 6. Validation Gate + Export Polish | 0/3 | Not started | - |
@@ -218,6 +220,10 @@ Six phases take Medieval Forge from zero to a fully validated, Unity-ready map p
 | RESEARCH-03 | Phase 3 |
 | RESEARCH-04 | Phase 3 |
 | RESEARCH-05 | Phase 3 |
+| RESEARCH-06 | Phase 3 |
+| RESEARCH-07 | Phase 3 |
+| RESEARCH-08 | Phase 3 |
+| RESEARCH-09 | Phase 3 |
 | EDIT-01 | Phase 4 |
 | EDIT-02 | Phase 4 |
 | EDIT-03 | Phase 4 |
