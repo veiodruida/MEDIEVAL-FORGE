@@ -5,7 +5,43 @@ Shape: kingdoms / duchies / condados_assignment / baronies — four-tier hierarc
 """
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict
+import json
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict, ValidationError
+
+
+# Top-level keys that ResearchResult accepts. Used to sanitize LLM output that
+# adds extra keys (small local models often add "regions", "historical_names",
+# "cities", "description" etc. that break strict validation).
+_RESEARCH_RESULT_KEYS = frozenset({"kingdoms", "duchies", "condados_assignment", "baronies"})
+
+
+def parse_research_json(text: str) -> "ResearchResult":
+    """Parse raw LLM JSON into ResearchResult with lenient fallback.
+
+    1. Try strict validation (extra='forbid' as declared).
+    2. If that fails, strip any top-level keys not in _RESEARCH_RESULT_KEYS
+       and retry. This lets small local models (qwen2.5:7b, llama3.2:3b) that
+       insist on adding metadata keys still succeed if their core structure is right.
+    3. If still invalid, raise the ORIGINAL strict error (more informative than
+       the second-pass error).
+    """
+    try:
+        return ResearchResult.model_validate_json(text)
+    except ValidationError as strict_err:
+        try:
+            data: Any = json.loads(text)
+        except json.JSONDecodeError:
+            raise strict_err
+        if not isinstance(data, dict):
+            raise strict_err
+        stripped = {k: v for k, v in data.items() if k in _RESEARCH_RESULT_KEYS}
+        try:
+            return ResearchResult.model_validate(stripped)
+        except ValidationError:
+            # Surface the strict error — it tells the LLM exactly which key is wrong.
+            raise strict_err
 
 
 class Barony(BaseModel):

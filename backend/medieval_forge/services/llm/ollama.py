@@ -73,4 +73,9 @@ class OllamaProvider:
         if queue is not None:
             await queue.put("data: resposta recebida, validando JSON...\n\n")
         content = response["message"]["content"]
+        # Use lenient parser so small local models that add extra top-level keys
+        # (common with qwen2.5:7b, llama3.2:3b) can still succeed if core shape is right.
+        from .schemas import parse_research_json, ResearchResult
+        if schema is ResearchResult:
+            return parse_research_json(content)
         return schema.model_validate_json(content)

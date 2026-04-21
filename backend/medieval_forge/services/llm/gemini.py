@@ -78,4 +78,7 @@ class GeminiProvider:
         )
         if queue is not None:
             await queue.put(f"data: Gemini respondeu ({len(response.text)} chars)\n\n")
+        from .schemas import parse_research_json, ResearchResult
+        if schema is ResearchResult:
+            return parse_research_json(response.text)
         return schema.model_validate_json(response.text)
