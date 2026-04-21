@@ -3,7 +3,7 @@
 Lifespan opens the async engine; SPA catch-all handles React Router deep links.
 Per RESEARCH.md Pitfall 8: API routers MUST be registered before the catch-all.
 Routers are added by plans 01-02 (projects), 01-03 (ingest), 01-04 (generate),
-and 01-05 (export) via app.include_router(...).
+01-05 (export), and 03-02 (auth) via app.include_router(...).
 """
 from __future__ import annotations
 
@@ -27,6 +27,9 @@ async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         # No-op: just exercises the connection so a broken URL fails fast.
         pass
+    # Initialize in-memory credential stores (D-14: never written to disk).
+    app.state.credentials = {}   # provider_id -> {"key"|"access_token"|..., "source": ...}
+    app.state.oauth_states = {}  # state_token -> {"flow": Flow, "provider": str, "expires_at": float}
     yield
     # Shutdown: close pool.
     await engine.dispose()
@@ -42,11 +45,13 @@ from .api.projects import router as projects_router  # noqa: E402
 from .api.ingest import router as ingest_router  # noqa: E402
 from .api.generate import router as generate_router  # noqa: E402
 from .api.export import router as export_router  # noqa: E402
+from .api.auth import router as auth_router  # noqa: E402
 
 app.include_router(projects_router, prefix="/api")
 app.include_router(ingest_router, prefix="/api")
 app.include_router(generate_router, prefix="/api")
 app.include_router(export_router, prefix="/api")
+app.include_router(auth_router, prefix="/api")
 
 # /assets/* — JS/CSS bundles. Only mount if directory exists (frontend may
 # not be built yet during early development).
