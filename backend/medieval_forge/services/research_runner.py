@@ -35,11 +35,11 @@ PROVIDER_DEFAULT_MODEL: dict[str, str] = {
 
 
 def _load_condados(project_path: Path) -> list[dict]:
-    """Load condados from territories.geojson in the project's out/ directory.
+    """Load condados from territories.geojson in the project's generated/ directory.
 
     Returns a list of dicts with id/name/lon/lat suitable for the prompt builder.
     """
-    gj_path = project_path / "out" / "territories.geojson"
+    gj_path = project_path / "generated" / "territories.geojson"
     if not gj_path.exists():
         raise FileNotFoundError(f"territories.geojson not found at {gj_path}")
     data = json.loads(gj_path.read_text(encoding="utf-8"))
