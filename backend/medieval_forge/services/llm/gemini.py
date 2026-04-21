@@ -60,9 +60,15 @@ class GeminiProvider:
             client = genai.Client(api_key=api_key)
         else:
             raise ValueError("No Gemini credentials available")
+        # NOTE: We intentionally do NOT pass response_schema here. Gemini's
+        # structured-output mode rejects any JSON Schema containing
+        # `additionalProperties`, which Pydantic always emits for dict[str, X]
+        # fields (kingdoms, duchies, baronies). Instead we rely on:
+        #   - response_mime_type="application/json" (plain-JSON output mode)
+        #   - explicit OUTPUT_FORMAT_SPEC in the prompt
+        #   - Pydantic validation on our side (the retry loop catches errors)
         config = genai_types.GenerateContentConfig(
             response_mime_type="application/json",
-            response_schema=schema,
             temperature=0.2,
         )
         response = await client.aio.models.generate_content(
