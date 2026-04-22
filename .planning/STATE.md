@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-04-16)
 Phase: 02 (read-only-canvas-viewer) — EXECUTING
 Plan: 1 of 5
 Status: Executing Phase 02
-Last activity: 2026-04-22 -- Completed quick task 260422-fzh: Fix Ollama structured output
+Last activity: 2026-04-22 -- Completed quick task 260422-gts: Fix mocked Ollama unit test: correct Duchy payload shape and update format assertion to grammar-constrained schema dict
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -109,6 +109,7 @@ None yet.
 | 260422-fzh | Fix Ollama structured output: format=schema.model_json_schema() instead of format=json | 2026-04-22 | 7081547 | [260422-fzh-fix-ollama-provider-to-use-grammar-const](./quick/260422-fzh-fix-ollama-provider-to-use-grammar-const/) |
 | 260422-eue | Add google-auth-oauthlib to pyproject.toml dependencies | 2026-04-22 | 6eab700 | [260422-eue-add-google-auth-oauthlib-to-pyproject-to](./quick/260422-eue-add-google-auth-oauthlib-to-pyproject-to/) |
 | 260422-f0s | Add anthropic SDK to pyproject.toml dependencies | 2026-04-22 | 279b9d5 | [260422-f0s-add-anthropic-sdk-to-pyproject-toml-depe](./quick/260422-f0s-add-anthropic-sdk-to-pyproject-toml-depe/) |
+| 260422-gts | Fix mocked Ollama unit test: correct Duchy payload shape and update format assertion to grammar-constrained schema dict | 2026-04-22 | 81353e0 | [260422-gts-fix-mocked-ollama-unit-test-correct-duch](./quick/260422-gts-fix-mocked-ollama-unit-test-correct-duch/) |
 
 ## Session Continuity
 
