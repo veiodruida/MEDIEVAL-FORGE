@@ -113,6 +113,7 @@ None yet.
 | 260422-h24 | Add manual paste provider: copy generated prompt, paste response from any external chat to populate territories | 2026-04-22 | be38a86 | [260422-h24-add-manual-paste-provider-copy-generated](./quick/260422-h24-add-manual-paste-provider-copy-generated/) |
 | 260422-hl9 | Fix UTF-8 encoding bug: write_text() without encoding=utf-8 corrupts non-ASCII chars on Windows | 2026-04-22 | df0cc8b | [260422-hl9-fix-utf-8-encoding-bug-write-text-withou](./quick/260422-hl9-fix-utf-8-encoding-bug-write-text-withou/) |
 | 260422-i0q | Manual provider file I/O (download prompt, upload response) + stronger baronies prompt with centroids | 2026-04-22 | 45bb03a | [260422-i0q-manual-provider-file-i-o-download-prompt](./quick/260422-i0q-manual-provider-file-i-o-download-prompt/) |
+| 260422-k6e | Remove baronies limit + require historical documentation refs + rebuild frontend | 2026-04-22 | 3a48164 | [260422-k6e-remove-baronies-limit-require-historical](./quick/260422-k6e-remove-baronies-limit-require-historical/) |
 
 ## Session Continuity
 
