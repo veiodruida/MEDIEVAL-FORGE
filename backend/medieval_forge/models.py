@@ -26,7 +26,7 @@ class Project(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_new_uuid)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    country_qid: Mapped[str] = mapped_column(String(20), nullable=False)
+    country_qid: Mapped[str] = mapped_column(String(200), nullable=False)
     period_start: Mapped[int] = mapped_column(nullable=False)
     period_end: Mapped[int] = mapped_column(nullable=False)
     bbox_lon_min: Mapped[float | None] = mapped_column(Float, nullable=True)
