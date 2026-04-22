@@ -113,7 +113,90 @@ async def test_create_project_creates_folders(client, tmp_path):
 
 
 async def test_country_qid_validation_rejects_bad_format(client):
-    resp = await client.post("/api/projects", json=_payload(country_qid="spain"))
+    # "NOTACOUNTRY" is not a QID, ISO code, or recognized name — must reject with 422
+    resp = await client.post("/api/projects", json=_payload(country_qid="NOTACOUNTRY"))
     assert resp.status_code == 422
     body = resp.json()
     assert any("country_qid" in str(err) for err in body["detail"])
+
+
+# ---------------------------------------------------------------------------
+# Multi-country QID validator tests (Task 2 — FIX-MULTI-COUNTRY)
+# ---------------------------------------------------------------------------
+
+import pytest
+from pydantic import ValidationError as PydanticValidationError
+from medieval_forge.schemas import ProjectCreate, ProjectUpdate
+
+
+@pytest.mark.parametrize(
+    "input_value, expected",
+    [
+        ("Q29", "Q29"),                         # single QID passthrough
+        ("Espanha", "Q29"),                      # single name resolution
+        ("Q29,Q45", "Q29,Q45"),                  # comma-separated QIDs
+        ("Q29, Q45", "Q29,Q45"),                 # whitespace tolerant
+        ("Espanha,Portugal", "Q29,Q45"),          # names resolved per token
+    ],
+)
+def test_project_create_country_qid_multi(input_value: str, expected: str) -> None:
+    p = ProjectCreate(
+        name="Test",
+        country_qid=input_value,
+        period_start=868,
+        period_end=1492,
+    )
+    assert p.country_qid == expected
+
+
+@pytest.mark.parametrize(
+    "input_value",
+    [
+        "Q29,INVALID",   # one bad token
+        "",              # empty string
+    ],
+)
+def test_project_create_country_qid_multi_rejects_bad(input_value: str) -> None:
+    with pytest.raises(PydanticValidationError):
+        ProjectCreate(
+            name="Test",
+            country_qid=input_value,
+            period_start=868,
+            period_end=1492,
+        )
+
+
+def test_project_update_country_qid_multi_accepts_none() -> None:
+    p = ProjectUpdate(country_qid=None)
+    assert p.country_qid is None
+
+
+def test_project_update_country_qid_multi_accepts_comma_list() -> None:
+    p = ProjectUpdate(country_qid="Q29,Q45")
+    assert p.country_qid == "Q29,Q45"
+
+
+def test_project_update_period_ordering_enforced() -> None:
+    """Both bounds present and start >= end must raise."""
+    with pytest.raises(PydanticValidationError):
+        ProjectUpdate(period_start=1500, period_end=1400)
+
+
+def test_project_update_period_ordering_single_bound_ok() -> None:
+    """Only period_end set — no ordering check, must not raise."""
+    p = ProjectUpdate(period_end=1500)
+    assert p.period_end == 1500
+
+
+async def test_patch_project_with_multi_country_qid(client):
+    """PATCH /api/projects/{id} with comma-separated country_qid persists correctly."""
+    created = (await client.post("/api/projects", json=_payload())).json()
+    pid = created["id"]
+    resp = await client.patch(
+        f"/api/projects/{pid}",
+        json={"country_qid": "Q29,Q45", "period_end": 1492},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["country_qid"] == "Q29,Q45"
+    assert body["period_end"] == 1492
