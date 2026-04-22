@@ -115,6 +115,7 @@ None yet.
 | 260422-i0q | Manual provider file I/O (download prompt, upload response) + stronger baronies prompt with centroids | 2026-04-22 | 45bb03a | [260422-i0q-manual-provider-file-i-o-download-prompt](./quick/260422-i0q-manual-provider-file-i-o-download-prompt/) |
 | 260422-k6e | Remove baronies limit + require historical documentation refs + rebuild frontend | 2026-04-22 | 3a48164 | [260422-k6e-remove-baronies-limit-require-historical](./quick/260422-k6e-remove-baronies-limit-require-historical/) |
 | 260422-ktb | Apply research result to canvas: color territories by kingdom + auto-load cached research + inspector badges | 2026-04-22 | 00fc737 | [260422-ktb-apply-research-result-to-canvas-color-te](./quick/260422-ktb-apply-research-result-to-canvas-color-te/) |
+| 260422-l7g | Fix research flow: dates persist to project + country_qid supports multi-country (Q29,Q45) | 2026-04-22 | acd858b | [260422-l7g-fix-research-flow-date-changes-must-pers](./quick/260422-l7g-fix-research-flow-date-changes-must-pers/) |
 
 ## Session Continuity
 
