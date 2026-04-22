@@ -5,7 +5,7 @@ milestone_name: milestone
 status: executing
 stopped_at: Phase 3 context complete — multi-provider LLM + browser auth scope locked. Ready to /gsd-plan-phase 3
 last_updated: "2026-04-20T16:14:24.111Z"
-last_activity: "2026-04-20 -- Completed quick task 260420-hkr: blank-page fix + ErrorBoundary + UX layer rename + legend card"
+last_activity: "2026-04-22 -- Completed quick task 260422-f0s: Add anthropic SDK to pyproject.toml"
 progress:
   total_phases: 7
   completed_phases: 1
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-04-16)
 Phase: 02 (read-only-canvas-viewer) — EXECUTING
 Plan: 1 of 5
 Status: Executing Phase 02
-Last activity: 2026-04-20 -- Completed quick task 260420-hkr: blank-page fix + ErrorBoundary + UX layer rename + legend card
+Last activity: 2026-04-22 -- Completed quick task 260422-f0s: Add anthropic SDK to pyproject.toml
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -103,6 +103,8 @@ None yet.
 | 260417-jq1 | Carregar centroids curados de territory_data_v3 no template Iberia | 2026-04-17 | 2eec56e | [260417-jq1-carregar-centroids-curados-de-territory-](./quick/260417-jq1-carregar-centroids-curados-de-territory-/) |
 | 260420-hkr | fix blank-page on territory click (hoist neighbors) + ErrorBoundary + rename layers + color legend card | 2026-04-20 | 6d8b9e9 | [260420-hkr-fix-blank-page-on-territory-click-hoist-](./quick/260420-hkr-fix-blank-page-on-territory-click-hoist-/) |
 | 260420-hkr+ | encoding fix + neighbors bug + borders layer + km² area + capital fallback | 2026-04-20 | 075b98c | [260420-hkr-fix-blank-page-on-territory-click-hoist-](./quick/260420-hkr-fix-blank-page-on-territory-click-hoist-/) |
+| 260422-eue | Add google-auth-oauthlib to pyproject.toml dependencies | 2026-04-22 | 6eab700 | [260422-eue-add-google-auth-oauthlib-to-pyproject-to](./quick/260422-eue-add-google-auth-oauthlib-to-pyproject-to/) |
+| 260422-f0s | Add anthropic SDK to pyproject.toml dependencies | 2026-04-22 | 279b9d5 | [260422-f0s-add-anthropic-sdk-to-pyproject-toml-depe](./quick/260422-f0s-add-anthropic-sdk-to-pyproject-toml-depe/) |
 
 ## Session Continuity
 
