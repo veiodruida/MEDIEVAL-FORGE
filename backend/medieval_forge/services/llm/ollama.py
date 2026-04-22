@@ -59,7 +59,7 @@ class OllamaProvider:
             response = await client.chat(
                 model=model,
                 messages=[{"role": "user", "content": prompt}],
-                format=schema.model_json_schema(),
+                format="json",
                 stream=False,
             )
         finally:

@@ -34,7 +34,7 @@ PROVIDER_DEFAULT_MODEL: dict[str, str] = {
 }
 
 
-def load_condados(project_path: Path) -> list[dict]:
+def _load_condados(project_path: Path) -> list[dict]:
     """Load condados from territories.geojson in the project's generated/ directory.
 
     Returns a list of dicts with id/name/lon/lat suitable for the prompt builder.
@@ -138,7 +138,7 @@ async def run_research(
 
         # Load condados from disk
         project_path = project_dir(project_id)
-        condados = load_condados(project_path)
+        condados = _load_condados(project_path)
         known_ids = {c["id"] for c in condados}
         prompt = build_research_prompt(country_name, period_start, period_end, condados)
 

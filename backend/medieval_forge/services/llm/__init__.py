@@ -8,7 +8,6 @@ from .base import (
     CliAuth,
     NoAuth,
 )
-from .manual import ManualProvider
 from .schemas import ResearchResult, CondadoAssignment, Barony
 from .registry import PROVIDERS
 from .retry import run_with_retry, ResearchValidationError
@@ -21,7 +20,6 @@ __all__ = [
     "OAuthAuth",
     "CliAuth",
     "NoAuth",
-    "ManualProvider",
     "ResearchResult",
     "CondadoAssignment",
     "Barony",

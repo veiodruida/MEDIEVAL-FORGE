@@ -7,7 +7,7 @@ export type AuthMethod =
   | { type: "none" };
 
 export type Provider = {
-  provider_id: "claude" | "openai" | "gemini" | "ollama" | "manual";
+  provider_id: "claude" | "openai" | "gemini" | "ollama";
   display_name: string;
   auth_methods: AuthMethod[];
   configured: boolean;
@@ -138,36 +138,3 @@ export const useOAuthStartMutation = () =>
       return r.json() as Promise<{ authorize_url: string; state: string }>;
     },
   });
-
-// ---------------------------------------------------------------------------
-// Manual (copy/paste) flow helpers
-// ---------------------------------------------------------------------------
-
-/** GET /api/projects/:id/research/prompt — returns the built research prompt string. */
-export async function fetchResearchPrompt(projectId: string): Promise<string> {
-  const res = await fetch(`/api/projects/${projectId}/research/prompt`);
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(body.detail ?? `Falha ao gerar prompt (${res.status})`);
-  }
-  const data = await res.json();
-  return data.prompt as string;
-}
-
-/** POST /api/projects/:id/research/manual — submits pasted JSON response, returns ResearchResult. */
-export async function submitManualResearch(
-  projectId: string,
-  content: string,
-): Promise<ResearchResult> {
-  const res = await fetch(`/api/projects/${projectId}/research/manual`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ content }),
-  });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(body.detail ?? `Falha ao enviar resposta (${res.status})`);
-  }
-  const data = await res.json();
-  return data.result as ResearchResult;
-}

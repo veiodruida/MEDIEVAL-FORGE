@@ -1,8 +1,7 @@
 import { Badge, Button, Dialog, Flex, Heading, Text, TextArea, TextField } from "@radix-ui/themes";
-import { useCachedResultQuery, type ResearchResult } from "../../api/research";
+import { useCachedResultQuery } from "../../api/research";
 import { useResearchStream } from "../../hooks/useResearchStream";
 import { useResearchStore } from "../../stores/useResearchStore";
-import { ManualResearchPanel } from "./ManualResearchPanel";
 import { ProviderSelector } from "./ProviderSelector";
 import { AuthSetupSheet } from "./AuthSetupSheet";
 
@@ -35,7 +34,6 @@ export function ResearchDialog({ projectId }: ResearchDialogProps) {
   const setPeriodEnd = useResearchStore((s) => s.setPeriodEnd);
   const manualJson = useResearchStore((s) => s.manualJson);
   const setManualJson = useResearchStore((s) => s.setManualJson);
-  const setManualResult = useResearchStore((s) => s.setManualResult);
 
   const stream = useResearchStream(projectId);
 
@@ -48,12 +46,6 @@ export function ResearchDialog({ projectId }: ResearchDialogProps) {
 
   const hasCached = cachedQuery.data !== null && cachedQuery.data !== undefined;
   const isMaxRetries = stream.retryNotices.length >= 3 && stream.status === "error";
-
-  const handleManualResult = (result: ResearchResult) => {
-    setManualResult(result);
-    // Refetch cached query so reopening the dialog shows "Resultado em cache"
-    cachedQuery.refetch();
-  };
 
   const handleRevalidateJson = () => {
     // TODO: wire up to POST /api/projects/{id}/research/validate when available
@@ -328,29 +320,21 @@ export function ResearchDialog({ projectId }: ResearchDialogProps) {
 
           {/* Section 3 — Progress / result area */}
           <Flex direction="column" gap="2" mt="4">
-            {selectedProviderId === "manual" ? (
-              <ManualResearchPanel projectId={projectId} onResult={handleManualResult} />
-            ) : (
-              renderProgressArea()
-            )}
+            {renderProgressArea()}
           </Flex>
 
-          {/* Footer — hide "Iniciar pesquisa" in manual mode (panel has its own submit button) */}
+          {/* Footer */}
           <Flex justify="end" gap="2" mt="4">
             <Dialog.Close>
-              <Button variant="soft">
-                {selectedProviderId === "manual" ? "Fechar" : "Cancelar"}
-              </Button>
+              <Button variant="soft">Cancelar</Button>
             </Dialog.Close>
-            {selectedProviderId !== "manual" && (
-              <Button
-                color="blue"
-                disabled={stream.status === "streaming"}
-                onClick={() => stream.start(selectedProviderId, false)}
-              >
-                {stream.status === "streaming" ? "Pesquisando…" : "Iniciar pesquisa"}
-              </Button>
-            )}
+            <Button
+              color="blue"
+              disabled={stream.status === "streaming"}
+              onClick={() => stream.start(selectedProviderId, false)}
+            >
+              {stream.status === "streaming" ? "Pesquisando…" : "Iniciar pesquisa"}
+            </Button>
           </Flex>
         </Dialog.Content>
       </Dialog.Root>
