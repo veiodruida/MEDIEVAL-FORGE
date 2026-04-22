@@ -110,6 +110,7 @@ None yet.
 | 260422-eue | Add google-auth-oauthlib to pyproject.toml dependencies | 2026-04-22 | 6eab700 | [260422-eue-add-google-auth-oauthlib-to-pyproject-to](./quick/260422-eue-add-google-auth-oauthlib-to-pyproject-to/) |
 | 260422-f0s | Add anthropic SDK to pyproject.toml dependencies | 2026-04-22 | 279b9d5 | [260422-f0s-add-anthropic-sdk-to-pyproject-toml-depe](./quick/260422-f0s-add-anthropic-sdk-to-pyproject-toml-depe/) |
 | 260422-gts | Fix mocked Ollama unit test: correct Duchy payload shape and update format assertion to grammar-constrained schema dict | 2026-04-22 | 81353e0 | [260422-gts-fix-mocked-ollama-unit-test-correct-duch](./quick/260422-gts-fix-mocked-ollama-unit-test-correct-duch/) |
+| 260422-h24 | Add manual paste provider: copy generated prompt, paste response from any external chat to populate territories | 2026-04-22 | be38a86 | [260422-h24-add-manual-paste-provider-copy-generated](./quick/260422-h24-add-manual-paste-provider-copy-generated/) |
 
 ## Session Continuity
 
