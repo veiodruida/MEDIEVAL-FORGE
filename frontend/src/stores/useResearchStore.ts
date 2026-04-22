@@ -1,5 +1,30 @@
 import { create } from "zustand";
 import type { ResearchResult } from "../api/research";
+import { fetchCachedManualResearch } from "../api/research";
+import { kingdomColorFor } from "../lib/kingdomColors";
+
+/**
+ * Map each condado_id in the research result to its kingdom's palette color.
+ * `kingdomIds` is the canonical ordered list of kingdom IDs (typically
+ * Object.keys(result.kingdoms)); each kingdom's index in that list selects
+ * its color via kingdomColorFor. Returns {} when result is null.
+ *
+ * Pure — no store reads, no side effects. Safe to call inside useMemo.
+ */
+export function computeCondadoColors(
+  result: ResearchResult | null,
+  kingdomIds: string[],
+): Record<string, string> {
+  if (!result) return {};
+  const kingdomIndex = new Map<string, number>();
+  kingdomIds.forEach((id, i) => kingdomIndex.set(id, i));
+  const out: Record<string, string> = {};
+  for (const a of result.condados_assignment) {
+    const idx = kingdomIndex.get(a.kingdom_id);
+    out[a.condado_id] = kingdomColorFor(a.kingdom_id, idx ?? -1);
+  }
+  return out;
+}
 
 type State = {
   dialogOpen: boolean;
@@ -21,6 +46,7 @@ type State = {
   /** Result from a successful manual (copy/paste) submission. */
   manualResult: ResearchResult | null;
   setManualResult: (result: ResearchResult | null) => void;
+  loadCachedForProject: (projectId: string) => Promise<void>;
 };
 
 // NOTE: This store uses plain create() without zundo temporal middleware.
@@ -49,4 +75,14 @@ export const useResearchStore = create<State>((set) => ({
   setManualJson: (v) => set({ manualJson: v }),
   manualResult: null,
   setManualResult: (result) => set({ manualResult: result }),
+  loadCachedForProject: async (projectId: string) => {
+    try {
+      const cached = await fetchCachedManualResearch(projectId);
+      set({ manualResult: cached });
+    } catch {
+      // Transient errors are non-fatal for canvas auto-load; leave
+      // whatever manualResult is currently in the store untouched.
+      // (Intentionally swallow — the UI falls back to file colors.)
+    }
+  },
 }));
