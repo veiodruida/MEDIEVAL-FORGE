@@ -23,6 +23,7 @@ import {
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts'
 import { useCanvasArtifacts } from '../../hooks/useCanvasArtifacts'
 import { useUIStore } from '../../stores/uiStore'
+import { useResearchStore, computeCondadoColors } from '../../stores/useResearchStore'
 
 interface CanvasViewerProps {
   projectId: string
@@ -131,6 +132,14 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
   const selectedId = useUIStore((s) => s.selectedTerritoryId)
   const select = useUIStore((s) => s.select)
 
+  const loadCachedForProject = useResearchStore((s) => s.loadCachedForProject)
+  const manualResult = useResearchStore((s) => s.manualResult)
+
+  // Auto-load cached manual research whenever the project changes.
+  useEffect(() => {
+    loadCachedForProject(projectId)
+  }, [projectId, loadCachedForProject])
+
   const [territoriesQ, baroniesQ, condadoColorsQ, , metaQ] = useCanvasArtifacts(
     projectId,
     projection,
@@ -218,6 +227,16 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
   }, [selectedId, projection, metaQ.data])
 
   // Wheel handler — keep currentScale state in sync for label gating
+  const mergedCondadoColors = useMemo(() => {
+    const fileColors = condadoColorsQ.data ?? {}
+    const researchColors = computeCondadoColors(
+      manualResult,
+      manualResult ? Object.keys(manualResult.kingdoms) : [],
+    )
+    // Research overrides file colors, per spec.
+    return { ...fileColors, ...researchColors }
+  }, [condadoColorsQ.data, manualResult])
+
   const wheelHandler = useMemo(
     () =>
       projection
@@ -343,7 +362,7 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
           />
           <TerritoryLayer
             territories={territoriesQ.data}
-            condadoColors={condadoColorsQ.data}
+            condadoColors={mergedCondadoColors}
             visible={layerVisibility.condados}
             showBorders={layerVisibility.borders}
           />
