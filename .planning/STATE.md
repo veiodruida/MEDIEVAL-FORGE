@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: "Completed quick task 260422-h24: Add Manual Paste Provider (copy-generated)"
-last_updated: "2026-04-22T11:36:58.264Z"
+stopped_at: "Completed quick task 260422-l7g: fix research flow date changes must persist"
+last_updated: "2026-04-22T14:32:48.812Z"
 last_activity: "2026-04-22 -- Completed quick task 260422-gts: Fix mocked Ollama unit test: correct Duchy payload shape and update format assertion to grammar-constrained schema dict"
 progress:
   total_phases: 7
@@ -118,6 +118,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-22T11:36:58.262Z
-Stopped at: Completed quick task 260422-h24: Add Manual Paste Provider (copy-generated)
+Last session: 2026-04-22T14:32:48.810Z
+Stopped at: Completed quick task 260422-l7g: fix research flow date changes must persist
 Resume file: None
