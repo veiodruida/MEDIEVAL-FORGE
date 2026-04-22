@@ -1,5 +1,7 @@
-import { Badge, Button, Dialog, Flex, Heading, Text, TextArea, TextField } from "@radix-ui/themes";
+import { useEffect } from "react";
+import { Badge, Button, Dialog, Flex, Heading, Spinner, Text, TextArea, TextField } from "@radix-ui/themes";
 import { useCachedResultQuery, type ResearchResult } from "../../api/research";
+import { useUpdateProject, useProject } from "../../api/client";
 import { useResearchStream } from "../../hooks/useResearchStream";
 import { useResearchStore } from "../../stores/useResearchStore";
 import { ManualResearchPanel } from "./ManualResearchPanel";
@@ -39,6 +41,25 @@ export function ResearchDialog({ projectId }: ResearchDialogProps) {
 
   const stream = useResearchStream(projectId);
 
+  // Fetch project from DB to hydrate form on open
+  const projectQuery = useProject(projectId);
+  const updateProject = useUpdateProject(projectId);
+
+  // Hydrate research store from DB when dialog opens or a fresh project object arrives.
+  // Only fires on dialogOpen toggle or when the project's updated_at changes — not on every
+  // keystroke — so in-flight edits are not overwritten during an open session.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!dialogOpen || !projectQuery.data) return;
+    const p = projectQuery.data;
+    setCountry(p.country_qid);
+    setPeriodStart(p.period_start);
+    setPeriodEnd(p.period_end);
+    // Intentionally omit setCountry/setPeriodStart/setPeriodEnd from deps:
+    // we only want this to run on dialog open or when a fresh project object arrives.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dialogOpen, projectQuery.data?.id, projectQuery.data?.updated_at]);
+
   // Query cached result when dialog is open and a provider is selected
   const cachedQuery = useCachedResultQuery(
     projectId,
@@ -48,6 +69,26 @@ export function ResearchDialog({ projectId }: ResearchDialogProps) {
 
   const hasCached = cachedQuery.data !== null && cachedQuery.data !== undefined;
   const isMaxRetries = stream.retryNotices.length >= 3 && stream.status === "error";
+
+  /**
+   * Persist current form values (country_qid, period_start, period_end) to the DB
+   * via PATCH before every research call. Returns true on success, false on failure.
+   * On failure, shows an alert with the error — research must not proceed.
+   */
+  const persistFormToProject = async (): Promise<boolean> => {
+    try {
+      await updateProject.mutateAsync({
+        country_qid: country,
+        period_start: periodStart,
+        period_end: periodEnd,
+      });
+      return true;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      alert(`Não foi possível salvar os campos: ${msg}`);
+      return false;
+    }
+  };
 
   const handleManualResult = (result: ResearchResult) => {
     setManualResult(result);
@@ -161,9 +202,20 @@ export function ResearchDialog({ projectId }: ResearchDialogProps) {
           )}
           <Button
             variant="soft"
-            onClick={() => stream.start(selectedProviderId, true)}
+            disabled={updateProject.isPending}
+            onClick={async () => {
+              const ok = await persistFormToProject();
+              if (ok) stream.start(selectedProviderId, true);
+            }}
           >
-            Forçar nova pesquisa
+            {updateProject.isPending ? (
+              <Flex align="center" gap="1">
+                <Spinner size="1" />
+                Salvando…
+              </Flex>
+            ) : (
+              "Forçar nova pesquisa"
+            )}
           </Button>
         </Flex>
       );
@@ -329,7 +381,11 @@ export function ResearchDialog({ projectId }: ResearchDialogProps) {
           {/* Section 3 — Progress / result area */}
           <Flex direction="column" gap="2" mt="4">
             {selectedProviderId === "manual" ? (
-              <ManualResearchPanel projectId={projectId} onResult={handleManualResult} />
+              <ManualResearchPanel
+                projectId={projectId}
+                onResult={handleManualResult}
+                onBeforeFetchPrompt={persistFormToProject}
+              />
             ) : (
               renderProgressArea()
             )}
@@ -345,10 +401,22 @@ export function ResearchDialog({ projectId }: ResearchDialogProps) {
             {selectedProviderId !== "manual" && (
               <Button
                 color="blue"
-                disabled={stream.status === "streaming"}
-                onClick={() => stream.start(selectedProviderId, false)}
+                disabled={stream.status === "streaming" || updateProject.isPending}
+                onClick={async () => {
+                  const ok = await persistFormToProject();
+                  if (ok) stream.start(selectedProviderId, false);
+                }}
               >
-                {stream.status === "streaming" ? "Pesquisando…" : "Iniciar pesquisa"}
+                {updateProject.isPending ? (
+                  <Flex align="center" gap="1">
+                    <Spinner size="1" />
+                    Salvando…
+                  </Flex>
+                ) : stream.status === "streaming" ? (
+                  "Pesquisando…"
+                ) : (
+                  "Iniciar pesquisa"
+                )}
               </Button>
             )}
           </Flex>

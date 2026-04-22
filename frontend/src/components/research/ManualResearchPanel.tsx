@@ -5,9 +5,11 @@ import { fetchResearchPrompt, submitManualResearch, type ResearchResult } from "
 interface ManualResearchPanelProps {
   projectId: string;
   onResult: (result: ResearchResult) => void;
+  /** Called before fetching the prompt. Return false to abort the fetch (e.g. PATCH failed). */
+  onBeforeFetchPrompt?: () => Promise<boolean>;
 }
 
-export function ManualResearchPanel({ projectId, onResult }: ManualResearchPanelProps) {
+export function ManualResearchPanel({ projectId, onResult, onBeforeFetchPrompt }: ManualResearchPanelProps) {
   const [prompt, setPrompt] = useState<string>("");
   const [promptLoading, setPromptLoading] = useState(false);
   const [promptError, setPromptError] = useState<string | null>(null);
@@ -19,6 +21,11 @@ export function ManualResearchPanel({ projectId, onResult }: ManualResearchPanel
   const [submitSuccess, setSubmitSuccess] = useState(false);
 
   const handleGeneratePrompt = async () => {
+    // Persist form fields to DB before fetching the prompt (prompt is built from DB values).
+    if (onBeforeFetchPrompt) {
+      const ok = await onBeforeFetchPrompt();
+      if (!ok) return;
+    }
     setPromptLoading(true);
     setPromptError(null);
     setCopied(false);
