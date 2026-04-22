@@ -218,8 +218,8 @@ PRESETS: list[dict] = [
     },
     {
         "label": "Península Ibérica (Portugal + Espanha)",
-        "country": "Q29",
-        "country_qid": "Q29",
+        "country": "Espanha+Portugal",
+        "country_qid": "Q29,Q45",
         "bbox": {"lon_min": -13.2, "lat_min": 35.4, "lon_max": 8.2, "lat_max": 44.6},
         "period_example": (711, 1492),
         # Iberia spans two sovereign countries — clip to union of ES + PT polygons so that
@@ -236,9 +236,10 @@ PRESETS: list[dict] = [
     {
         "label": "Ilhas Britânicas (Inglaterra, Escócia, Irlanda)",
         "country": "Q145",
-        "country_qid": "Q145",
+        "country_qid": "Q145,Q27",
         "bbox": {"lon_min": -10.5, "lat_min": 49.8, "lon_max": 2.0, "lat_max": 61.0},
         "period_example": (1066, 1485),
+        "clip_iso_codes": ["GB", "IE"],
     },
     {
         "label": "Itália",
@@ -257,23 +258,26 @@ PRESETS: list[dict] = [
     {
         "label": "Escandinávia (Dinamarca, Noruega, Suécia)",
         "country": "Q34",
-        "country_qid": "Q34",
+        "country_qid": "Q35,Q20,Q34",
         "bbox": {"lon_min": 4.5, "lat_min": 54.5, "lon_max": 31.0, "lat_max": 71.2},
         "period_example": (793, 1397),
+        "clip_iso_codes": ["DK", "NO", "SE"],
     },
     {
         "label": "Balcãs (Sérvia, Croácia, Bósnia, etc.)",
         "country": "Q403",
-        "country_qid": "Q403",
+        "country_qid": "Q403,Q224,Q225",
         "bbox": {"lon_min": 13.4, "lat_min": 38.0, "lon_max": 28.0, "lat_max": 47.0},
         "period_example": (1000, 1500),
+        "clip_iso_codes": ["RS", "HR", "BA"],
     },
     {
         "label": "Europa Central (Polónia, Hungria, Rep. Checa)",
         "country": "Q36",
-        "country_qid": "Q36",
+        "country_qid": "Q36,Q28,Q213",
         "bbox": {"lon_min": 12.0, "lat_min": 45.8, "lon_max": 24.2, "lat_max": 54.9},
         "period_example": (960, 1410),
+        "clip_iso_codes": ["PL", "HU", "CZ"],
     },
     {
         "label": "Médio Oriente (Anatólia, Levante, Mesopotâmia)",
@@ -285,9 +289,10 @@ PRESETS: list[dict] = [
     {
         "label": "Norte de África (Marrocos, Argélia, Tunísia)",
         "country": "Q1028",
-        "country_qid": "Q1028",
+        "country_qid": "Q1028,Q262,Q948",
         "bbox": {"lon_min": -6.0, "lat_min": 30.0, "lon_max": 13.0, "lat_max": 37.5},
         "period_example": (647, 1492),
+        "clip_iso_codes": ["MA", "DZ", "TN"],
     },
     {
         "label": "Brasil",
