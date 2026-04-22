@@ -8,6 +8,7 @@ from __future__ import annotations
 from .base import LLMProvider
 from .claude import ClaudeProvider
 from .gemini import GeminiProvider
+from .manual import ManualProvider
 from .ollama import OllamaProvider
 from .openai import OpenAIProvider
 
@@ -17,4 +18,5 @@ PROVIDERS: dict[str, LLMProvider] = {
     "openai": OpenAIProvider(),
     "gemini": GeminiProvider(),
     "ollama": OllamaProvider(),
+    "manual": ManualProvider(),
 }
