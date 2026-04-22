@@ -37,9 +37,9 @@ export function TerritoryLayer({
 
   return (
     <Layer visible={visible}>
-      {territories.map((t) => (
+      {territories.map((t, i) => (
         <TerritoryPolygon
-          key={t.id}
+          key={`${t.id}-${i}`}
           territory={t}
           fill={condadoColors[t.id] ?? FALLBACK_FILL}
           isSelected={selectedTerritoryId === t.id}
