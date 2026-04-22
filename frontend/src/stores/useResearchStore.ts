@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import type { ResearchResult } from "../api/research";
 
 type State = {
   dialogOpen: boolean;
@@ -17,6 +18,9 @@ type State = {
   setPeriodEnd: (v: number) => void;
   manualJson: string;
   setManualJson: (v: string) => void;
+  /** Result from a successful manual (copy/paste) submission. */
+  manualResult: ResearchResult | null;
+  setManualResult: (result: ResearchResult | null) => void;
 };
 
 // NOTE: This store uses plain create() without zundo temporal middleware.
@@ -43,4 +47,6 @@ export const useResearchStore = create<State>((set) => ({
   setPeriodEnd: (v) => set({ periodEnd: v }),
   manualJson: "",
   setManualJson: (v) => set({ manualJson: v }),
+  manualResult: null,
+  setManualResult: (result) => set({ manualResult: result }),
 }));

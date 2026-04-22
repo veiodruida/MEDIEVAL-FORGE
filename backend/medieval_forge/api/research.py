@@ -2,6 +2,8 @@
 
 POST /projects/{project_id}/research  — start research run, stream SSE progress
 GET  /projects/{project_id}/research/cached  — return cached result as JSON (404 if none)
+GET  /projects/{project_id}/research/prompt  — return built research prompt (manual flow)
+POST /projects/{project_id}/research/manual  — submit pasted LLM JSON response (manual flow)
 
 SSE shape mirrors api/ingest.py: asyncio.Queue producer + StreamingResponse consumer.
 T-PATH: is_valid_uuid check before any DB or filesystem access (T-3-11).
@@ -10,17 +12,28 @@ T-DOS: task.cancel() in SSE generator finally block (T-3-09, Pitfall 6).
 from __future__ import annotations
 
 import asyncio
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, StreamingResponse
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database import AsyncSessionLocal, get_db
 from ..models import Project
 from ..services.llm import PROVIDERS
-from ..services.paths import is_valid_uuid
-from ..services.research_cache import compute_cache_key, get_cached
-from ..services.research_runner import PROVIDER_DEFAULT_MODEL, run_research
+from ..services.llm.parse import ResearchParseError, parse_research_json
+from ..services.llm.prompt import build_research_prompt
+from ..services.paths import is_valid_uuid, project_dir
+from ..services.research_cache import compute_cache_key, get_cached, set_cached
+from ..services.research_runner import (
+    PROVIDER_DEFAULT_MODEL,
+    load_condados,
+    run_research,
+    validate_assignment_against_condados,
+)
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["research"])
 
@@ -114,3 +127,86 @@ async def get_cached_research(
     if cached is None:
         raise HTTPException(status_code=404, detail="No cached result for this project/provider/model")
     return JSONResponse(content=cached)
+
+
+# ---------------------------------------------------------------------------
+# Manual (copy/paste) flow — RESEARCH-manual
+# ---------------------------------------------------------------------------
+
+@router.get("/projects/{project_id}/research/prompt")
+async def get_research_prompt(
+    project_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> JSONResponse:
+    """Return the built research prompt string for the manual copy/paste flow.
+
+    Returns 400 if project_id is not a valid UUID.
+    Returns 404 if project does not exist.
+    Returns 409 if territories.geojson has not been generated yet.
+    """
+    if not is_valid_uuid(project_id):
+        raise HTTPException(status_code=400, detail="Invalid project_id")
+    project = await db.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    try:
+        condados = load_condados(project_dir(project_id))
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    prompt = build_research_prompt(
+        project.name, project.period_start, project.period_end, condados
+    )
+    return JSONResponse(content={"prompt": prompt})
+
+
+class ManualResponseBody(BaseModel):
+    content: str
+
+
+@router.post("/projects/{project_id}/research/manual")
+async def submit_manual_research(
+    project_id: str,
+    body: ManualResponseBody,
+    db: AsyncSession = Depends(get_db),
+) -> JSONResponse:
+    """Accept a pasted LLM JSON response, validate it, and cache it.
+
+    Returns 400 if project_id is invalid, JSON is malformed, or condado_ids unknown.
+    Returns 404 if project does not exist.
+    Returns 409 if territories.geojson has not been generated yet.
+    On success: returns {"result": <ResearchResult>} and writes a cache row
+    keyed with provider="manual", model="manual".
+    """
+    if not is_valid_uuid(project_id):
+        raise HTTPException(status_code=400, detail="Invalid project_id")
+    project = await db.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    try:
+        result = parse_research_json(body.content)
+    except ResearchParseError as e:
+        # T-security: log only the parse error type, never the raw pasted content
+        logger.debug("Manual research parse error for project %s: %s", project_id, type(e).__name__)
+        raise HTTPException(status_code=400, detail=str(e))
+
+    try:
+        condados = load_condados(project_dir(project_id))
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+
+    known_ids = {c["id"] for c in condados}
+    try:
+        validate_assignment_against_condados(result, known_ids)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    payload = result.model_dump()
+    cache_key = compute_cache_key(
+        project.country_qid, project.period_start, project.period_end, "manual", "manual"
+    )
+    await set_cached(
+        db, cache_key, payload, "manual", "manual",
+        project.country_qid, project.period_start, project.period_end,
+    )
+    return JSONResponse(content={"result": payload})

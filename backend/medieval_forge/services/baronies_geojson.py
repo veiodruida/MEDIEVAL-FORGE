@@ -61,7 +61,10 @@ def build_baronies_geojson(
         })
 
     out_path = out_dir / "baronies.geojson"
-    out_path.write_text(json.dumps({"type": "FeatureCollection", "features": features}))
+    out_path.write_text(
+        json.dumps({"type": "FeatureCollection", "features": features}, ensure_ascii=False),
+        encoding="utf-8",
+    )
     return out_path
 
 
@@ -111,6 +114,9 @@ def emit_baronies_from_disk(project_id: str, generated_dir: Path, cfg: _ProjCfg)
         sidecar[baronies[idx]["name"]] = hex_str
         barony_colors_hex[baronies[idx]["name"]] = hex_str
 
-    (generated_dir / "barony_colors.json").write_text(json.dumps(sidecar))
+    (generated_dir / "barony_colors.json").write_text(
+        json.dumps(sidecar, ensure_ascii=False),
+        encoding="utf-8",
+    )
     # Pass the hex map to build_baronies_geojson (it expects name -> "#hex")
     return build_baronies_geojson(project_id, pb, baronies, condados, cfg, barony_colors_hex)

@@ -127,7 +127,10 @@ def build_territories_geojson(
         feat["properties"]["neighbors"] = sorted(neigh_ids)
 
     out_path = out_dir / "territories.geojson"
-    out_path.write_text(json.dumps({"type": "FeatureCollection", "features": features}))
+    out_path.write_text(
+        json.dumps({"type": "FeatureCollection", "features": features}, ensure_ascii=False),
+        encoding="utf-8",
+    )
     return out_path
 
 
@@ -240,5 +243,8 @@ def emit_territories_from_disk(
         # Build sidecar: condado id -> #rrggbb (for frontend fills)
         sidecar[condado_id] = f"#{r:02x}{g:02x}{b:02x}"
 
-    (generated_dir / "condado_colors.json").write_text(json.dumps(sidecar))
+    (generated_dir / "condado_colors.json").write_text(
+        json.dumps(sidecar, ensure_ascii=False),
+        encoding="utf-8",
+    )
     return build_territories_geojson(project_id, pc, condados, cfg)
