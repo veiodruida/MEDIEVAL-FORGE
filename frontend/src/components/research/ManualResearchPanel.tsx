@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ChangeEvent } from "react";
 import { Badge, Button, Callout, Flex, Heading, Separator, Text, TextArea } from "@radix-ui/themes";
 import { fetchResearchPrompt, submitManualResearch, type ResearchResult } from "../../api/research";
 
@@ -30,6 +30,34 @@ export function ManualResearchPanel({ projectId, onResult }: ManualResearchPanel
     } finally {
       setPromptLoading(false);
     }
+  };
+
+  const handleDownload = () => {
+    const blob = new Blob([prompt], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "prompt.txt";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleFileUpload = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const text = typeof reader.result === "string" ? reader.result : "";
+      setResponse(text);
+    };
+    reader.onerror = () => {
+      setSubmitError("Não foi possível ler o arquivo.");
+    };
+    reader.readAsText(file, "utf-8");
+    // Reset input so the same file can be reselected
+    e.target.value = "";
   };
 
   const handleCopy = async () => {
@@ -70,9 +98,14 @@ export function ManualResearchPanel({ projectId, onResult }: ManualResearchPanel
             {promptLoading ? "Gerando…" : prompt ? "Regerar prompt" : "Gerar prompt"}
           </Button>
           {prompt && (
-            <Button variant="soft" onClick={handleCopy}>
-              {copied ? "Copiado" : "Copiar"}
-            </Button>
+            <>
+              <Button variant="soft" onClick={handleCopy}>
+                {copied ? "Copiado" : "Copiar"}
+              </Button>
+              <Button variant="soft" onClick={handleDownload}>
+                Baixar prompt
+              </Button>
+            </>
           )}
         </Flex>
         {promptError && (
@@ -97,6 +130,20 @@ export function ManualResearchPanel({ projectId, onResult }: ManualResearchPanel
         <Text size="2" color="gray">
           Cole aqui o JSON retornado pelo chat. Aceitamos o JSON puro ou dentro de um bloco ```json … ```.
         </Text>
+        <Flex gap="2" align="center">
+          <Button variant="soft" asChild>
+            <label style={{ cursor: "pointer" }}>
+              Carregar arquivo
+              <input
+                type="file"
+                accept=".txt,.json,application/json,text/plain"
+                style={{ display: "none" }}
+                onChange={handleFileUpload}
+              />
+            </label>
+          </Button>
+          <Text size="1" color="gray">ou cole manualmente abaixo</Text>
+        </Flex>
         <TextArea
           value={response}
           onChange={(e) => setResponse(e.target.value)}
