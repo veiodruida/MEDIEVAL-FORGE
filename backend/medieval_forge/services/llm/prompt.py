@@ -43,7 +43,14 @@ RULES = """CRITICAL RULES — any violation fails validation:
 5. baronies: object mapping <condado_id> to an array of {name, lon, lat}.
 6. kingdom_id / duchy_id: short slugs you invent (e.g. "K_PORT", "D_MINHO").
 7. condado_id: MUST be one of the ids from the provided list. Do NOT invent condado ids.
-8. Output a SINGLE JSON object. No prose before or after. No ```json fences."""
+8. Output a SINGLE JSON object. No prose before or after. No ```json fences.
+9. BARONY COVERAGE: Gere EXATAMENTE 1-3 baronias para CADA condado listado. NÃO omita nenhum condado.
+   The `baronies` object MUST have one key per condado_id from the provided list.
+10. BARONY COORDINATES: NUNCA use coordenadas 0.0, 0.0. Use coordenadas realistas próximas ao
+    centroid do condado (±0.2° de tolerância em lon e lat). Cada condado na lista abaixo inclui
+    seu centroid (campos "lon" e "lat") — use-os como referência.
+11. BARONY NAMES: Toda barônia DEVE ter nome histórico plausível (não "Baronia de <condado>").
+    Use nomes de localidades, vilas ou famílias nobres historicamente documentadas da região."""
 
 
 def build_research_prompt(
@@ -70,7 +77,8 @@ def build_research_prompt(
         f"TASK:\n"
         f"Country: {country_name}\n"
         f"Period: {period_start} AD to {period_end} AD\n\n"
-        f"Condados available (use ONLY these exact ids in condados_assignment and baronies):\n"
+        f"Condados available (use ONLY these exact ids; each entry includes its centroid "
+        f"as `lon`/`lat` — use them as reference for barony coordinates):\n"
         f"{condados_json}\n\n"
         f"Now output the JSON object following the example shape. "
         f"Do not include any other top-level keys."
