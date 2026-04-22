@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: "Completed quick task 260422-l7g: fix research flow date changes must persist"
-last_updated: "2026-04-22T14:32:48.812Z"
-last_activity: "2026-04-22 -- Completed quick task 260422-gts: Fix mocked Ollama unit test: correct Duchy payload shape and update format assertion to grammar-constrained schema dict"
+stopped_at: "Completed quick task 260422-m1f: Fix MultiPolygon territories rendering as white and non-clickable on canvas"
+last_updated: "2026-04-22T14:52:07.836Z"
+last_activity: "2026-04-22 -- Completed quick task 260422-m1f: Fix MultiPolygon territories rendering as white and non-clickable on canvas"
 progress:
   total_phases: 7
   completed_phases: 2
@@ -116,9 +116,10 @@ None yet.
 | 260422-k6e | Remove baronies limit + require historical documentation refs + rebuild frontend | 2026-04-22 | 3a48164 | [260422-k6e-remove-baronies-limit-require-historical](./quick/260422-k6e-remove-baronies-limit-require-historical/) |
 | 260422-ktb | Apply research result to canvas: color territories by kingdom + auto-load cached research + inspector badges | 2026-04-22 | 00fc737 | [260422-ktb-apply-research-result-to-canvas-color-te](./quick/260422-ktb-apply-research-result-to-canvas-color-te/) |
 | 260422-l7g | Fix research flow: dates persist to project + country_qid supports multi-country (Q29,Q45) | 2026-04-22 | acd858b | [260422-l7g-fix-research-flow-date-changes-must-pers](./quick/260422-l7g-fix-research-flow-date-changes-must-pers/) |
+| 260422-m1f | Fix MultiPolygon territories rendering as white and non-clickable on canvas | 2026-04-22 | d96c9a4 | [260422-m1f-fix-multipolygon-territories-rendering-a](./quick/260422-m1f-fix-multipolygon-territories-rendering-a/) |
 
 ## Session Continuity
 
-Last session: 2026-04-22T14:32:48.810Z
-Stopped at: Completed quick task 260422-l7g: fix research flow date changes must persist
+Last session: 2026-04-22T14:52:07.836Z
+Stopped at: Completed quick task 260422-m1f: Fix MultiPolygon territories rendering as white and non-clickable on canvas
 Resume file: None
