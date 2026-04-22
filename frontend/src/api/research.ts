@@ -154,6 +154,25 @@ export async function fetchResearchPrompt(projectId: string): Promise<string> {
   return data.prompt as string;
 }
 
+/**
+ * GET /api/projects/:id/research/cached?provider=manual&model=manual
+ * Returns the cached manual research result, or null if no cache row exists (404).
+ * Throws on other non-2xx responses so callers can surface transient errors.
+ */
+export async function fetchCachedManualResearch(
+  projectId: string,
+): Promise<ResearchResult | null> {
+  const res = await fetch(
+    `/api/projects/${projectId}/research/cached?provider=manual&model=manual`,
+  );
+  if (res.status === 404) return null;
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(body.detail ?? `cached ${res.status}`);
+  }
+  return (await res.json()) as ResearchResult;
+}
+
 /** POST /api/projects/:id/research/manual — submits pasted JSON response, returns ResearchResult. */
 export async function submitManualResearch(
   projectId: string,
