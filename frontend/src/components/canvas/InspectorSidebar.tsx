@@ -1,5 +1,6 @@
 import { Badge, Box, Flex, Heading, ScrollArea, Text } from '@radix-ui/themes'
 import { useUIStore } from '../../stores/uiStore'
+import { useResearchStore } from '../../stores/useResearchStore'
 import type {
   TerritoryMetadata,
   TerritoryMetadataCondado,
@@ -70,9 +71,20 @@ export function InspectorSidebar({
 }: InspectorSidebarProps) {
   const selectedId = useUIStore((s) => s.selectedTerritoryId)
   const select = useUIStore((s) => s.select)
+  const manualResult = useResearchStore((s) => s.manualResult)
 
   const condado: TerritoryMetadataCondado | undefined = selectedId
     ? metadata.condados.find((c) => c.id === selectedId)
+    : undefined
+
+  const researchAssignment = selectedId && manualResult
+    ? manualResult.condados_assignment.find((a) => a.condado_id === selectedId)
+    : undefined
+  const researchKingdomName = researchAssignment
+    ? manualResult!.kingdoms[researchAssignment.kingdom_id] ?? researchAssignment.kingdom_id
+    : undefined
+  const researchDuchyName = researchAssignment
+    ? manualResult!.duchies[researchAssignment.duchy_id]?.[0] ?? researchAssignment.duchy_id
     : undefined
 
   if (!condado) {
@@ -137,6 +149,14 @@ export function InspectorSidebar({
         <Badge color="grass" variant="soft">Condado</Badge>
         <Badge color="gray" variant="soft">Baronies: {baronyCount}</Badge>
       </Flex>
+
+      {/* Research-derived Reino/Ducado badges (solid variant, distinct from Group 1 soft badges) */}
+      {researchAssignment && (
+        <Flex gap="2" wrap="wrap">
+          <Badge color="amber" variant="solid">Reino: {researchKingdomName}</Badge>
+          <Badge color="blue" variant="solid">Ducado: {researchDuchyName}</Badge>
+        </Flex>
+      )}
 
       {/* Group 2: identity / geometry */}
       <Box>
