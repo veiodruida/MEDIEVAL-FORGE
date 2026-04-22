@@ -10,7 +10,8 @@ interface Props {
  * InteractionLayer renders the gold selection outline on top of everything.
  * - listening=false: selection is purely visual; hit-testing stays on TerritoryLayer
  * - stroke #f0c040 (UI-SPEC gold), strokeWidth=3
- * - renders exactly one closed Line for the currently selected territory
+ * - renders one closed Line per polygon of the selected territory
+ *   (MultiPolygon territories yield multiple lines; single-polygon territories yield one)
  * - renders 0 children when selectedTerritoryId is null or unknown
  *
  * This is the O(1) selection pattern from RESEARCH §Pattern 7: do not mutate
@@ -19,21 +20,22 @@ interface Props {
  */
 export function InteractionLayer({ territories }: Props) {
   const selectedTerritoryId = useUIStore((s) => s.selectedTerritoryId)
-  const selected = selectedTerritoryId
-    ? territories.find((t) => t.id === selectedTerritoryId)
-    : null
+  const selectedPolygons = selectedTerritoryId
+    ? territories.filter((t) => t.id === selectedTerritoryId)
+    : []
 
   return (
     <Layer listening={false}>
-      {selected && (
+      {selectedPolygons.map((t, i) => (
         <Line
-          points={selected.points}
+          key={`${t.id}-${i}`}
+          points={t.points}
           closed
           stroke="#f0c040"
           strokeWidth={3}
           listening={false}
         />
-      )}
+      ))}
     </Layer>
   )
 }
