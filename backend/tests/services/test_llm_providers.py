@@ -12,7 +12,7 @@ from medieval_forge.services.llm.schemas import ResearchResult
 
 _VALID_PAYLOAD = {
     "kingdoms": {"asturias": "Reino de Asturias"},
-    "duchies": {"galicia": ["asturias", "Ducado de Galicia"]},
+    "duchies": {"galicia": {"kingdom_id": "asturias", "name": "Ducado de Galicia"}},
     "condados_assignment": [
         {"condado_id": "c1", "kingdom_id": "asturias", "duchy_id": "galicia"}
     ],
@@ -133,14 +133,17 @@ async def test_gemini_provider_uses_response_mime_type_application_json():
     assert isinstance(result, ResearchResult)
     config = _captured_config["config"]
     assert config.response_mime_type == "application/json"
-    assert config.response_schema is ResearchResult
+    # response_schema is intentionally NOT set: Gemini rejects additionalProperties
+    # which Pydantic emits for dict[str, X] fields (kingdoms, duchies, baronies).
+    # Plain JSON mode + prompt-based format spec is used instead (see gemini.py).
+    assert config.response_schema is None
 
 
 # ─── Ollama ───────────────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_ollama_provider_uses_format_json_blocking():
-    """OllamaProvider.research uses format='json' and stream=False."""
+async def test_ollama_provider_uses_grammar_constrained_format():
+    """OllamaProvider.research passes a JSON schema dict as format (grammar-constrained decoding) and stream=False."""
     from medieval_forge.services.llm.ollama import OllamaProvider
 
     _captured: dict = {}
@@ -158,7 +161,8 @@ async def test_ollama_provider_uses_format_json_blocking():
         result = await provider.research("prompt", ResearchResult, None, None)
 
     assert isinstance(result, ResearchResult)
-    assert _captured.get("format") == "json"
+    assert isinstance(_captured.get("format"), dict)
+    assert _captured.get("format", {}).get("title") == "ResearchResult"
     assert _captured.get("stream") is False
 
 
