@@ -123,12 +123,22 @@ export function useCanvasArtifacts(
         gcTime: Infinity,
         select: (raw: FC<CondadoFeature>): TerritoryRender[] => {
           if (!projection) return []
-          return raw.features.map((f) => ({
-            id: f.properties.id,
-            name: f.properties.name,
-            points: geoRingToKonvaPoints(firstOuterRing(f.geometry), projection),
-            neighbors: f.properties.neighbors,
-          }))
+          const result: TerritoryRender[] = []
+          for (const f of raw.features) {
+            const rings: [number, number][][] =
+              f.geometry.type === 'Polygon'
+                ? [f.geometry.coordinates[0]]
+                : f.geometry.coordinates.map((poly) => poly[0])
+            for (const ring of rings) {
+              result.push({
+                id: f.properties.id,
+                name: f.properties.name,
+                points: geoRingToKonvaPoints(ring, projection),
+                neighbors: f.properties.neighbors,
+              })
+            }
+          }
+          return result
         },
       },
       {
