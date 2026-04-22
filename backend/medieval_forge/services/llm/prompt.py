@@ -44,13 +44,21 @@ RULES = """CRITICAL RULES — any violation fails validation:
 6. kingdom_id / duchy_id: short slugs you invent (e.g. "K_PORT", "D_MINHO").
 7. condado_id: MUST be one of the ids from the provided list. Do NOT invent condado ids.
 8. Output a SINGLE JSON object. No prose before or after. No ```json fences.
-9. BARONY COVERAGE: Gere EXATAMENTE 1-3 baronias para CADA condado listado. NÃO omita nenhum condado.
+9. BARONY COVERAGE: Gere AS BARONIAS HISTORICAMENTE DOCUMENTADAS de cada condado
+   (1 ou mais; NÃO HÁ LIMITE SUPERIOR). Não omita nenhum condado — todos devem ter pelo menos 1
+   barônia. Se um condado tem muitas referências documentais, gere várias baronias.
    The `baronies` object MUST have one key per condado_id from the provided list.
 10. BARONY COORDINATES: NUNCA use coordenadas 0.0, 0.0. Use coordenadas realistas próximas ao
     centroid do condado (±0.2° de tolerância em lon e lat). Cada condado na lista abaixo inclui
     seu centroid (campos "lon" e "lat") — use-os como referência.
-11. BARONY NAMES: Toda barônia DEVE ter nome histórico plausível (não "Baronia de <condado>").
-    Use nomes de localidades, vilas ou famílias nobres historicamente documentadas da região."""
+11. BARONY HISTORICAL BASIS: Cada barônia DEVE ser uma localidade, vila, castelo ou senhorio
+    historicamente atestado da região no período especificado. Prefira baronias com referências
+    documentais claras (menções em crônicas, cartas régias, fueros, diplomas, foros, tumbos,
+    cartulários). NÃO invente nomes genéricos. NÃO use "Baronia de <condado>".
+12. BARONY LANGUAGE: Use nomes históricos na língua vernácula regional do período
+    (português, castelhano, galego, catalão, leonês, asturiano, etc.) — nunca em inglês.
+    Exemplos: "Santiago de Compostela" (não "Saint James"), "Coimbra" (não "Coymbra"),
+    "Llión" em leonês medieval, "Sevilla" (não "Seville")."""
 
 
 def build_research_prompt(
