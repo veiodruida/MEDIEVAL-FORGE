@@ -11,6 +11,7 @@ import { useCanvasArtifacts } from '../hooks/useCanvasArtifacts'
 import { buildProjectionConfig } from '../lib/projection'
 import { ResearchDialog } from '../components/research/ResearchDialog'
 import { useResearchStore } from '../stores/useResearchStore'
+import { ErrorBoundary } from 'react-error-boundary'
 
 const STATUS_LABEL: Record<string, string> = {
   created: 'Criado',
@@ -149,7 +150,24 @@ export function ProjectDetail() {
             className="inspector-sidebar"
             style={{ width: 340, borderLeft: '1px solid var(--gray-4)', padding: 16, overflowY: 'auto' }}
           >
-            <InspectorSidebarWrapper projectId={project.id} project={project} />
+            <ErrorBoundary
+              onError={(err) => {
+                // T-02-05-02: log full stack to console for developer triage.
+                // DO NOT render stack/message into the fallback UI (security:
+                // avoid leaking internals to end users).
+                // eslint-disable-next-line no-console
+                console.error('[InspectorSidebar] boundary caught:', err)
+              }}
+              fallback={
+                <Callout.Root color="red" size="1">
+                  <Callout.Text>
+                    Sidebar failed to load — check console.
+                  </Callout.Text>
+                </Callout.Root>
+              }
+            >
+              <InspectorSidebarWrapper projectId={project.id} project={project} />
+            </ErrorBoundary>
           </Box>
         </Flex>
       )}
