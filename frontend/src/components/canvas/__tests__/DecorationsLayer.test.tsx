@@ -104,8 +104,8 @@ function wrap(node: React.ReactNode) {
 }
 
 describe('DecorationsLayer — D-04 dual-ring capitals', () => {
-  it('exposes LABEL_ZOOM_THRESHOLD_RELATIVE = 2.0', () => {
-    expect(LABEL_ZOOM_THRESHOLD_RELATIVE).toBe(2.0)
+  it('exposes LABEL_ZOOM_THRESHOLD_RELATIVE = 1.5', () => {
+    expect(LABEL_ZOOM_THRESHOLD_RELATIVE).toBe(1.5)
   })
 
   it('renders D-04 dual-ring capitals when layerVisibility.capitals=true', () => {
@@ -196,14 +196,14 @@ describe('DecorationsLayer — label gating (D-04 + zoom threshold)', () => {
     expect(screen.queryAllByTestId('text').length).toBe(0)
   })
 
-  it('renders labels when layerVisibility.labels && currentScale >= 2*minScale', () => {
+  it('renders labels when layerVisibility.labels && currentScale >= 1.5*minScale (at exact boundary)', () => {
     render(
       wrap(
         <DecorationsLayer
           condados={CONDADOS}
           condadoColors={COLORS}
           layerVisibility={{ capitals: true, labels: true }}
-          currentScale={0.68}
+          currentScale={0.51}
           minScale={0.34}
         />,
       ),
@@ -218,6 +218,21 @@ describe('DecorationsLayer — label gating (D-04 + zoom threshold)', () => {
       expect(t.getAttribute('data-stroke-width')).toBe('1')
       expect(t.getAttribute('data-listening')).toBe('false')
     })
+  })
+
+  it('does NOT render labels at currentScale = 1.49 * minScale (just below 1.5× threshold)', () => {
+    render(
+      wrap(
+        <DecorationsLayer
+          condados={CONDADOS}
+          condadoColors={COLORS}
+          layerVisibility={{ capitals: true, labels: true }}
+          currentScale={1.49 * 0.34}
+          minScale={0.34}
+        />,
+      ),
+    )
+    expect(screen.queryAllByTestId('text').length).toBe(0)
   })
 
   it('does NOT render labels when layerVisibility.labels=false even above threshold', () => {

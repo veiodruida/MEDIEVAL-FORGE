@@ -7,10 +7,12 @@ import type { TerritoryMetadataCondado } from '../../hooks/useCanvasArtifacts'
 
 /**
  * Label gate: labels render only when the stage is zoomed in to at least
- * 2× the fit-to-view scale (so they aren't visible at minScale where they would
- * clutter the whole map). Matches UI-SPEC §Canvas Typography + RESEARCH §Pattern 8.
+ * 1.5× the fit-to-view scale. UAT feedback (GAP-08) showed 2.0× was too high —
+ * users perceived the Labels toggle as broken at default zoom. Compromise
+ * value per 02-HUMAN-UAT.md fix_hint. Paired Radix Tooltip on the Labels
+ * checkbox in LayerTogglePanel explains the threshold to the user.
  */
-export const LABEL_ZOOM_THRESHOLD_RELATIVE = 2.0
+export const LABEL_ZOOM_THRESHOLD_RELATIVE = 1.5
 
 interface Props {
   condados: TerritoryMetadataCondado[]

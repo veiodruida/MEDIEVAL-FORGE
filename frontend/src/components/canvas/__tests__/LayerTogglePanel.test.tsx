@@ -13,6 +13,11 @@ vi.mock('@radix-ui/themes', () => ({
   Checkbox: ({ checked, onCheckedChange }: { checked?: boolean; onCheckedChange?: (v: boolean) => void }) => (
     <input type="checkbox" checked={checked} onChange={(e) => onCheckedChange?.(e.target.checked)} />
   ),
+  // GAP-08: Tooltip wraps the Labels row. Passthrough mock preserves children
+  // so the existing getByText/getAllByRole assertions continue to work.
+  Tooltip: ({ children, content }: React.PropsWithChildren<{ content?: React.ReactNode }>) => (
+    <div data-testid="tooltip" data-content={typeof content === 'string' ? content : ''}>{children}</div>
+  ),
 }))
 
 // Quick-task 260420-hkr: vocabulary + defaults updated.
