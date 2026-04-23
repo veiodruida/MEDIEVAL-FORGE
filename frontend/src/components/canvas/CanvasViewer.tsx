@@ -231,7 +231,7 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
     const fileColors = condadoColorsQ.data ?? {}
     const researchColors = computeCondadoColors(
       manualResult,
-      manualResult ? Object.keys(manualResult.kingdoms) : [],
+      manualResult?.kingdoms ? Object.keys(manualResult.kingdoms) : [],
     )
     // Research overrides file colors, per spec.
     return { ...fileColors, ...researchColors }

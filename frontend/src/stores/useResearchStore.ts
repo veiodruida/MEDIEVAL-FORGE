@@ -15,7 +15,7 @@ export function computeCondadoColors(
   result: ResearchResult | null,
   kingdomIds: string[],
 ): Record<string, string> {
-  if (!result) return {};
+  if (!result || !result.condados_assignment) return {};
   const kingdomIndex = new Map<string, number>();
   kingdomIds.forEach((id, i) => kingdomIndex.set(id, i));
   const out: Record<string, string> = {};
