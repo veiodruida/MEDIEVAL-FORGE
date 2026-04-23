@@ -20,11 +20,16 @@ created: 2026-04-23
 | Tool | none (Radix Themes is the design system) | Existing codebase — main.tsx |
 | Preset | not applicable | No shadcn; Radix Themes configured in main.tsx |
 | Component library | @radix-ui/themes ^3.3.0 | package.json |
-| Icon library | @radix-ui/react-icons (add in this phase) | Default — cheapest Radix peer |
+| Notification primitive | @radix-ui/react-toast (new dep this phase) | @radix-ui/themes does not include a Toast primitive |
+| Icon library | @radix-ui/react-icons (new dep this phase) | Cheapest Radix peer; no alternative in current stack |
 | Font | system-ui, sans-serif | DecorationsLayer.tsx (established in Phase 02) |
 | Radix Theme config | appearance="light" accentColor="iris" radius="medium" | main.tsx — LOCKED, do not change |
 
 No `components.json` found. shadcn gate: not applicable — Radix Themes is the established system across all prior phases.
+
+New npm dependencies required this phase:
+- `@radix-ui/react-icons` — undo/redo toolbar icons
+- `@radix-ui/react-toast` — operation feedback toasts (non-adjacent merge warning, invalid cut-line error)
 
 ---
 
@@ -103,16 +108,27 @@ Konva-specific colors (cannot use CSS variables):
 
 ## Component Inventory
 
-New components introduced in Phase 04 (all use Radix Themes primitives):
+New components introduced in Phase 04 (all use Radix Themes primitives unless noted):
 
-| Component | File | Type | Radix primitives used |
-|-----------|------|------|----------------------|
-| EditToolbar | frontend/src/components/canvas/EditToolbar.tsx | Radix Flex + ToggleGroup or Button | Flex, Button (variant="soft"/"solid"), Separator, Tooltip, SegmentedControl |
+| Component | File | Type | Primitives used |
+|-----------|------|------|-----------------|
+| EditToolbar | frontend/src/components/canvas/EditToolbar.tsx | Radix Flex + Buttons | Flex, Button (variant="soft"/"solid"), Separator, Tooltip |
 | SelectionFloatingToolbar | frontend/src/components/canvas/SelectionFloatingToolbar.tsx | Radix Card floating | Card, Flex, Button, Tooltip |
-| SettingsPanel | frontend/src/components/canvas/SettingsPanel.tsx | Radix Dialog or Sheet | Dialog or Sheet, RadioGroup, Text, Flex |
+| SettingsPanel | frontend/src/components/canvas/SettingsPanel.tsx | Radix Dialog (NOT Sheet — Sheet is not a Radix Themes primitive) | Dialog, RadioGroup, Text, Flex |
 | SaveStatusIndicator | frontend/src/components/canvas/SaveStatusIndicator.tsx | Inline badge | Badge (color="green"/"gray"/"amber") |
+| OperationToast | frontend/src/components/canvas/OperationToast.tsx | @radix-ui/react-toast | ToastProvider, ToastRoot, ToastDescription, ToastViewport |
 | ValidationBadge (Konva) | inside canvas layers | Konva Circle overlay | — |
-| UndoRedoButtons | inside EditToolbar | Icon buttons | Button + @radix-ui/react-icons (UndoIcon, RedoIcon) |
+| UndoRedoButtons | inside EditToolbar | Icon buttons | Button + @radix-ui/react-icons |
+
+Note on SettingsPanel: `Sheet` is a shadcn/ui convention layered over `@radix-ui/react-dialog`. `@radix-ui/themes` v3.3 exposes `Dialog` only. Use `Dialog` with a tall content panel to simulate a side-sheet pattern. Do NOT introduce shadcn just for a Sheet component.
+
+Note on OperationToast: `@radix-ui/themes` v3.3 does not include a Toast primitive. Install `@radix-ui/react-toast` separately. Wire `<ToastViewport>` into the root layout (main.tsx or ProjectDetail). Two toast contexts used:
+1. Warning toast (amber): non-adjacent merge — `variant="soft" color="amber"`.
+2. Error toast (red): invalid cut-line — `variant="soft" color="red"`.
+
+Note on icons: `@radix-ui/react-icons` must be installed. Exact icon names to verify at install time against `icons.radix-ui.com`:
+- Undo: `CounterClockwiseClockIcon` (confirmed in multiple community examples)
+- Redo: verify at install — candidates are `ClockwiseIcon`, `ReloadIcon`, or `UpdateIcon`. Use whichever exists. Fallback: render "↩" / "↪" text labels if none match.
 
 Modified components from Phase 02 (minimal additions, no regressions):
 
@@ -144,8 +160,8 @@ Modified components from Phase 02 (minimal additions, no regressions):
 
 ### Border Vertex Drag (D-02, EDIT-02)
 
-- "Editar Vértices" mode enters via keyboard `V` or a button in EditToolbar (only enabled when a condado is selected in edit mode).
-- On entering: polygon decimated to ~12 handle points (Douglas-Peucker); handles render as 6px circles (normal state: white fill, iris stroke 1.5px).
+- "Editar Vértices" mode entered via keyboard `V` or a button in EditToolbar (only enabled when a condado is selected in edit mode).
+- On entering: polygon decimated to ~12 handle points (Douglas-Peucker); handles render as 6px circles (normal: white fill, iris stroke 1.5px).
 - Handle hover: radius expands to 8px, strokeWidth=2.
 - On mouseup per handle: immediate canvas redraw; PATCH fires on Esc or "Exit vertex edit" button.
 - Esc exits vertex edit mode, persists.
@@ -156,13 +172,13 @@ Modified components from Phase 02 (minimal additions, no regressions):
 - In edit mode, click-drag on empty Stage area draws a selection Rect.
 - Rect style: iris fill `rgba(110, 86, 207, 0.1)`, iris stroke `rgba(110, 86, 207, 0.7)`, strokeWidth=1, dash=[4,2].
 - On mouseup: all condados with centroid inside rect are selected. InteractionLayer shows gold outline on each.
-- SelectionFloatingToolbar appears: Radix Card, positioned 8px above bounding box centroid of selection, zIndex=20.
+- SelectionFloatingToolbar appears: Radix Card, positioned 8px above bounding box top midpoint of selection, zIndex=20.
 - Floating toolbar buttons: "Fundir" (Merge, Radix Button variant="solid"), future: "Excluir" (Delete, color="red").
 
 ### Territory Merge (D-03, EDIT-03)
 
 - User presses "Fundir" in SelectionFloatingToolbar.
-- If non-adjacent: Radix Toast appears: `"Territórios não adjacentes. Fundir criará um multipolígono (aviso de validação)."`. Merge proceeds.
+- If non-adjacent: `@radix-ui/react-toast` warning fires: `"Territórios não adjacentes. Fundir criará um multipolígono (aviso de validação)."` (amber). Merge proceeds.
 - POST to merge endpoint. Merged condado inherits name of highest-area selection member.
 - Inspector shows rename field immediately after merge (Radix TextField inline in inspector heading).
 - Validation badge appears if merge created non-simple polygon.
@@ -174,16 +190,18 @@ Modified components from Phase 02 (minimal additions, no regressions):
 - On activation: segmented control appears in toolbar with 3 sub-modes:
   1. "Snap" (default) — two-point click on boundary, cursor=crosshair.
   2. "Polilinha" — click nodes, double-click finish, cursor=crosshair.
-  3. "Livre" — click-drag freehand, cursor=pencil (CSS `cursor: url(...) crosshair`).
+  3. "Livre" — click-drag freehand, cursor=crosshair (standard; no custom cursor required).
 - Cut-line preview: iris dashed stroke (6px dash, 3px gap), strokeWidth=2, rendered on a dedicated Konva layer above TerritoryLayer.
-- If cut line does not enter and exit polygon: Radix Toast error: `"Linha de corte deve cruzar o território em dois pontos."`. Operation cancelled.
+- If cut line does not enter and exit polygon: `@radix-ui/react-toast` error fires: `"Linha de corte deve cruzar o território em dois pontos."` (red). Operation cancelled.
 - POST to split endpoint. Second polygon inherits base attributes; Inspector shows rename field.
 - Undo label: `"Dividir {condado.name}"` (Portuguese).
 
 ### Undo/Redo (D-05, EDIT-07, EDIT-08)
 
 - Keyboard: Ctrl+Z (undo), Ctrl+Y (redo). Cmd+Z / Cmd+Y on Mac.
-- Toolbar: icon buttons using `@radix-ui/react-icons` — `CounterClockwiseClockIcon` (undo), `ClockwiseIcon` (redo).
+- Toolbar: icon buttons using `@radix-ui/react-icons`.
+  - Undo icon: `CounterClockwiseClockIcon` (verify name at `icons.radix-ui.com` at install time).
+  - Redo icon: verify at install — candidates are `ClockwiseIcon`, `ReloadIcon`, `UpdateIcon`. Use the first one that exists. Fallback if none: render arrow-loop text character.
 - Undo/redo buttons are disabled (Radix `disabled` prop) when history is empty / at head.
 - Tooltip on hover shows last action label: `"Desfazer: {label}"` / `"Refazer: {label}"`.
 - Compound operations batched via `temporal.pause()` / `temporal.resume()` — registered as one step.
@@ -203,7 +221,7 @@ Modified components from Phase 02 (minimal additions, no regressions):
   - `color="green"` variant="soft": `"Salvo ✓"` — auto-save or manual save confirmed.
   - `color="gray"` variant="soft": `"Salvando…"` — debounce timer running or PATCH in flight.
   - `color="amber"` variant="soft": `"Alterações não salvas"` — explicit-save mode with pending changes.
-- Settings panel (Radix Sheet from nav): radiogroup with 3 options, persisted to localStorage.
+- Settings panel: Radix `Dialog` (not Sheet — Sheet is not in @radix-ui/themes) accessible from a settings button in the header. Contains `RadioGroup` with 3 save-strategy options, persisted to localStorage.
 - `beforeunload` warning fires when unsaved changes exist in explicit-save mode.
 
 ---
@@ -241,52 +259,55 @@ Language: Portuguese for all new action labels and undo step labels (aligned wit
 | Undo button tooltip | "Desfazer: {label}" | Default |
 | Redo button tooltip | "Refazer: {label}" | Default |
 | Settings panel title | "Configurações de Salvamento" | Default |
+| Settings dialog trigger button | "Configurações" | Default |
 | Save strategy option: auto | "Automático (1.5s após edição)" | Default |
 | Save strategy option: per-op | "Por operação" | Default |
 | Save strategy option: explicit | "Manual (Ctrl+S)" | Default |
 | Save status: saved | "Salvo ✓" | Default |
 | Save status: saving | "Salvando…" | Default |
 | Save status: unsaved | "Alterações não salvas" | Default |
-| Merge confirmation (non-adjacent toast) | "Territórios não adjacentes. Fundir criará um multipolígono (aviso de validação)." | Default |
-| Cut-line invalid toast | "Linha de corte deve cruzar o território em dois pontos." | Default |
-| Export blocked tooltip | "Corrija os erros de validação primeiro" | Default (from D-06) |
+| Merge warning toast | "Territórios não adjacentes. Fundir criará um multipolígono (aviso de validação)." | Default |
+| Cut-line error toast | "Linha de corte deve cruzar o território em dois pontos." | Default |
+| Export blocked tooltip | "Corrija os erros de validação primeiro" | CONTEXT.md D-06 |
 | Rename placeholder (post-merge/split) | "Nome do território…" | Default |
-| Empty state (no condado selected in edit mode) | No empty state — toolbar shows disabled buttons with Tooltip: "Selecione um território para editar" | Default |
-| Voronoi recalc loading state | Affected territory polygons rendered at opacity=0.6 (no text overlay) | Default |
+| Toolbar disabled button tooltip (no selection) | "Selecione um território para editar" | Default |
+| Voronoi recalc loading state | No text — affected territories rendered at opacity=0.6 | Default |
 | Undo transaction labels (set in code) | "Mover capital de {name}", "Editar vértice — {name}", "Fundir {N} territórios", "Dividir {name}" | CONTEXT.md D-05 |
 
 ---
 
 ## Layout Regions (Phase 04 additions to Phase 02 layout)
 
-The Phase 02 two-region layout (canvas left / inspector right) is preserved. Phase 04 adds:
+The Phase 02 two-region layout (canvas left / inspector right) is preserved. Phase 04 adds an EditToolbar inline above the canvas.
 
 ```
-┌─────────────────────────────────────────────────────┐
-│ Header: project name  ·  [Salvo ✓]   [Configurações] │
-├──────────────────────────────────┬──────────────────┤
-│ EDIT TOOLBAR (canvas top, full   │ INSPECTOR        │
-│ width minus inspector)           │ (unchanged from  │
-│  [Editar] [Editar Vértices]      │  Phase 02)       │
-│  [Fundir] [Dividir: Snap/Poli/   │                  │
-│  Livre] [⟲ Undo] [⟳ Redo]       │                  │
-├──────────────────────────────────┤                  │
-│                                  │                  │
-│  CANVAS (Konva Stage)            │                  │
-│  + LayerTogglePanel (top-left)   │                  │
-│  + FitToViewButton (bottom-right)│                  │
-│  + LegendCard (bottom-left)      │                  │
-│  + SelectionFloatingToolbar      │                  │
-│    (above selection, conditional)│                  │
-│  + ValidationBadge dots (condado │                  │
-│    centroids, conditional)       │                  │
-│                                  │                  │
-└──────────────────────────────────┴──────────────────┘
+┌──────────────────────────────────────────────────────────┐
+│ Header: project name  ·  [Salvo ✓]   [Configurações]     │
+├───────────────────────────────────┬──────────────────────┤
+│ EDIT TOOLBAR (full canvas width)  │ INSPECTOR            │
+│  [Editar] [Editar Vértices]       │ (unchanged from      │
+│  [Fundir] [Dividir] [Snap/Poli/   │  Phase 02)           │
+│  Livre seg] | [⟲ Undo] [⟳ Redo]  │                      │
+├───────────────────────────────────┤                      │
+│                                   │                      │
+│  CANVAS (Konva Stage)             │                      │
+│  + LayerTogglePanel (top-left)    │                      │
+│  + FitToViewButton (bottom-right) │                      │
+│  + LegendCard (bottom-left)       │                      │
+│  + SelectionFloatingToolbar       │                      │
+│    (above selection, conditional) │                      │
+│  + ValidationBadge dots           │                      │
+│    (condado centroids, cond.)     │                      │
+│                                   │                      │
+│  TOAST VIEWPORT (fixed, bottom)   │                      │
+└───────────────────────────────────┴──────────────────────┘
 ```
 
-EditToolbar: Radix `Flex` with `gap="2"`, horizontal, `align="center"`, full-width, `px="3" py="2"` padding, `borderBottom="1px solid var(--gray-4)"`. Not floating — inline flow above canvas.
+EditToolbar: Radix `Flex` with `gap="2"`, horizontal, `align="center"`, full-width, `px="3" py="2"` padding, bottom border `borderBottom="1px solid var(--gray-4)"`. Not floating — inline flow above canvas.
 
 SelectionFloatingToolbar: Radix `Card` with `variant="surface"`, `shadow="3"`, positioned 8px above bounding box top midpoint of selection, `zIndex=20`. Contains `Flex gap="2"` with action buttons.
+
+Toast viewport: `@radix-ui/react-toast` `<ToastViewport>` mounted at document root level. Positioned bottom-center, `zIndex=50`. Duration: 4000ms for warnings, 6000ms for errors.
 
 ---
 
@@ -295,7 +316,8 @@ SelectionFloatingToolbar: Radix `Card` with `variant="surface"`, `shadow="3"`, p
 | Registry | Blocks Used | Safety Gate |
 |----------|-------------|-------------|
 | shadcn official | none | not applicable — no shadcn in project |
-| @radix-ui/react-icons | icons only (UndoIcon equivalent, ClockwiseIcon equivalent) | not applicable — official Radix package, npm-installed |
+| @radix-ui/react-icons | icons only | not applicable — official Radix package, npm-installed |
+| @radix-ui/react-toast | ToastProvider, ToastRoot, ToastDescription, ToastViewport | not applicable — official Radix package, npm-installed |
 
 No third-party shadcn registries. No vetting gate required.
 
@@ -305,7 +327,7 @@ No third-party shadcn registries. No vetting gate required.
 
 | Source | Decisions Captured |
 |--------|--------------------|
-| CONTEXT.md | 9 implementation decisions (D-01 through D-09), undo labels (Portuguese), operation list, keyboard shortcuts partially |
+| CONTEXT.md | 9 implementation decisions (D-01 through D-09), undo labels (Portuguese), operation list |
 | REQUIREMENTS.md | EDIT-01, EDIT-02, EDIT-03, EDIT-04, EDIT-07, EDIT-08 interaction expectations |
 | ROADMAP.md | <500ms recalc constraint, 50-step undo, partialize+diff requirement, merge adjacency rebuild |
 | main.tsx (codebase) | Radix Theme config (iris accent, light, radius=medium) — LOCKED |
@@ -320,13 +342,13 @@ No third-party shadcn registries. No vetting gate required.
 
 ## Items Requiring User Confirmation
 
-The following defaults were applied without explicit user input. User can override before this spec is promoted to `approved`:
+The following defaults were applied without explicit user input. Confirm before this spec is promoted to `approved`:
 
 1. **Portuguese for all new labels** — defaulted to Portuguese matching Phase 02 + D-05 undo examples. Confirm: "Editar", "Editar Vértices", "Fundir", "Dividir", "Salvo ✓", etc.
-2. **Icon library: @radix-ui/react-icons** — cheapest Radix Themes peer. Confirm package addition or name an alternative.
-3. **Undo/redo as toolbar icon buttons (in addition to Ctrl+Z/Y)** — ROADMAP plan 4.4 says "undo UI controls". Defaulted to icon buttons in EditToolbar. Confirm.
-4. **Keyboard shortcut map** — particularly E=edit mode, V=vertex mode, S=split, M=merge. Confirm no conflicts with OS/browser shortcuts in the target environment.
-5. **Edit mode visual indicator** — iris border on canvas container + solid button variant. Confirm styling approach is acceptable.
+2. **New npm dependencies** — `@radix-ui/react-icons` + `@radix-ui/react-toast`. Both are official Radix packages. Confirm addition.
+3. **Undo/redo as toolbar icon buttons** — in addition to Ctrl+Z/Y. ROADMAP plan 4.4 says "undo UI controls". Defaulted to icon buttons. Confirm.
+4. **Keyboard shortcut map** — E=edit mode, V=vertex mode, S=split. Confirm no conflicts with OS/browser shortcuts in target environment.
+5. **Edit mode visual indicator** — iris border on canvas container + solid button variant. Confirm styling approach.
 
 ---
 
