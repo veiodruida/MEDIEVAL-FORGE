@@ -171,15 +171,31 @@ import { ErrorBoundary } from 'react-error-boundary'
 <!-- block in-place with the curl output + key-overlap results before Task 3    -->
 <!-- fires. Leave as placeholder until that task runs.                           -->
 
-TBD — will be filled in after Task 2 runs against a real generated Iberia project.
+**Run date:** 2026-04-23 against project `fe5d709d-7454-4e9f-8a0c-5486dc71299f` (real Iberia), backend on port 8765.
 
-Findings will include:
-- Status + body (first 500 chars) of `GET /api/projects/{id}/preview/condado_colors.json`
-- Sample feature ids from `GET /api/projects/{id}/preview/territories.geojson`
-- Key overlap count between the two files
-- Which hypothesis (H1/H2/H3/H4) the evidence supports
+### Command A — `GET /preview/condado_colors.json`
+HTTP 200, body populated with 91 entries:
+```
+{"oviedo": "#32501e", "pravia": "#57998f", "gijon": "#7ce200", "liebana": "#a12b71",
+ "coruna": "#c674e2", "compostela": "#ebbd53", "lugo": "#1006c4", "ourense": "#354f35",
+ "tui": "#5a98a6", "porto": "#7fe117", "braga": "#a42a88", "viana": "#c973f9", ...}
+```
 
-Once filled in, Task 3's action block executes the branch matching the diagnosis.
+### Command B — `GET /preview/territories.geojson` feature ids
+- `feature.id[:5]`: `['oviedo', 'pravia', 'gijon', 'liebana', 'coruna']`
+- `properties.id[:5]`: `['oviedo', 'pravia', 'gijon', 'liebana', 'coruna']`
+- Total features: **91** (identical count to sidecar)
+
+### Command C — key overlap
+- `condado_colors` keys: **91**
+- `feature.id` set size: **91**
+- **OVERLAP: 91/91 = 100.0%**
+
+### Verdict — H4 (stale frontend cache) — already mitigated
+
+All four backend invariants hold: sidecar emitted, route returns 200, keys match feature ids 1:1. The historical `#666666` fallback reported in UAT on 2026-04-18 was caused by **H4** (TanStack Query cache holding a pre-02-04 empty response; browser HTTP cache holding the stale JSON). This was resolved between 02-04 and now by the quick tasks that added the `cacheVersion` prop to `CanvasViewer` (see lines 32-38 + 146 of `CanvasViewer.tsx`): the prop flows from `ProjectDetail` (bound to `project.updated_at`) through to `useCanvasArtifacts`, invalidating both the in-memory query cache and the browser's HTTP cache whenever the pipeline regenerates.
+
+**Task 3 decision:** No code change required. GAP-04 root cause is identified (H4) and the fix (cache-bust prop) already shipped as part of ongoing work. Task 3 reduces to a regression test affirming the `cacheVersion` propagation + a human re-verification of UAT Test 1 on the live pipeline.
 </diagnosis>
 
 <tasks>
