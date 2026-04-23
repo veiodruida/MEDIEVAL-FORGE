@@ -2,7 +2,11 @@
   "permissions": {
     "allow": [
       "Skill(gsd-code-review)",
-      "Skill(gsd-code-review:*)"
+      "Skill(gsd-code-review:*)",
+      "Skill(gsd-quick)",
+      "Skill(gsd-quick:*)",
+      "Skill(gsd-next)",
+      "Skill(gsd-next:*)"
     ]
   }
 }

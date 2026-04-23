@@ -13,6 +13,8 @@ reverified_date: 2026-04-23
 
 [testing complete — all 11 tests pass after re-UAT]
 
+(Phase 03 UAT also marked complete same session — see .planning/phases/03-llm-research-integration/03-HUMAN-UAT.md)
+
 ## Tests
 
 ### 1. Condado fills match lookup_condado_colors.json
