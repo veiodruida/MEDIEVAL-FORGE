@@ -1,9 +1,11 @@
 ---
-status: gaps_found
+status: fixes_landed_pending_reverify
 phase: 02-read-only-canvas-viewer
 source: [02-VERIFICATION.md, human re-test 2026-04-18]
 started: 2026-04-18T00:00:00Z
-updated: 2026-04-18T18:55:00Z
+updated: 2026-04-23T10:45:00Z
+fixes_landed_in: 02-05
+fixes_landed_date: 2026-04-23
 ---
 
 ## Current Test
@@ -80,38 +82,48 @@ blocked: 0
 
 ### GAP-04 — TerritoryLayer renders #666666 (cores cinza)
 severity: blocker
+status: fix_landed_pending_reverify
 truth: TerritoryLayer falls back to `#666666` for every condado; Unity palette colors from `condado_colors.json` are not applied.
 evidence: User screenshots (Borders OFF → all gray); frontend code is correct end-to-end. Suspected backend defect: `condado_colors.json` not produced, returns empty, or has IDs that don't match `territory_metadata.json`.
 affects: [CANVAS-01, CANVAS-04]
 fix_hint: First, live-verify endpoint with `curl /api/projects/{id}/preview/condado_colors.json`. If empty or 404 → fix `emit_territories_from_disk` sidecar emission. If populated but mismatched → fix ID join logic. Add a backend integration assertion that `condado_colors.json` keys ⊆ `territory_metadata.json` condado IDs.
+fix_landed: Task 2 diagnosis (2026-04-23) confirmed H4 — backend 100% correct (91/91 keys match). Historical #666666 was TanStack Query + HTTP cache staleness. Mitigation already shipped via `cacheVersion` prop. Regression test added at `frontend/src/hooks/useCanvasArtifacts.cacheVersion.test.ts`. Commits: 6f8fc2c (diagnosis), e5dc1cb (regression test).
 
 ### GAP-05 — Stage hardcoded to 800×600 (keystone bug)
 severity: blocker
+status: fix_landed_pending_reverify
 truth: `CanvasViewer.tsx` accepts `width`/`height` props with defaults (800, 600); `ProjectDetail.tsx:136` mounts it without passing dimensions; no `ResizeObserver` measures the actual container. Stage stays 800×600 regardless of viewport.
 evidence: `CanvasViewer.tsx:58` (defaults), `CanvasViewer.tsx:219-220` (uses props directly as `viewportW`/`viewportH`), `CanvasViewer.tsx:235-236` (Stage created with `width={viewportW}`), `ProjectDetail.tsx:136` (no dimension props passed).
 affects: [CANVAS-02, CANVAS-03, CANVAS-04, CANVAS-05, CANVAS-06]
 fix_hint: Wire a `ResizeObserver` (or `useResizeObserver` hook) in `CanvasViewer` to measure its parent container. Update `viewportW`/`viewportH` from measured values. Re-call `setMinScale` and re-fit when dimensions change. Add a `useZoomPan` test for "stage resize triggers minScale recompute".
+fix_landed: Callback-ref ResizeObserver pattern (B-1 fix) in CanvasViewer.tsx + `calc(100vh - 220px)` viewport-relative canvas region in ProjectDetail.tsx. 5 resize tests green (R1/R2/R3/R4/R5). Shipped via prior quick tasks; validated in 02-05.
 
 ### GAP-06 — Click-select returns "blank" (likely consequence of GAP-05)
 severity: blocker
+status: fix_landed_pending_reverify
 truth: User clicks a condado → InspectorSidebar shows project-overview/empty state instead of selected condado details.
 evidence: `CanvasViewer.tsx:186-193` deselects on `e.target === e.target.getStage()`. Because Stage only fills left ~800px (GAP-05), clicks in the right half (dead area) match this condition and clear the selection.
 affects: [CANVAS-03, CANVAS-05]
 fix_hint: Fixing GAP-05 should resolve GAP-06 directly (clicks will land on actual polygons). Verify after GAP-05 fix.
+fix_landed: Downstream of GAP-05. No separate fix; once Stage fills the canvas region, empty-area clicks no longer land in the dead navy zone. Pending human re-verification.
 
 ### GAP-07 — InspectorSidebar lacks ErrorBoundary (defensive)
 severity: warning
+status: fix_landed_pending_reverify
 truth: `ProjectDetail.tsx:142` mounts `InspectorSidebarWrapper` without a `<Suspense>` or `<ErrorBoundary>`. If `metaQ`/`territoriesQ` throws or suspends, the entire sidebar can vanish silently — appearing "blank" to the user.
 evidence: `ProjectDetail.tsx:142` (no boundary), TanStack Query queries can throw on network/parse errors.
 affects: [CANVAS-03]
 fix_hint: Wrap `InspectorSidebarWrapper` in a `<react-error-boundary>` `<ErrorBoundary>` with a visible fallback ("Sidebar failed to load — see console") so silent failures become visible.
+fix_landed: react-error-boundary@^4 installed; InspectorSidebarWrapper wrapped in ErrorBoundary with visible Radix Callout fallback ("Sidebar failed to load — check console."). Full error goes to console.error only (T-02-05-02 no-leak). Regression test in ProjectDetail.errorBoundary.test.tsx. Commit: 2128c30.
 
 ### GAP-08 — Labels zoom-gate UX mismatch
 severity: warning
+status: fix_landed_pending_reverify
 truth: Labels checkbox toggles state correctly, but `DecorationsLayer` only renders labels at `currentScale >= 2.0 * minScale`. At default zoom (= minScale), labels never appear even when toggle is ON. User perceives the toggle as broken.
 evidence: `DecorationsLayer.tsx:13` (`LABEL_ZOOM_THRESHOLD_RELATIVE = 2.0`), `:78-80` (gate logic). Working as designed but UX is opaque.
 affects: [CANVAS-04]
 fix_hint: Two options: (a) add a tooltip on the Labels checkbox: "Zoom in 2× to show labels" (preserves current threshold); (b) lower threshold to `1.5` or `1.0` so labels appear closer to default zoom. Decision: UX preference — recommend (a) plus a slight reduction to 1.5× as a compromise.
+fix_landed: Both (a) and (b) applied per recommendation — threshold lowered 2.0→1.5 in DecorationsLayer.tsx, Radix Tooltip "Zoom in 1.5× to show labels" added to Labels row in LayerTogglePanel.tsx. Boundary tests pin 1.5×0.34 (on) and 1.49×0.34 (off). Commit: dc3d0da.
 
 ## Cross-cutting note
 
