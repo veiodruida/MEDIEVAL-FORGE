@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: "Completed quick task 260422-m1f: Fix MultiPolygon territories rendering as white and non-clickable on canvas"
-last_updated: "2026-04-23T09:21:21.874Z"
-last_activity: 2026-04-23 -- Phase 02 execution started
+stopped_at: "Phase 02 plan 05 landed UX fixes; awaiting human re-UAT. Phase 03 plans complete; awaiting first UAT."
+last_updated: "2026-04-23T14:00:00.000Z"
+last_activity: 2026-04-23 -- Phase 02 plan 05 complete + post-UAT UX fixes; Phase 03 plans 01-04 complete (no UAT yet)
 progress:
-  total_phases: 7
-  completed_phases: 2
+  total_phases: 6
+  completed_phases: 3
   total_plans: 14
-  completed_plans: 13
-  percent: 93
+  completed_plans: 14
+  percent: 50
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-16)
 
 **Core value:** A Game Designer can go from "country + historical period" to a validated, Unity-ready map package without manual pixel editing or blind iteration.
-**Current focus:** Phase 02 — read-only-canvas-viewer
+**Current focus:** Phase 02 re-UAT + Phase 03 first UAT, then Phase 04 (Canvas Editing — Basic)
 
 ## Current Position
 
-Phase: 02 (read-only-canvas-viewer) — EXECUTING
-Plan: 1 of 5
-Status: Executing Phase 02
-Last activity: 2026-04-23 -- Phase 02 execution started
+Phase: 02 → 03 awaiting verification, Phase 04 next to start
+Plan: all 14 plans across phases 01-03 executed (SUMMARY present)
+Status: Awaiting (a) human re-UAT for Phase 02 plan-05 fixes, (b) first UAT for Phase 03, (c) Phase 04 discuss
+Last activity: 2026-04-23 -- Phase 02 plan 05 complete; Phase 03 plans 01-04 complete
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [█████░░░░░] 50% (3 of 6 phases plan-complete; verification pending)
 
 ## Performance Metrics
 
@@ -44,9 +44,9 @@ Progress: [░░░░░░░░░░] 0%
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 1. Data Pipeline + Backend Scaffold | 0/5 | — | — |
-| 2. Read-Only Canvas Viewer | 0/3 | — | — |
-| 3. LLM Research Integration | 0/3 | — | — |
+| 1. Data Pipeline + Backend Scaffold | 5/5 | — | — |
+| 2. Read-Only Canvas Viewer | 5/5 | — | — |
+| 3. LLM Research Integration | 4/4 | — | — |
 | 4. Canvas Editing — Basic | 0/4 | — | — |
 | 5. Canvas Editing — Advanced | 0/2 | — | — |
 | 6. Validation Gate + Export Polish | 0/3 | — | — |
