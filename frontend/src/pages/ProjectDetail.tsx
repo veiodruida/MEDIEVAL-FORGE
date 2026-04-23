@@ -449,7 +449,15 @@ function InspectorSidebarWrapper({
   projectId: string
   project: Project
 }) {
-  const artifacts0 = useCanvasArtifacts(projectId, null)
+  // Cache-bust token MUST match what CanvasViewer passes (project.updated_at)
+  // so both components share the SAME TanStack Query cache entries. Without
+  // this, InspectorSidebarWrapper ends up with a separate stale cache entry
+  // (key ending in `undefined`) and renders pre-regeneration metadata —
+  // e.g. a click on a newly-added condado like `aveiro` can't find it in
+  // the wrapper's stale metadata.condados, so InspectorSidebar falls back
+  // to project-overview state ("desconhecido / no details").
+  const cacheVersion = project.updated_at
+  const artifacts0 = useCanvasArtifacts(projectId, null, cacheVersion)
   const metaQ = artifacts0[4]
 
   const projection = useMemo(() => {
@@ -468,7 +476,7 @@ function InspectorSidebarWrapper({
     )
   }, [metaQ.data])
 
-  const artifacts = useCanvasArtifacts(projectId, projection)
+  const artifacts = useCanvasArtifacts(projectId, projection, cacheVersion)
   const territoriesQ = artifacts[0]
 
   if (metaQ.isPending || territoriesQ.isPending) {
