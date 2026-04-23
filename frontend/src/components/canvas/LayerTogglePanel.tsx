@@ -25,18 +25,24 @@ export function LayerTogglePanel() {
       <Flex direction="column" gap="2">
         <Text size="2" weight="bold">Camadas</Text>
         {LAYERS.map(({ key, label, hint }) => {
-          const row = (
+          // Row renders checkbox + label; when a hint exists, append a dim
+          // inline suffix (e.g. "(zoom ≥ 1.5×)") so the gate is discoverable
+          // even for users who never hover for the Tooltip to appear.
+          const rowContent = (
             <Flex align="center" gap="2">
               <Checkbox
                 checked={layerVisibility[key]}
                 onCheckedChange={() => toggleLayer(key)}
               />
               <Text size="2">{label}</Text>
+              {hint && (
+                <Text size="1" color="gray">(zoom ≥ 1.5×)</Text>
+              )}
             </Flex>
           )
           return hint ? (
             <Tooltip key={key} content={hint}>
-              {row}
+              {rowContent}
             </Tooltip>
           ) : (
             <Flex key={key} align="center" gap="2">
