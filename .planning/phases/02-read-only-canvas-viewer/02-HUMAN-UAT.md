@@ -1,82 +1,87 @@
 ---
-status: fixes_landed_pending_reverify
+status: complete
 phase: 02-read-only-canvas-viewer
-source: [02-VERIFICATION.md, human re-test 2026-04-18]
+source: [02-VERIFICATION.md, human re-test 2026-04-18, human re-UAT 2026-04-23]
 started: 2026-04-18T00:00:00Z
-updated: 2026-04-23T10:45:00Z
+updated: 2026-04-23T17:30:00Z
 fixes_landed_in: 02-05
 fixes_landed_date: 2026-04-23
+reverified_date: 2026-04-23
 ---
 
 ## Current Test
 
-[human re-test against generated Iberia project surfaced 4 new gaps after plan 02-04 — diagnosis below]
+[testing complete — all 11 tests pass after re-UAT]
 
 ## Tests
 
 ### 1. Condado fills match lookup_condado_colors.json
 expected: Open a generated Iberia project at /projects/:id. Every condado polygon renders with the exact hex color from `lookup_condado_colors.json` — pixel-parity with `terrain.png` (no color drift from the Unity palette).
-result: FAILED
-evidence: User screenshots show condados render in `#666666` fallback (visible when Borders layer is OFF). When Borders is ON, the colored polygons that appear are from `BaronyLayer` rendering on top — NOT from `TerritoryLayer`. Code path is correct (`useCanvasArtifacts.ts:86-97` returns 5-tuple with condado_colors at index 2; `CanvasViewer.tsx:68` destructures it correctly; `TerritoryLayer.tsx:42` reads `condadoColors[t.id] ?? '#666666'`). Suspected root cause: backend not emitting `condado_colors.json` with matching IDs, OR endpoint returns empty. Verify with `curl http://localhost:8000/api/projects/{id}/preview/condado_colors.json`. Maps to gap GAP-04.
+result: pass
+reverified: 2026-04-23 (human re-UAT; cacheVersion fix from 02-05 confirmed)
 
 ### 2. Barony overlay toggle
 expected: Borders layer toggle flips barony overlay on/off. When ON, baronies render at 85% opacity with a subtle internal stroke (rgba(0,0,0,0.25), 0.5px). Baronies are NOT clickable (listening=false).
-result: pending
-note: Toggle behavior likely works; deferred until Failure #5 (Stage sizing) is fixed so visual verification is possible.
+result: pass
+reverified: 2026-04-23 (human re-UAT)
 
 ### 3. Drag-pan smoothness + edge clamp
 expected: Click-and-drag the Stage pans the canvas. At edges, `dragBoundFunc` clamps so the map cannot be dragged beyond its bounds. Movement feels smooth (no stutter or snap-back).
-result: pending
-note: Deferred — gated by Failure #5.
+result: pass
+reverified: 2026-04-23 (human re-UAT)
 
 ### 4. Cursor-anchored wheel zoom + scale clamp
 expected: Mouse wheel zooms in/out anchored to cursor position (not canvas center). Min scale = fit-to-view; max scale = 4× min. Wheel stops zooming at the clamps.
-result: pending
-note: Deferred — minScale calculation depends on Stage dimensions (Failure #5).
+result: pass
+reverified: 2026-04-23 (human re-UAT)
 
 ### 5. Click-select + neighbor chip pan-on-select
 expected: Click any condado → gold selection outline appears. Click a neighbor chip in the InspectorSidebar → selection moves to that condado AND canvas pans to center the new selection.
-result: FAILED
-evidence: User reports "click on a region opens a blank page". Most likely consequence of Failure #5 (Stage Sizing): Stage occupies only left ~800px of the viewport; clicks on the dead navy area at right hit `e.target === e.target.getStage()` at `CanvasViewer.tsx:186-193` → `select(null)` → InspectorSidebar reverts to project-overview state (which the user perceives as "blank"). Secondary suspect: missing `<ErrorBoundary>` around `InspectorSidebarWrapper` at `ProjectDetail.tsx:142` could silently hide errors. Maps to gap GAP-06 (primary) + GAP-07 (defensive).
+result: pass
+reverified: 2026-04-23 (human re-UAT; downstream of GAP-05 fix)
 
 ### 6. Esc + empty-Stage click deselect
 expected: Pressing Esc clears the selection. Clicking empty Stage area also clears selection. InspectorSidebar returns to its empty/default state.
-result: pending
-note: Deferred — gated by Failure #5.
+result: pass
+reverified: 2026-04-23 (human re-UAT)
+observation: User noted baronies are not selectable — confirmed by design (BaronyLayer listening=false in Phase 02; barony selection deferred to Phase 04/05 editing).
 
-### 7. Label gate at 2× minScale threshold
-expected: Labels layer ON + zoom below 2× minScale → no labels visible. Zoom ≥ 2× minScale → condado labels become visible with the D-04 dual-ring capital markers.
-result: FAILED (UX)
-evidence: User reports "Labels does nothing." Working as designed — `DecorationsLayer.tsx:13,78-80` gates labels with `currentScale >= LABEL_ZOOM_THRESHOLD_RELATIVE * minScale` where threshold = 2.0. At default zoom (= minScale), labels never appear even with toggle ON. Failure #5 (wrong minScale) compounds this. Decision needed: lower threshold to 1.5× or 1.0×, OR add UI affordance (tooltip "Zoom in 2× to show labels"). Maps to gap GAP-08.
+### 7. Label gate at 2× minScale threshold (now 1.5×)
+expected: Labels layer ON + zoom below 1.5× minScale → no labels visible. Zoom ≥ 1.5× minScale → condado labels become visible with the D-04 dual-ring capital markers. Tooltip on Labels checkbox explains the gate.
+result: pass
+reverified: 2026-04-23 (human re-UAT; threshold 1.5 + tooltip from 02-05 confirmed)
+follow_up: User reports labels are hard to read on dark territory fills (always-black text). New gap GAP-09 logged for dynamic contrast (luminance-based black/white text).
 
 ### 8. Fit-to-view button + Ctrl/Cmd+0 shortcut
 expected: Clicking FitToViewButton OR pressing Ctrl+0 (Cmd+0 on Mac) resets the view: scale → minScale, position → centered with 5% padding.
-result: pending
-note: Deferred — `computeFitToView` reads `stage.width()`/`stage.height()`, both broken by Failure #5.
+result: pass
+reverified: 2026-04-23 (human re-UAT after SPA-routing fix)
+diagnostic: Initial UAT showed button absent; root cause was vite `base: './'` causing deep-link hard-refresh to fetch JS from `/projects/assets/...` (404 → SPA catchall → text/html → React never mounts). Fixed by switching to `base: '/'` (commit 082be0a). Verified via Playwright spec frontend/e2e/uat-fittoview.spec.ts.
 
 ### 9. D-06.3 capital sentinel end-to-end
 expected: Select a condado with a defined `capital_name` → InspectorSidebar shows the capital name. Select a condado with empty/whitespace `capital_name` → InspectorSidebar shows the "No capital assigned" sentinel text.
-result: pending
-note: Deferred — cannot reliably select condados until Failure #5 is fixed.
+result: pass
+reverified: 2026-04-23 (human re-UAT)
 
 ### 10. G-02 error propagation through FastAPI status machine
 expected: Trigger a deliberate emitter failure. Run generation. The FastAPI background task should set project status to `error_generating` with `last_error` populated.
-result: pending
-note: Plan 02-04 closure path; automated test passes; manual confirmation deferred.
+result: pass
+reverified: 2026-04-23 (covered by automated test backend/tests/test_generator_e2e.py::test_emitter_error_propagates_to_caller; manual reproduction skipped per user choice)
 
 ### 11. Stage canvas fills full viewport (NEW — discovered in re-test)
 expected: The Konva Stage fills the entire central viewport between the left LayerTogglePanel and the right InspectorSidebar — no dead/empty area.
-result: FAILED (CRITICAL)
-evidence: User screenshots show map renders only in the LEFT half of the viewport; the right half between map and InspectorSidebar is dead navy color (Stage background visible). Root cause: `CanvasViewer.tsx:58` defaults props to `width = 800, height = 600`. `ProjectDetail.tsx:136` calls `<CanvasViewer projectId={...} />` WITHOUT passing dimensions. No `ResizeObserver` wired in `CanvasViewer`. Stage is hardcoded 800×600 regardless of viewport size. This is the keystone bug — it cascades into Failures #3, #4, #5, #6, #7, #8 (anything depending on correct Stage dimensions or minScale). Maps to gap GAP-05.
+result: pass
+reverified: 2026-04-23 (human re-UAT; ResizeObserver + calc(100vh-220px) fix from 02-05 confirmed)
 
 ## Summary
 
 total: 11
-passed: 0
-issues: 4
-pending: 7 (six deferred behind keystone bug GAP-05)
+passed: 11
+issues: 0 (all four original failures fixed in 02-05; verified in re-UAT 2026-04-23)
+pending: 0
 skipped: 0
 blocked: 0
+new_gaps_discovered_during_re_uat: 2 (GAP-09 label contrast — minor; GAP-10 SPA deep-link refresh — already fixed)
 
 ## Gaps
 
@@ -125,6 +130,24 @@ affects: [CANVAS-04]
 fix_hint: Two options: (a) add a tooltip on the Labels checkbox: "Zoom in 2× to show labels" (preserves current threshold); (b) lower threshold to `1.5` or `1.0` so labels appear closer to default zoom. Decision: UX preference — recommend (a) plus a slight reduction to 1.5× as a compromise.
 fix_landed: Both (a) and (b) applied per recommendation — threshold lowered 2.0→1.5 in DecorationsLayer.tsx, Radix Tooltip "Zoom in 1.5× to show labels" added to Labels row in LayerTogglePanel.tsx. Boundary tests pin 1.5×0.34 (on) and 1.49×0.34 (off). Commit: dc3d0da.
 
+### GAP-09 — Label text contrast against dark territory fills (NEW)
+severity: minor (UX)
+status: open
+truth: Condado labels are rendered with a fixed dark text color. On territories with dark fill colors (e.g., dark blue/purple kingdoms from research palette), the text is illegible.
+evidence: User report 2026-04-23 during Test 7 re-UAT. Reproducible by enabling Labels and zooming on any dark-filled condado.
+affects: [CANVAS-04]
+fix_hint: Compute relative luminance of the condado fill color and pick black or white text accordingly (WCAG-style). Implementation: helper in `frontend/src/lib/contrast.ts` returning `'#000' | '#fff'` from a hex; consume it in `DecorationsLayer.tsx` per-label. Optional: add a thin contrasting halo/stroke for additional readability across all backgrounds.
+
+### GAP-10 — SPA deep-link refresh broke all JS loading (NEW, ALREADY FIXED)
+severity: blocker
+status: fixed
+truth: Hard refresh on any deep route (e.g., `/projects/{id}`) caused the browser to fetch JS modules from the wrong path (`/projects/assets/...`), which fell through to the SPA catchall and returned `text/html`. Browsers refused to execute the module script with that MIME type → React never mounted, so on re-UAT the FitToView (and effectively the entire freshly-built bundle) appeared missing.
+evidence: Surfaced during Test 8 ("FitToView button missing"). Diagnosed via `frontend/e2e/uat-fittoview.spec.ts` — Playwright captured the browser console error `Failed to load module script: Expected a JavaScript-or-Wasm module script but the server responded with a MIME type of "text/html"`. Confirmed by direct `curl /projects/assets/index-D7ly9i8C.js` returning `text/html` (the SPA index).
+affects: All routes other than `/`. Tests #1–#7 passed only because the user reached the project view via client-side navigation from `/`; once they hard-refreshed for Test 8 the bug bit. Effectively masked the entire freshly-built bundle.
+fix_landed: `frontend/vite.config.ts` switched from `base: './'` to `base: '/'` so the built `index.html` references absolute `/assets/*` paths that hit the StaticFiles mount regardless of the current route. Rebuilt; Playwright spec confirms FitToView present and visible. Commit: 082be0a.
+
 ## Cross-cutting note
 
 GAP-05 (Stage sizing) is the keystone. Fixing it likely resolves GAP-06 directly and unblocks human re-verification of items #2, #3, #4, #6, #8, #9. Recommended fix order: GAP-05 → GAP-04 → GAP-08 → GAP-07.
+
+GAP-10 (SPA deep-link refresh) was discovered during this re-UAT and is already fixed. It is the actual reason Test 8 failed initially; FitToView itself was always correct in the source.
