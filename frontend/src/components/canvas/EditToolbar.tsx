@@ -1,15 +1,25 @@
 import { Flex, Button, Tooltip, Separator } from '@radix-ui/themes'
 import { useEditorStore } from '../../stores/useEditorStore'
+import { useUIStore } from '../../stores/uiStore'
 
 /**
- * EditToolbar — minimal Phase 4 toolbar with Edit mode toggle.
+ * EditToolbar — Phase 4 toolbar with Edit mode toggle + Editar Vértices button.
  *
- * Merge/Split/Vertex/Undo buttons added in P06 and P07.
- * Keyboard shortcut "E" added in P07 alongside the full keyboard map.
+ * "Editar Vértices" button (P06):
+ *   - Visible when editMode is true.
+ *   - Active (solid) when vertexEditCondadoId is set.
+ *   - Disabled when no single territory is selected AND not already in vertex-edit mode.
+ *   - Clicking enters vertex-edit for the selected territory; clicking again exits.
+ *
+ * V keyboard shortcut deferred to P07 alongside the full keyboard map.
+ * Split/Undo/Redo buttons deferred to P07.
  */
 export function EditToolbar() {
   const editMode = useEditorStore((s) => s.editMode)
   const toggleEditMode = useEditorStore((s) => s.toggleEditMode)
+  const vertexEditId = useEditorStore((s) => s.vertexEditCondadoId)
+  const setVertexEditCondadoId = useEditorStore((s) => s.setVertexEditCondadoId)
+  const selectedId = useUIStore((s) => s.selectedTerritoryId)
 
   return (
     <Flex
@@ -30,7 +40,19 @@ export function EditToolbar() {
         </Button>
       </Tooltip>
       <Separator orientation="vertical" size="1" />
-      {/* Placeholder slots for P06 (Vertex, Merge trigger) + P07 (Split, Undo/Redo) */}
+      {editMode && (
+        <Tooltip content="Editar vértices da borda (V)">
+          <Button
+            variant={vertexEditId ? 'solid' : 'soft'}
+            size="2"
+            disabled={!selectedId && !vertexEditId}
+            onClick={() => setVertexEditCondadoId(vertexEditId ? null : selectedId)}
+          >
+            Editar Vértices
+          </Button>
+        </Tooltip>
+      )}
+      {/* Placeholder slots for P07 (Split, Undo/Redo) */}
     </Flex>
   )
 }

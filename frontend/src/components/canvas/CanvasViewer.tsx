@@ -31,8 +31,9 @@ import {
   beginTransaction,
   endTransaction,
 } from '../../stores/useProjectStore'
-import { moveCapital, EditApiError } from '../../api/edit'
+import { moveCapital, reshapeGeometry, EditApiError } from '../../api/edit'
 import { SelectionFloatingToolbar } from './SelectionFloatingToolbar'
+import { VertexHandlesLayer } from './VertexHandlesLayer'
 
 interface CanvasViewerProps {
   projectId: string
@@ -145,6 +146,8 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
   const editMode = useEditorStore((s) => s.editMode)
   const activeTool = useEditorStore((s) => s.activeTool)
   const setActiveTool = useEditorStore((s) => s.setActiveTool)
+  const vertexEditId = useEditorStore((s) => s.vertexEditCondadoId)
+  const setVertexEditCondadoId = useEditorStore((s) => s.setVertexEditCondadoId)
   const pushUndoLabel = useEditorStore((s) => s.pushUndoLabel)
   const applyBatchUpdate = useProjectStore((s) => s.applyBatchUpdate)
   const setCapital = useProjectStore((s) => s.setCapital)
@@ -359,6 +362,55 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
     }
   }, [editMode, setActiveTool])
 
+  // Phase 4 — vertex-edit session lifecycle (EDIT-02, T-04-06-04).
+  // null → someId: begin compound transaction (whole drag session = one undo step).
+  // someId → null: commit the session — PATCH geometry + push undo label + end transaction.
+  // Cleanup function handles T-04-06-04: if component unmounts mid-session, endTransaction
+  // is called so zundo's isTracking is not left in paused state.
+  const prevVertexEditIdRef = useRef<string | null>(null)
+  useEffect(() => {
+    const prev = prevVertexEditIdRef.current
+    const curr = vertexEditId
+    // null → someId: begin session
+    if (!prev && curr) {
+      beginTransaction()
+    }
+    // someId → null: commit session
+    if (prev && !curr && projectId) {
+      const geom = useProjectStore.getState().territories[prev]
+      const condado = metaQ.data?.condados.find((c) => c.id === prev)
+      if (geom && geom.type === 'Polygon') {
+        reshapeGeometry(projectId, prev, { geometry: geom })
+          .catch((err) => {
+            // eslint-disable-next-line no-console
+            console.error('reshapeGeometry failed', err)
+          })
+      }
+      endTransaction()
+      pushUndoLabel(`Editar vértice — ${condado?.name ?? prev}`)
+    }
+    prevVertexEditIdRef.current = curr
+    // Cleanup: if component unmounts while vertex-edit is active, close transaction
+    return () => {
+      if (prevVertexEditIdRef.current) {
+        endTransaction()
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vertexEditId, projectId, pushUndoLabel, metaQ.data])
+
+  // Phase 4 — Esc exits vertex-edit mode (UI-SPEC §Keyboard Shortcut Map).
+  // Setting vertexEditCondadoId=null triggers the useEffect above which commits.
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && vertexEditId) {
+        setVertexEditCondadoId(null)
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [vertexEditId, setVertexEditCondadoId])
+
   // Phase 4 — rubber-band selection hook (Pattern 4, Pitfall 2).
   // condados list is available after metaQ resolves; hook is called unconditionally
   // (hooks must not be inside conditionals). It returns safely when projection is null
@@ -468,6 +520,9 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
             onCapitalDragEnd={handleCapitalDragEnd}
           />
           <InteractionLayer territories={territoriesQ.data} />
+          {/* VertexHandlesLayer: rendered above TerritoryLayer/DecorationsLayer so handles
+              sit on top of the polygon fill. Visible only in vertex-edit mode. */}
+          {editMode && vertexEditId && <VertexHandlesLayer />}
           {rubberBand.selectionRect && (
             <Layer listening={false}>
               <Rect
