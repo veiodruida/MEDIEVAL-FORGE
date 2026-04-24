@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { Stage, Layer, Rect } from 'react-konva'
 import type Konva from 'konva'
 import { BackgroundLayer } from './BackgroundLayer'
@@ -160,6 +161,19 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
   const setCapital = useProjectStore((s) => s.setCapital)
   const setIssuesForIds = useValidationStore((s) => s.setIssuesForIds)
   const saveStrategy = useSaveStrategy()
+  const queryClient = useQueryClient()
+
+  // Gap closure (plan 09): after every edit success, re-fetch the on-disk
+  // territories.geojson + territory_metadata.json so TerritoryLayer /
+  // InteractionLayer / DecorationsLayer re-render with post-edit geometry.
+  // In explicit save mode, the backend file is NOT updated (persist=false),
+  // so skip invalidation — persistence.manualSave() handles it after Ctrl+S flush.
+  const invalidateCanvasArtifacts = useCallback(() => {
+    if (saveStrategy === 'explicit') return
+    queryClient.invalidateQueries({ queryKey: ['territories-geojson', projectId] })
+    queryClient.invalidateQueries({ queryKey: ['territory-metadata', projectId] })
+  }, [queryClient, projectId, saveStrategy])
+
   // Note: storeProjectId may differ from the `projectId` prop until hydrate() is called;
   // handleCapitalDragEnd uses the prop-passed projectId for the API call (always correct).
   const storeProjectId = useProjectStore((s) => s.projectId)
@@ -361,6 +375,7 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
       // Only push label and finalize on success
       pushUndoLabel(label)
       onOperationFinalized()
+      invalidateCanvasArtifacts()  // GAP-09: re-render canvas with post-edit geometry
       // D-06: revalidate affected territories after finalize
       if (affectedIds.length > 0) {
         const storeState = {
@@ -372,7 +387,7 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
     },
     // storeProjectId read for reference but projectId prop is authoritative for API calls
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [projectId, saveStrategy, applyBatchUpdate, setCapital, pushUndoLabel, metaQ.data, setIssuesForIds],
+    [projectId, saveStrategy, applyBatchUpdate, setCapital, pushUndoLabel, metaQ.data, setIssuesForIds, invalidateCanvasArtifacts],
   )
 
   // Suppress unused-var lint for storeProjectId (used by P06/P07 hydrate checks)
@@ -412,6 +427,7 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
           .then(() => {
             // D-07: notify persistence engine on success
             onOperationFinalized()
+            invalidateCanvasArtifacts()  // GAP-09: re-render canvas with post-edit geometry
             // D-06: revalidate after successful vertex-edit commit
             const storeState = {
               territories: useProjectStore.getState().territories,
@@ -435,7 +451,21 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [vertexEditId, projectId, saveStrategy, pushUndoLabel, metaQ.data, setIssuesForIds])
+  }, [vertexEditId, projectId, saveStrategy, pushUndoLabel, metaQ.data, setIssuesForIds, invalidateCanvasArtifacts])
+
+  // GAP-09: re-render canvas after undo/redo. zundo's temporal store mutates
+  // useProjectStore.territories / .capitals on undo()/redo(); without invalidation
+  // the canvas would stay at the post-edit snapshot even though the store reverted.
+  // Subscribe to the temporal store itself — it fires on every history traversal.
+  // Skip in explicit mode (same rationale as invalidateCanvasArtifacts).
+  useEffect(() => {
+    const unsubscribe = useProjectStore.temporal.subscribe(() => {
+      if (saveStrategy === 'explicit') return
+      queryClient.invalidateQueries({ queryKey: ['territories-geojson', projectId] })
+      queryClient.invalidateQueries({ queryKey: ['territory-metadata', projectId] })
+    })
+    return unsubscribe
+  }, [queryClient, projectId, saveStrategy])
 
   // NOTE: Esc handler for vertex-edit exit was here in P06. Superseded by useEditKeyboardMap
   // (P07 Task 3) which handles the full Phase-4 keyboard map including Esc priority chain.
