@@ -6,7 +6,12 @@ That is the expected RED state. Implementations come in P04.
 
 Uses the shared conftest fixtures (client, db_session) from backend/tests/conftest.py.
 A local project_id constant stands in for a real loaded project — sufficient for RED.
+
+[P04 Rule 3 fix] PROJECT_ID changed to a valid UUID and a territory_files fixture
+added so the edit endpoints can load/save territories.geojson from disk.
 """
+import json
+
 import pytest
 import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
@@ -20,7 +25,8 @@ from medieval_forge.models import Base
 # Local fixtures (augment shared conftest to add a loaded project)
 # ---------------------------------------------------------------------------
 
-PROJECT_ID = "test-iberia-project"
+# Valid UUID v4 required by paths.is_valid_uuid (T-PATH enforcement)
+PROJECT_ID = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
 
 # Minimal territory geometry for request payloads
 LEON_POLYGON = {
@@ -52,7 +58,68 @@ async def db_session():
 
 
 @pytest_asyncio.fixture
-async def client(db_session):
+async def territory_files(tmp_path, monkeypatch):
+    """Seed a minimal territories.geojson under a temp PROJECTS_ROOT so that
+    load_territories(PROJECT_ID) returns {"leon": {...}, "castela": {...}}.
+
+    Monkeypatches medieval_forge.database.DATA_DIR so project_dir() resolves
+    inside tmp_path instead of ~/.medieval-forge/.
+    """
+    import medieval_forge.database as db_module
+    import medieval_forge.services.paths as paths_module
+
+    fake_data_dir = tmp_path / ".medieval-forge"
+    fake_data_dir.mkdir(parents=True, exist_ok=True)
+
+    # Patch DATA_DIR in both the database module and paths module
+    monkeypatch.setattr(db_module, "DATA_DIR", fake_data_dir)
+    monkeypatch.setattr(paths_module, "PROJECTS_ROOT", fake_data_dir / "projects")
+
+    proj_generated = fake_data_dir / "projects" / PROJECT_ID / "generated"
+    proj_generated.mkdir(parents=True, exist_ok=True)
+
+    territories_data = {
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "id": "leon",
+                "geometry": LEON_POLYGON,
+                "properties": {
+                    "id": "leon",
+                    "name": "León",
+                    "lon": -5.5,
+                    "lat": 42.5,
+                    "neighbors": ["castela"],
+                    "duchy_id": "d_leon",
+                    "baronies": [],
+                },
+            },
+            {
+                "type": "Feature",
+                "id": "castela",
+                "geometry": CASTELA_POLYGON,
+                "properties": {
+                    "id": "castela",
+                    "name": "Castela",
+                    "lon": -3.5,
+                    "lat": 39.5,
+                    "neighbors": ["leon"],
+                    "duchy_id": "d_castela",
+                    "baronies": [],
+                },
+            },
+        ],
+    }
+    (proj_generated / "territories.geojson").write_text(
+        json.dumps(territories_data, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    yield proj_generated
+
+
+@pytest_asyncio.fixture
+async def client(db_session, territory_files):
     async def _override():
         yield db_session
     app.dependency_overrides[get_db] = _override

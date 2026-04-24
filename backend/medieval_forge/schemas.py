@@ -96,3 +96,88 @@ class ProjectResponse(BaseModel):
     status: str
     created_at: datetime
     updated_at: datetime
+
+
+# ==================== Phase 4: Edit API schemas ====================
+
+from typing import Literal  # noqa: E402 — appended after existing imports
+
+
+class MoveCapitalRequest(BaseModel):
+    lon: float = Field(..., ge=-180.0, le=180.0, description="Longitude in degrees")
+    lat: float = Field(..., ge=-90.0, le=90.0, description="Latitude in degrees")
+
+
+class MoveCapitalResponse(BaseModel):
+    updated_territories: dict[str, dict]   # id -> GeoJSON Polygon/MultiPolygon
+    affected_ids: list[str]
+
+
+class MergeRequest(BaseModel):
+    condado_ids: list[str] = Field(..., min_length=2, description="IDs to merge; primary_id MUST be in this list")
+    primary_id: str = Field(..., description="ID whose name and key the merged result inherits")
+
+    @field_validator("condado_ids")
+    @classmethod
+    def _unique_ids(cls, v: list[str]) -> list[str]:
+        if len(set(v)) != len(v):
+            raise ValueError("condado_ids must be unique")
+        return v
+
+
+class MergeResponse(BaseModel):
+    merged_id: str
+    merged_territory: dict                   # GeoJSON (Polygon or MultiPolygon)
+    removed_ids: list[str]
+    warning: Literal["non_adjacent_multipolygon"] | None = None
+
+
+class SplitRequest(BaseModel):
+    cut_line: list[tuple[float, float]] = Field(..., min_length=2, max_length=1000)
+    mode: Literal["snap", "polyline", "freehand"]
+
+    @field_validator("cut_line")
+    @classmethod
+    def _coord_bounds(cls, v: list[tuple[float, float]]) -> list[tuple[float, float]]:
+        for lon, lat in v:
+            if not (-180.0 <= lon <= 180.0) or not (-90.0 <= lat <= 90.0):
+                raise ValueError(f"cut_line coordinate out of range: ({lon}, {lat})")
+        return v
+
+
+class SplitResponse(BaseModel):
+    original_id: str
+    new_territory_a: dict                    # {id, geometry}
+    new_territory_b: dict
+
+
+class ReshapeGeometryRequest(BaseModel):
+    geometry: dict                           # GeoJSON Polygon
+
+    @field_validator("geometry")
+    @classmethod
+    def _polygon_size_bound(cls, v: dict) -> dict:
+        # DoS bound per Research §Security Domain
+        if v.get("type") != "Polygon":
+            raise ValueError("geometry.type must be 'Polygon'")
+        coords = v.get("coordinates") or []
+        if not coords or not coords[0]:
+            raise ValueError("geometry.coordinates[0] (exterior ring) required")
+        if len(coords[0]) > 10_000:
+            raise ValueError("polygon exterior has >10,000 coordinates — rejected (DoS bound)")
+        return v
+
+
+class SaveSnapshotRequest(BaseModel):
+    territories: dict[str, dict]  # id -> feature dict (geometry + lon + lat + name...)
+    capitals: dict[str, tuple[float, float]]  # id -> (lon, lat)
+
+
+class VertexHandle(BaseModel):
+    lon: float
+    lat: float
+    source_index: int  # index into the original exterior ring
+
+
+class VertexHandlesResponse(BaseModel):
+    handles: list[VertexHandle]

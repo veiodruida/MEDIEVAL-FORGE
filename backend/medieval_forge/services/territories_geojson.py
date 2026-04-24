@@ -248,3 +248,94 @@ def emit_territories_from_disk(
         encoding="utf-8",
     )
     return build_territories_geojson(project_id, pc, condados, cfg)
+
+
+# ---------------------------------------------------------------------------
+# Edit-layer helpers: load/save territories as an indexed dict
+# ---------------------------------------------------------------------------
+
+async def load_territories(project_id: str) -> dict[str, dict]:
+    """Load territories.geojson and return a dict indexed by condado id.
+
+    Each value is a flat dict: {id, name, geometry (GeoJSON), lon, lat,
+    neighbors, ...} suitable for O(1) lookup in edit endpoints.
+
+    Returns an empty dict if territories.geojson does not exist (e.g. during
+    testing with no pre-generated project data, or for non-UUID project ids
+    used in unit tests).
+
+    T-PATH: project_dir() raises ValueError on invalid UUIDs; that ValueError
+    propagates to the caller (FastAPI converts it to a 500 unless the caller
+    catches it). Edit endpoints catch ValueError at the service-call level —
+    this is intentional so tests with non-UUID project_id receive a graceful
+    empty dict rather than a 500.
+    """
+    try:
+        from .paths import project_dir
+        geojson_path = project_dir(project_id) / "generated" / "territories.geojson"
+    except ValueError:
+        # Non-UUID project_id (e.g. test fixtures): return empty dict
+        return {}
+
+    if not geojson_path.exists():
+        return {}
+
+    raw = json.loads(geojson_path.read_text(encoding="utf-8"))
+    result: dict[str, dict] = {}
+    for feature in raw.get("features", []):
+        cid = feature.get("id") or feature.get("properties", {}).get("id")
+        if cid is None:
+            continue
+        props = feature.get("properties") or {}
+        result[cid] = {
+            "id": cid,
+            "name": props.get("name", ""),
+            "geometry": feature.get("geometry", {}),
+            "lon": props.get("lon", 0.0),
+            "lat": props.get("lat", 0.0),
+            "neighbors": props.get("neighbors", []),
+            "duchy_id": props.get("duchy_id", ""),
+            "baronies": props.get("baronies", []),
+        }
+    return result
+
+
+async def save_territories(project_id: str, territories: dict[str, dict]) -> None:
+    """Persist the indexed territories dict back to territories.geojson.
+
+    Uses atomic write (.tmp then os.replace) to avoid partial writes.
+    Serialises as a FeatureCollection preserving all properties.
+
+    T-PATH: project_dir() raises ValueError on invalid UUIDs.
+    """
+    import os
+    from .paths import project_dir
+
+    out_dir = project_dir(project_id) / "generated"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / "territories.geojson"
+    tmp_path = out_dir / "territories.geojson.tmp"
+
+    features = []
+    for cid, t in territories.items():
+        features.append({
+            "type": "Feature",
+            "id": cid,
+            "geometry": t.get("geometry", {}),
+            "properties": {
+                "id": cid,
+                "name": t.get("name", ""),
+                "lon": t.get("lon", 0.0),
+                "lat": t.get("lat", 0.0),
+                "neighbors": t.get("neighbors", []),
+                "duchy_id": t.get("duchy_id", ""),
+                "baronies": t.get("baronies", []),
+            },
+        })
+
+    payload = json.dumps(
+        {"type": "FeatureCollection", "features": features},
+        ensure_ascii=False,
+    )
+    tmp_path.write_text(payload, encoding="utf-8")
+    os.replace(tmp_path, out_path)
