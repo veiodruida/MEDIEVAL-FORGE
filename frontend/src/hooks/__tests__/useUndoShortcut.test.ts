@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook } from '@testing-library/react'
 import { fireEvent } from '@testing-library/dom'
-import { useUndoShortcut } from '../useUndoShortcut'  // will fail RED until P03
-import { useProjectStore } from '../../stores/useProjectStore'  // will fail RED until P03
+import { useUndoShortcut } from '../useUndoShortcut'
+import { useProjectStore } from '../../stores/useProjectStore'
+import { useEditorStore } from '../../stores/useEditorStore'
 
 beforeEach(() => {
   vi.restoreAllMocks()
@@ -73,5 +74,43 @@ describe('useUndoShortcut — keyboard bindings', () => {
       value: '',
       configurable: true,
     })
+  })
+
+  it('Ctrl+Z also calls popUndoLabel (label stack synchronization — Pitfall 7)', () => {
+    vi.spyOn(useProjectStore.temporal, 'getState').mockReturnValue({
+      undo: vi.fn(),
+      redo: vi.fn(),
+      pastStates: [],
+      futureStates: [],
+      pause: vi.fn(),
+      resume: vi.fn(),
+      clear: vi.fn(),
+    } as ReturnType<typeof useProjectStore.temporal.getState>)
+
+    const popUndoLabelSpy = vi.spyOn(useEditorStore.getState(), 'popUndoLabel')
+
+    renderHook(() => useUndoShortcut())
+
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
+    expect(popUndoLabelSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it('Ctrl+Y also calls popRedoLabel (label stack synchronization — Pitfall 7)', () => {
+    vi.spyOn(useProjectStore.temporal, 'getState').mockReturnValue({
+      undo: vi.fn(),
+      redo: vi.fn(),
+      pastStates: [],
+      futureStates: [],
+      pause: vi.fn(),
+      resume: vi.fn(),
+      clear: vi.fn(),
+    } as ReturnType<typeof useProjectStore.temporal.getState>)
+
+    const popRedoLabelSpy = vi.spyOn(useEditorStore.getState(), 'popRedoLabel')
+
+    renderHook(() => useUndoShortcut())
+
+    fireEvent.keyDown(window, { key: 'y', ctrlKey: true })
+    expect(popRedoLabelSpy).toHaveBeenCalledTimes(1)
   })
 })

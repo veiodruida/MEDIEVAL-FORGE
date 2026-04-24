@@ -21,6 +21,7 @@ import {
   MAX_SCALE_MULTIPLIER,
 } from '../../hooks/useZoomPan'
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts'
+import { useUndoShortcut } from '../../hooks/useUndoShortcut'
 import { useCanvasArtifacts } from '../../hooks/useCanvasArtifacts'
 import { useRubberBandSelection } from '../../hooks/useRubberBandSelection'
 import { useSplitTool } from './SplitTool'
@@ -221,8 +222,11 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
     if (projection) fitToView()
   }, [projection, fitToView, viewportW, viewportH])
 
-  // Ctrl/Cmd+0 + Esc shortcuts
+  // Ctrl/Cmd+0 + Phase 2 Esc shortcuts
   useKeyboardShortcuts(fitToView)
+
+  // Ctrl+Z / Ctrl+Y (Cmd+Z/Y on Mac) — undo/redo with label stack sync (EDIT-07)
+  useUndoShortcut()
 
   // RESEARCH §Pitfall 5 + UI-SPEC §Neighbor Navigation: pan canvas to center the
   // newly selected territory. Runs for any selection change — initial click AND
