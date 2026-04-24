@@ -22,6 +22,7 @@ import {
 } from '../../hooks/useZoomPan'
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts'
 import { useUndoShortcut } from '../../hooks/useUndoShortcut'
+import { useEditKeyboardMap } from '../../hooks/useEditKeyboardMap'
 import { useCanvasArtifacts } from '../../hooks/useCanvasArtifacts'
 import { useRubberBandSelection } from '../../hooks/useRubberBandSelection'
 import { useSplitTool } from './SplitTool'
@@ -149,7 +150,7 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
   const activeTool = useEditorStore((s) => s.activeTool)
   const setActiveTool = useEditorStore((s) => s.setActiveTool)
   const vertexEditId = useEditorStore((s) => s.vertexEditCondadoId)
-  const setVertexEditCondadoId = useEditorStore((s) => s.setVertexEditCondadoId)
+  // setVertexEditCondadoId now handled by useEditKeyboardMap (P07); not needed here
   const pushUndoLabel = useEditorStore((s) => s.pushUndoLabel)
   const applyBatchUpdate = useProjectStore((s) => s.applyBatchUpdate)
   const setCapital = useProjectStore((s) => s.setCapital)
@@ -227,6 +228,9 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
 
   // Ctrl+Z / Ctrl+Y (Cmd+Z/Y on Mac) — undo/redo with label stack sync (EDIT-07)
   useUndoShortcut()
+
+  // E / V / S / Escape — full Phase 4 keyboard map (EDIT-04, EDIT-07)
+  useEditKeyboardMap()
 
   // RESEARCH §Pitfall 5 + UI-SPEC §Neighbor Navigation: pan canvas to center the
   // newly selected territory. Runs for any selection change — initial click AND
@@ -404,17 +408,9 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vertexEditId, projectId, pushUndoLabel, metaQ.data])
 
-  // Phase 4 — Esc exits vertex-edit mode (UI-SPEC §Keyboard Shortcut Map).
-  // Setting vertexEditCondadoId=null triggers the useEffect above which commits.
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && vertexEditId) {
-        setVertexEditCondadoId(null)
-      }
-    }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [vertexEditId, setVertexEditCondadoId])
+  // NOTE: Esc handler for vertex-edit exit was here in P06. Superseded by useEditKeyboardMap
+  // (P07 Task 3) which handles the full Phase-4 keyboard map including Esc priority chain.
+  // Removed as dead code — useEditKeyboardMap calls setVertexEditCondadoId(null) on Esc.
 
   // Phase 4 — rubber-band selection hook (Pattern 4, Pitfall 2).
   // condados list is available after metaQ resolves; hook is called unconditionally
