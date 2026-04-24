@@ -161,9 +161,10 @@ def test_recalc_neighbors_returns_updated_geometries_within_500ms():
     iberia = _iberia_json()
     condados = iberia["condados"]
     first_condado = condados[0]
-    condado_id = first_condado["id"]
-    original_lon = first_condado["lon"]
-    original_lat = first_condado["lat"]
+    # territory_iberia.json stores condados as lists: [id, name, lon, lat, duchy_id, baronies]
+    condado_id = first_condado[0]
+    original_lon = first_condado[2]
+    original_lat = first_condado[3]
 
     start = time.perf_counter()
     result = recalc_neighbors(
