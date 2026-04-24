@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { Layer, Line, Circle } from 'react-konva'
 import * as Toast from '@radix-ui/react-toast'
 import type { KonvaEventObject } from 'konva/lib/Node'
@@ -54,7 +55,8 @@ export function useSplitTool({ condados, stageRef, projection }: Args) {
   const applyBatchUpdate = useProjectStore((s) => s.applyBatchUpdate)
   const removeTerritories = useProjectStore((s) => s.removeTerritories)
   const setIssuesForIds = useValidationStore((s) => s.setIssuesForIds)
-  const strategy = useSaveStrategy()
+  const saveStrategy = useSaveStrategy()
+  const queryClient = useQueryClient()
 
   // Canvas-space points of the in-progress cut line (transient drawing state)
   const [points, setPoints] = useState<Array<[number, number]>>([])
@@ -88,7 +90,7 @@ export function useSplitTool({ condados, stageRef, projection }: Args) {
         canvasToGeo(x, y, projection),
       )
 
-      const persist = strategy !== 'explicit'
+      const persist = saveStrategy !== 'explicit'
       beginTransaction()
       try {
         const response = await splitTerritory(projectId, selectedId, {
@@ -106,6 +108,10 @@ export function useSplitTool({ condados, stageRef, projection }: Args) {
         )
         pushUndoLabel(`Dividir ${condado?.name ?? selectedId}`)
         onOperationFinalized()
+        if (saveStrategy !== 'explicit') {
+          queryClient.invalidateQueries({ queryKey: ['territories-geojson', projectId] })
+          queryClient.invalidateQueries({ queryKey: ['territory-metadata', projectId] })
+        }
         // D-06: revalidate split territories after finalize
         const splitAffected = [response.new_territory_a.id, response.new_territory_b.id]
         const storeState = {
@@ -133,7 +139,7 @@ export function useSplitTool({ condados, stageRef, projection }: Args) {
       setActiveTool('select')
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [projectId, selectedId, condados, subMode, projection, strategy, applyBatchUpdate, removeTerritories, pushUndoLabel, setActiveTool, setIssuesForIds],
+    [projectId, selectedId, condados, subMode, projection, saveStrategy, applyBatchUpdate, removeTerritories, pushUndoLabel, setActiveTool, setIssuesForIds, queryClient],
   )
 
   // Mode dispatch — mousedown

@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { Card, Flex, Button } from '@radix-ui/themes'
 import * as Toast from '@radix-ui/react-toast'
 import { useEditorStore } from '../../stores/useEditorStore'
@@ -44,7 +45,8 @@ export function SelectionFloatingToolbar({ condados, stageRef }: Props) {
   const removeTerritories = useProjectStore((s) => s.removeTerritories)
   const projectId = useProjectStore((s) => s.projectId)
   const projection = useProjection()
-  const strategy = useSaveStrategy()
+  const saveStrategy = useSaveStrategy()
+  const queryClient = useQueryClient()
   const setIssuesForIds = useValidationStore((s) => s.setIssuesForIds)
   const [toastMsg, setToastMsg] = useState<string | null>(null)
   const [toastOpen, setToastOpen] = useState(false)
@@ -84,7 +86,7 @@ export function SelectionFloatingToolbar({ condados, stageRef }: Props) {
     const primary_id = selectionIds[0]
     const label = `Fundir ${selectionIds.length} territórios`
 
-    const persist = strategy !== 'explicit'
+    const persist = saveStrategy !== 'explicit'
     beginTransaction()
     try {
       const response = await mergeTerritories(projectId, {
@@ -121,6 +123,10 @@ export function SelectionFloatingToolbar({ condados, stageRef }: Props) {
     endTransaction()
     pushUndoLabel(label)
     onOperationFinalized()
+    if (saveStrategy !== 'explicit') {
+      queryClient.invalidateQueries({ queryKey: ['territories-geojson', projectId] })
+      queryClient.invalidateQueries({ queryKey: ['territory-metadata', projectId] })
+    }
     clearSelection()
   }
 

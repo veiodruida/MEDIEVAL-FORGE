@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import React from 'react'
 import { useSplitTool } from '../SplitTool'
 import type { TerritoryMetadataCondado } from '../../../hooks/useCanvasArtifacts'
 import type { ProjectionConfig } from '../../../lib/projection'
@@ -77,6 +79,16 @@ const mockStageRef = {
 } as unknown as React.RefObject<import('konva/lib/Stage').default>
 
 // --------------------------------------------------------------------------
+// QueryClient wrapper (required after plan 09 added useQueryClient to useSplitTool)
+// --------------------------------------------------------------------------
+
+function createWrapper() {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return ({ children }: { children: React.ReactNode }) =>
+    React.createElement(QueryClientProvider, { client: queryClient }, children)
+}
+
+// --------------------------------------------------------------------------
 // Tests
 // --------------------------------------------------------------------------
 
@@ -93,8 +105,9 @@ describe('useSplitTool', () => {
   })
 
   it('returns required interface: previewLayer, toastEl, and event handlers', () => {
-    const { result } = renderHook(() =>
-      useSplitTool({ condados: mockCondados, stageRef: mockStageRef, projection: mockProjection }),
+    const { result } = renderHook(
+      () => useSplitTool({ condados: mockCondados, stageRef: mockStageRef, projection: mockProjection }),
+      { wrapper: createWrapper() },
     )
     expect(result.current).toHaveProperty('previewLayer')
     expect(result.current).toHaveProperty('toastEl')
@@ -114,8 +127,9 @@ describe('useSplitTool', () => {
     })
 
     mockEditorState.splitSubMode = 'snap'
-    const { result } = renderHook(() =>
-      useSplitTool({ condados: mockCondados, stageRef: mockStageRef, projection: mockProjection }),
+    const { result } = renderHook(
+      () => useSplitTool({ condados: mockCondados, stageRef: mockStageRef, projection: mockProjection }),
+      { wrapper: createWrapper() },
     )
 
     // First click — sets first point
@@ -147,8 +161,9 @@ describe('useSplitTool', () => {
     // Override subMode to polyline via mutable state
     mockEditorState.splitSubMode = 'polyline'
 
-    const { result } = renderHook(() =>
-      useSplitTool({ condados: mockCondados, stageRef: mockStageRef, projection: mockProjection }),
+    const { result } = renderHook(
+      () => useSplitTool({ condados: mockCondados, stageRef: mockStageRef, projection: mockProjection }),
+      { wrapper: createWrapper() },
     )
 
     // Add two points
