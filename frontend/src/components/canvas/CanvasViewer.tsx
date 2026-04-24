@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Stage } from 'react-konva'
+import { Stage, Layer, Rect } from 'react-konva'
 import type Konva from 'konva'
 import { BackgroundLayer } from './BackgroundLayer'
 import { TerritoryLayer } from './TerritoryLayer'
@@ -22,6 +22,7 @@ import {
 } from '../../hooks/useZoomPan'
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts'
 import { useCanvasArtifacts } from '../../hooks/useCanvasArtifacts'
+import { useRubberBandSelection } from '../../hooks/useRubberBandSelection'
 import { useUIStore } from '../../stores/uiStore'
 import { useResearchStore, computeCondadoColors } from '../../stores/useResearchStore'
 import { useEditorStore } from '../../stores/useEditorStore'
@@ -141,6 +142,8 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
 
   // Phase 4 — edit mode state
   const editMode = useEditorStore((s) => s.editMode)
+  const activeTool = useEditorStore((s) => s.activeTool)
+  const setActiveTool = useEditorStore((s) => s.setActiveTool)
   const pushUndoLabel = useEditorStore((s) => s.pushUndoLabel)
   const applyBatchUpdate = useProjectStore((s) => s.applyBatchUpdate)
   const setCapital = useProjectStore((s) => s.setCapital)
@@ -344,6 +347,28 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
   // Suppress unused-var lint for storeProjectId (used by P06/P07 hydrate checks)
   void storeProjectId
 
+  // Phase 4 — when edit mode turns ON, default to 'select' tool so rubber-band is active.
+  // When edit mode turns OFF, reset to 'none'. This keeps the store free of coupled behavior
+  // (effect approach per plan — store.toggleEditMode stays simple).
+  useEffect(() => {
+    if (editMode) {
+      setActiveTool('select')
+    } else {
+      setActiveTool('none')
+    }
+  }, [editMode, setActiveTool])
+
+  // Phase 4 — rubber-band selection hook (Pattern 4, Pitfall 2).
+  // condados list is available after metaQ resolves; hook is called unconditionally
+  // (hooks must not be inside conditionals). It returns safely when projection is null
+  // or condados is empty — the hook reads the store's editMode itself.
+  const condadosForRubberBand = metaQ.data?.condados ?? []
+  const rubberBand = useRubberBandSelection({
+    condados: condadosForRubberBand,
+    projection: projection ?? { lonMin: 0, lonMax: 1, latMin: 0, latMax: 1, mapW: 1, mapH: 1, lonScale: 1 },
+    stageRef,
+  })
+
   // ------------------------------------------------------------------------
   // EARLY RETURNS — safe because every hook above has been called. B-1:
   // `ref={setContainerRef}` MUST appear on the root div of EVERY branch so
@@ -405,11 +430,16 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
           ref={stageRef}
           width={viewportW}
           height={viewportH}
-          draggable
+          // Pitfall 2 mitigation (P06): disable Stage pan when activeTool === 'select'
+          // so mousedown-drag is captured by the rubber-band hook, not Stage DnD.
+          draggable={activeTool !== 'select'}
           dragBoundFunc={dragBound}
           onWheel={handleWheel}
           onClick={handleStageClick}
           onTap={handleStageClick}
+          onMouseDown={rubberBand.onMouseDown}
+          onMouseMove={rubberBand.onMouseMove}
+          onMouseUp={rubberBand.onMouseUp}
         >
           <BackgroundLayer
             src={terrainSrc}
@@ -437,6 +467,20 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
             onCapitalDragEnd={handleCapitalDragEnd}
           />
           <InteractionLayer territories={territoriesQ.data} />
+          {rubberBand.selectionRect && (
+            <Layer listening={false}>
+              <Rect
+                x={rubberBand.selectionRect.x}
+                y={rubberBand.selectionRect.y}
+                width={rubberBand.selectionRect.w}
+                height={rubberBand.selectionRect.h}
+                fill="rgba(110, 86, 207, 0.1)"
+                stroke="rgba(110, 86, 207, 0.7)"
+                strokeWidth={1}
+                dash={[4, 2]}
+              />
+            </Layer>
+          )}
         </Stage>
         <LayerTogglePanel />
         <FitToViewButton onFit={fitToView} />
