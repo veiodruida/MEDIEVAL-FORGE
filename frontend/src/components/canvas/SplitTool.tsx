@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { Layer, Line, Circle } from 'react-konva'
 import * as Toast from '@radix-ui/react-toast'
 import type { KonvaEventObject } from 'konva/lib/Node'
@@ -57,6 +57,14 @@ export function useSplitTool({ condados, stageRef, projection }: Args) {
   const [errorToast, setErrorToast] = useState<string | null>(null)
 
   const active = activeTool === 'split' && selectedId !== null
+
+  // Clear in-progress cut line when split tool is deactivated (e.g. Esc mid-polyline)
+  useEffect(() => {
+    if (!active) {
+      setPoints([])
+      isDrawing.current = false
+    }
+  }, [active])
 
   const getStagePos = () => {
     const stage = stageRef.current
