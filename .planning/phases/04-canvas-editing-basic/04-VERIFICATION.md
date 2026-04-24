@@ -1,31 +1,17 @@
 ---
 phase: 04-canvas-editing-basic
-verified: 2026-04-24T14:00:00Z
-status: gaps_found
-score: 4/5 must-haves verified
+verified: 2026-04-24T15:40:00Z
+status: passed
+score: 5/5 must-haves verified
 overrides_applied: 0
 re_verification:
   previous_status: gaps_found
-  previous_score: 2/5
+  previous_score: 5/5 (impl) — 1 test regression
   gaps_closed:
-    - "SC1 — capital drag re-renders polygons: queryClient.invalidateQueries wired at handleCapitalDragEnd success path (CanvasViewer.tsx line 173)"
-    - "SC2 — vertex drag reflected on canvas: queryClient.invalidateQueries wired at vertex-edit commit success path (CanvasViewer.tsx line 173)"
-    - "SC3 — merge result visible immediately: queryClient.invalidateQueries wired at handleMerge success path (SelectionFloatingToolbar.tsx line 127)"
-    - "SC3 split result visible: queryClient.invalidateQueries wired at split commit success path (SplitTool.tsx line 112)"
-    - "Undo/redo invalidation: temporal.subscribe wired in CanvasViewer.tsx (line 462) calls invalidateQueries on every history traversal"
-  gaps_remaining:
-    - "manualSave() in persistence.ts does not call queryClient.invalidateQueries after successful saveSnapshot flush — canvas stays frozen in explicit save mode after Ctrl+S"
+    - "SC1 explicit save mode — Ctrl+S handler in useUndoShortcut.ts now awaits manualSave() and calls invalidateQueries for both ['territories-geojson', projectId] and ['territory-metadata', projectId] on success (Plan 10)"
+    - "Test regression — useUndoShortcut.test.ts updated with QueryClientProvider wrapper on all 5 renderHook() calls; tests now pass 5/5 (Plan 10 gap closure)"
+  gaps_remaining: []
   regressions: []
-gaps:
-  - truth: "Ctrl+S in explicit save mode flushes to disk AND updates the canvas immediately (no reload required)"
-    status: failed
-    reason: "manualSave() in frontend/src/services/persistence.ts (lines 91-106) calls saveSnapshot() and markSaved() but contains no queryClient.invalidateQueries call. After a successful Ctrl+S flush in explicit mode, the on-disk territories.geojson is updated and SaveStatusIndicator shows 'Salvo', but the TanStack Query cache is never invalidated. The canvas remains frozen at the pre-edit visual state until the user manually reloads the page."
-    artifacts:
-      - path: "frontend/src/services/persistence.ts"
-        issue: "Lines 91-106: manualSave() calls saveSnapshot() + markSaved() with no queryClient.invalidateQueries call anywhere in the function or file"
-    missing:
-      - "After await saveSnapshot() succeeds (line 99), call queryClient.invalidateQueries({ queryKey: ['canvasArtifacts', projectId] }) before markSaved(). Requires obtaining queryClient via getQueryClient() or passing it as a parameter — persistence.ts currently has no React context access."
-      - "One clean approach: export an invalidateCanvasCache callback from CanvasViewer and register it in manualSave, mirroring the pattern used for the 5 inline invalidation sites. Alternatively, wire invalidation inside the Ctrl+S handler in useUndoShortcut.ts which already imports manualSave."
 human_verification:
   - test: "Capital drag re-renders in under 500ms (auto/per_op mode)"
     expected: "Dragging a capital marker causes the affected neighbor Voronoi polygons to visually update on the Konva canvas within 500ms — no page reload required"
@@ -35,18 +21,21 @@ human_verification:
     why_human: "Visual confirmation required; grep confirms the invalidation call exists but not that the re-fetched geometry matches the visual expectation."
   - test: "Merge result immediately visible (auto/per_op mode)"
     expected: "After clicking Fundir on 2+ selected territories, a single merged polygon replaces the selected set on canvas without reload"
-    why_human: "Visual confirmation of correct polygon union display required."
+    why_human: "Visual correctness of the merged polygon boundary requires human observation."
   - test: "Ctrl+Z undoes capital drag as single compound step (visual)"
     expected: "Pressing Ctrl+Z after a capital drag restores both the capital marker position and all affected neighbor polygon shapes in one step — no partial revert"
     why_human: "Compound undo correctness is unit-tested, but the visual completeness of the canvas rollback (both DecorationsLayer capital marker and TerritoryLayer polygons) requires human observation."
+  - test: "Ctrl+S in explicit save mode flushes and visually updates canvas (no reload)"
+    expected: "Pressing Ctrl+S with unsaved edits in explicit mode flips SaveStatusIndicator to 'Salvo' AND the canvas re-renders with post-edit geometry within 500ms"
+    why_human: "Implementation verified by code inspection (useUndoShortcut.ts awaits manualSave then invalidateQueries) but end-to-end visual confirmation requires running the app in explicit save mode"
 ---
 
-# Phase 04: Canvas Editing — Basic Re-Verification Report
+# Phase 04: Canvas Editing — Basic Verification Report (Final)
 
-**Phase Goal:** User can drag a capital marker to reshape Voronoi territories in under 500ms, merge adjacent territories into one, and undo/redo all operations with a 50-step history that groups compound side effects as single steps.
-**Verified:** 2026-04-24T14:00:00Z
-**Status:** gaps_found
-**Re-verification:** Yes — after Plan 09 gap closure
+**Phase Goal:** Deliver a fully functional canvas editing interface for medieval territory maps — capital drag, vertex edit, merge, split, undo/redo, validation badges, and configurable save strategies — wired end-to-end with Voronoi geometry recalculation and TanStack Query cache invalidation.
+**Verified:** 2026-04-24T15:40:00Z
+**Status:** passed
+**Re-verification:** Yes — after Plan 10 test regression gap closure (QueryClientProvider wrapper in useUndoShortcut.test.ts)
 
 ## Goal Achievement
 
@@ -54,51 +43,55 @@ human_verification:
 
 | # | Truth | Status | Evidence |
 |---|-------|--------|----------|
-| 1 | User can drag a capital marker and watch affected neighbor polygons recalculate and re-render in under 500ms, persisted | VERIFIED (auto/per_op) | queryClient.invalidateQueries wired at handleCapitalDragEnd success path — CanvasViewer.tsx invalidateCanvasArtifacts helper lines 171-175 called after onOperationFinalized(). Explicit-mode guard at line 172 (saveStrategy !== 'explicit'). Temporal subscriber at line 462 handles undo/redo invalidation. |
-| 2 | User can drag individual border vertices; change reflected immediately on canvas and saved | VERIFIED (auto/per_op) | Same invalidateCanvasArtifacts helper called in vertex-edit commit .then() path (CanvasViewer.tsx). Store mutation + invalidation chain wired. |
-| 3 | User can select 2+ adjacent territories and merge them; result is one polygon with preserved exterior topology | VERIFIED (auto/per_op) | SelectionFloatingToolbar.tsx lines 127-128: invalidateQueries after handleMerge success. SplitTool.tsx lines 112-113: invalidateQueries after split commit. All 4 operations (capital drag, vertex edit, merge, split) now invalidate cache on success. |
-| 4 | User can press Ctrl+Z after capital drag and entire compound op undone as single step | VERIFIED | useUndoShortcut wires Ctrl+Z to temporal.undo(). beginTransaction/endTransaction with try/finally frames compound ops. Test 3 in CapitalDrag.test.tsx asserts pastStates.length===1. Temporal subscribe invalidation at CanvasViewer.tsx line 462 also refreshes canvas on undo/redo. |
-| 5 | Undo/redo supports 50 steps; browser memory does not grow unboundedly with 800+ territories | VERIFIED | limit:50 confirmed in useProjectStore. diff function (not boolean) stores key-level deltas only. partialize excludes projectId+loading. Test enforces 51-entry cap. |
+| 1 | User can drag a capital marker and watch affected neighbor polygons recalculate and re-render in under 500ms, persisted | VERIFIED | `invalidateCanvasArtifacts` helper in CanvasViewer.tsx (lines 171-175) called after handleCapitalDragEnd success. temporal.subscribe at line 462 handles undo/redo invalidation. Explicit-mode path covered by Plan 10 (useUndoShortcut.ts Ctrl+S handler awaits manualSave then invalidates). |
+| 2 | User can drag individual border vertices; change reflected immediately on canvas and saved | VERIFIED | Vertex-edit commit useEffect in CanvasViewer.tsx calls invalidateCanvasArtifacts after reshapeGeometry success. |
+| 3 | User can select 2+ adjacent territories and merge them; result is one polygon with preserved exterior topology | VERIFIED | SelectionFloatingToolbar.tsx lines 127-128: invalidateQueries after handleMerge success. SplitTool.tsx lines 112-113: invalidateQueries after split commit. |
+| 4 | User can press Ctrl+Z after capital drag and entire compound op undone as single step | VERIFIED | useUndoShortcut wires Ctrl+Z to temporal.undo(). beginTransaction/endTransaction with try/finally frames compound ops. Test 3 in CapitalDrag.test.tsx asserts pastStates.length===1. temporal.subscribe invalidation refreshes canvas on undo/redo. All 5 useUndoShortcut tests pass (Ctrl+Z undo, Ctrl+Y redo, Cmd+Z Mac, popUndoLabel sync, popRedoLabel sync). |
+| 5 | Undo/redo supports 50 steps; browser memory does not grow unboundedly with 800+ territories | VERIFIED | limit:50 confirmed in useProjectStore.ts. diff function (not boolean) stores key-level deltas only. partialize excludes projectId+loading. Test enforces 51-entry cap. |
 
-**Score:** 4/5 truths fully verified (SC1/SC2/SC3 verified in auto and per_op save modes; gap remains for explicit save mode only)
+**Score:** 5/5 truths verified at implementation level. All automated tests pass.
 
-### Deferred Items
-
-No items deferred to later phases. The explicit-mode manualSave gap is within Phase 4 scope — it affects the D-07 persistence strategy feature introduced in Plan 08.
-
-### Required Artifacts — Regression Check
+### Required Artifacts
 
 | Artifact | Status | Evidence |
 |----------|--------|----------|
-| `backend/medieval_forge/services/voronoi.py` | VERIFIED | No regressions — unchanged since initial verification |
-| `backend/medieval_forge/api/edit.py` | VERIFIED | No regressions — unchanged since initial verification |
-| `frontend/src/stores/useProjectStore.ts` | VERIFIED | No regressions — temporal/diff/limit/beginTransaction confirmed unchanged |
-| `frontend/src/components/canvas/CanvasViewer.tsx` | VERIFIED (with gap) | invalidateCanvasArtifacts helper wired at 2 sites (capital drag, vertex-edit commit). temporal.subscribe at line 462. Explicit-mode guard present. |
-| `frontend/src/components/canvas/SelectionFloatingToolbar.tsx` | VERIFIED | invalidateQueries at lines 127-128 after merge success. saveStrategy renamed from strategy for consistency. |
-| `frontend/src/components/canvas/SplitTool.tsx` | VERIFIED | invalidateQueries at lines 112-113 after split commit. QueryClientProvider wrapper added to test file. |
-| `frontend/src/services/persistence.ts` | GAP | manualSave() (lines 91-106) contains no invalidateQueries call after saveSnapshot() success |
+| `backend/medieval_forge/services/voronoi.py` | VERIFIED | 326 lines; all 6 functions present (build_adjacency, find_affected_neighbors, recalc_neighbors, merge_territories, split_territory, decimate_polygon); scipy + shapely imports; Pitfall 4 pre-validation present |
+| `backend/medieval_forge/api/edit.py` | VERIFIED | 279 lines; 4 edit endpoints + geometry/save + vertex-handles; persist:bool guards; HTTPException(422) on ValueError; no 501 stubs |
+| `frontend/src/stores/useProjectStore.ts` | VERIFIED | temporal() wrapper, partialize, diff function, limit:50, beginTransaction/endTransaction confirmed |
+| `frontend/src/stores/useEditorStore.ts` | VERIFIED | pushUndoLabel, popUndoLabel, popRedoLabel all present; no zundo dependency |
+| `frontend/src/components/canvas/CanvasViewer.tsx` | VERIFIED | invalidateCanvasArtifacts helper (explicit guard), handleCapitalDragEnd, vertex-edit commit path, temporal.subscribe invalidation all wired |
+| `frontend/src/components/canvas/DecorationsLayer.tsx` | VERIFIED | listening={isEditMode} (Pitfall 8), draggable={isEditMode}, onCapitalDragEnd prop wired |
+| `frontend/src/components/canvas/SelectionFloatingToolbar.tsx` | VERIFIED | invalidateQueries after merge success (lines 127-128); saveStrategy guard |
+| `frontend/src/components/canvas/SplitTool.tsx` | VERIFIED | invalidateQueries after split commit (lines 112-113); saveStrategy guard |
+| `frontend/src/services/persistence.ts` | VERIFIED | manualSave() present; NO react-query imports (grep confirms 0 matches); early-return for non-explicit strategies |
+| `frontend/src/hooks/useUndoShortcut.ts` | VERIFIED | Plan 10: useQueryClient() called, async IIFE awaits manualSave() then invalidates both query keys on success; catch block skips invalidation on failure; [queryClient] dependency array |
+| `frontend/src/hooks/__tests__/useUndoShortcut.test.ts` | VERIFIED | All 5 renderHook() calls use { wrapper: createWrapper() }; QueryClientProvider wraps each render; 5/5 tests pass confirmed by vitest run |
+| `frontend/src/api/edit.ts` | VERIFIED | Exports: EditApiError, moveCapital, mergeTerritories, splitTerritory, reshapeGeometry |
+| `frontend/src/types/editing.ts` | VERIFIED | 18 exports covering all request/response types, enums, and interfaces |
 
 ### Key Link Verification
 
 | From | To | Via | Status | Details |
 |------|----|-----|--------|---------|
-| handleCapitalDragEnd success | queryClient.invalidateQueries | invalidateCanvasArtifacts helper | WIRED | CanvasViewer.tsx lines 171-175; guard: saveStrategy !== 'explicit' at line 172 |
-| vertex-edit commit .then() | queryClient.invalidateQueries | invalidateCanvasArtifacts helper | WIRED | CanvasViewer.tsx same helper; confirmed by grep |
-| useProjectStore.temporal.subscribe | queryClient.invalidateQueries | subscribe callback | WIRED | CanvasViewer.tsx lines 462-465; explicit guard at line 463 |
+| handleCapitalDragEnd success | queryClient.invalidateQueries | invalidateCanvasArtifacts helper | WIRED | CanvasViewer.tsx lines 171-175; explicit guard at line 172 |
+| vertex-edit commit .then() | queryClient.invalidateQueries | invalidateCanvasArtifacts helper | WIRED | CanvasViewer.tsx same helper |
+| useProjectStore.temporal.subscribe | queryClient.invalidateQueries | subscribe callback | WIRED | CanvasViewer.tsx lines 462-465; explicit guard present |
 | handleMerge success | queryClient.invalidateQueries | inline call | WIRED | SelectionFloatingToolbar.tsx lines 127-128 |
 | split commit success | queryClient.invalidateQueries | inline call | WIRED | SplitTool.tsx lines 112-113 |
-| manualSave() saveSnapshot success | queryClient.invalidateQueries | — | MISSING | persistence.ts lines 91-106; no invalidation after successful Ctrl+S flush |
-| useUndoShortcut Ctrl+S | manualSave() | import from services/persistence | WIRED | useUndoShortcut.ts line 4 import, lines 38-40 handler |
-| TerritoryLayer render | TanStack Query refetch | invalidateQueries triggers staleTime bypass | WIRED (auto/per_op) | Only broken in explicit mode where manualSave does not invalidate |
+| Ctrl+S keydown → manualSave() success | queryClient.invalidateQueries | async IIFE in useUndoShortcut.ts | WIRED | Plan 10: lines 51-52 in useUndoShortcut.ts; both query keys invalidated after await manualSave() |
+| persistence.ts | react-query | (none) | CLEAN | grep confirms zero react-query imports in persistence.ts |
+| CanvasViewer | backend edit API | moveCapital / reshapeGeometry from api/edit.ts | WIRED | Imports confirmed; beginTransaction/endTransaction wrap mutations |
+| SelectionFloatingToolbar | backend merge API | mergeTerritories from api/edit.ts | WIRED | handleMerge calls mergeTerritories |
+| SplitTool | backend split API | splitTerritory from api/edit.ts | WIRED | commit() calls splitTerritory |
 
 ### Data-Flow Trace (Level 4)
 
 | Artifact | Data Variable | Source | Status |
 |----------|---------------|--------|--------|
-| TerritoryLayer | territories prop | territoriesQ.data — invalidated by Plan 09 on every successful edit (auto/per_op) | FLOWING (auto/per_op); HOLLOW after Ctrl+S in explicit mode |
-| DecorationsLayer | condados.lon/lat | metaQ.data.condados — same invalidation path | FLOWING (auto/per_op); HOLLOW after Ctrl+S in explicit mode |
-| useProjectStore.territories | territories Record | setTerritory / applyBatchUpdate — store updated, cache invalidated on success | FLOWING |
-| manualSave explicit flush | — | saveSnapshot writes disk; TanStack cache NOT invalidated | DISCONNECTED |
+| TerritoryLayer | territories prop | territoriesQ.data — invalidated by Plans 09+10 on every successful edit (all modes) | FLOWING |
+| DecorationsLayer | condados.lon/lat | metaQ.data.condados — same invalidation path | FLOWING |
+| useProjectStore.territories | territories Record | setTerritory / applyBatchUpdate — store updated then cache invalidated on success | FLOWING |
+| manualSave Ctrl+S path | — | saveSnapshot writes disk; Plan 10 invalidates TanStack cache after await | FLOWING |
 
 ### Behavioral Spot-Checks
 
@@ -109,28 +102,32 @@ No items deferred to later phases. The explicit-mode manualSave gap is within Ph
 | invalidateQueries at split | grep invalidateQueries SplitTool.tsx | Lines 112-113 confirmed | PASS |
 | temporal.subscribe wired | grep temporal.subscribe CanvasViewer.tsx | Line 462 confirmed | PASS |
 | explicit-mode guard present | grep "saveStrategy.*explicit" CanvasViewer.tsx | Lines 172 and 463 confirmed | PASS |
-| manualSave invalidates cache | grep invalidateQueries persistence.ts | No match | FAIL |
-| SplitTool tests pass with QueryClientProvider wrapper | SplitTool.test.tsx createWrapper() | Added in commit 226930a | PASS |
-| saveStrategy rename consistent | grep "const saveStrategy" SelectionFloatingToolbar.tsx SplitTool.tsx | Confirmed | PASS |
+| Ctrl+S invalidates after manualSave | grep invalidateQueries useUndoShortcut.ts | 2 matches confirmed (lines 51-52) | PASS |
+| await manualSave before invalidation | source order check | await manualSave() at line 48; invalidateQueries at lines 51-52 | PASS |
+| persistence.ts stays React-free | grep react-query persistence.ts | 0 matches confirmed | PASS |
+| useUndoShortcut.test.ts has QueryClientProvider | grep QueryClientProvider useUndoShortcut.test.ts | createWrapper() on line 10; { wrapper: createWrapper() } on all 5 renderHook calls (lines 33, 51, 75, 100, 119) | PASS |
+| Frontend tests pass (useUndoShortcut) | npx vitest run src/hooks/__tests__/useUndoShortcut.test.ts | 5/5 passed in 12ms | PASS |
+| TypeScript compile clean | npx tsc --noEmit | Exits 0 — confirmed in Plan 10 SUMMARY | PASS |
 
 ### Requirements Coverage
 
 | Requirement | Plans | Description | Status | Evidence |
 |-------------|-------|-------------|--------|----------|
-| EDIT-01 | P05, P09 | Capital drag + Voronoi recalc <500ms | VERIFIED (auto/per_op) | Backend at 2.7ms. Canvas re-renders via invalidateQueries in auto/per_op. Explicit mode gap. |
-| EDIT-02 | P06, P09 | Border vertex drag to reshape polygon | VERIFIED (auto/per_op) | vertex-edit commit path wired to invalidateQueries |
-| EDIT-03 | P06, P09 | Territory merge | VERIFIED (auto/per_op) | handleMerge wired to invalidateQueries |
-| EDIT-04 | P07, P09 | Territory split by cut line | VERIFIED (auto/per_op) | split commit wired to invalidateQueries |
-| EDIT-07 | P07 | Ctrl+Z/Y undo/redo 50-step | VERIFIED | useUndoShortcut, limit:50, temporal subscriber invalidation |
-| EDIT-08 | P05+ | Compound ops as single undo step | VERIFIED | beginTransaction/endTransaction, pastStates.length===1 test |
+| EDIT-01 | P05, P09, P10 | Capital drag + Voronoi recalc <500ms, canvas re-renders | VERIFIED (all modes) | Backend at 2.7ms. invalidateCanvasArtifacts wired (auto/per_op). Plan 10 closes explicit path via Ctrl+S handler. |
+| EDIT-02 | P06, P09 | Border vertex drag to reshape polygon | VERIFIED (auto/per_op) | Vertex-edit commit path wired to invalidateQueries. |
+| EDIT-03 | P06, P09 | Territory merge | VERIFIED (auto/per_op) | handleMerge wired to invalidateQueries. |
+| EDIT-04 | P07, P09 | Territory split by cut line | VERIFIED (auto/per_op) | split commit wired to invalidateQueries. |
+| EDIT-07 | P07, P10 | Ctrl+Z/Y undo/redo 50-step | VERIFIED | useUndoShortcut wires Ctrl+Z/Y to temporal.undo/redo; limit:50; temporal subscriber invalidation. 5/5 tests confirmed passing. |
+| EDIT-08 | P05+ | Compound ops as single undo step | VERIFIED | beginTransaction/endTransaction, pastStates.length===1 test passes. |
 
 ### Anti-Patterns Found
 
 | File | Line | Pattern | Severity | Impact |
 |------|------|---------|----------|--------|
-| `frontend/src/services/persistence.ts` | 91-106 | manualSave() calls saveSnapshot() + markSaved() but no invalidateQueries | BLOCKER | In explicit save mode, Ctrl+S saves to disk and shows 'Salvo' but canvas stays frozen at pre-edit state |
-| `frontend/src/components/canvas/SelectionFloatingToolbar.tsx` | 82 | `// TODO(P08)` — largest-area primary_id | WARNING | Merge uses selectionIds[0] as primary, not largest polygon (cosmetic, not a correctness blocker) |
-| `frontend/src/components/canvas/ValidationBadgesLayer.tsx` | (centroid source) | Badge centroids from metaQ metadata, not recalculated post-edit | WARNING | Badge positions drift after vertex edits; corrected at next invalidation refetch |
+| `frontend/src/components/canvas/SelectionFloatingToolbar.tsx` | 82 | `// TODO(P08)` — largest-area primary_id | WARNING | Merge uses selectionIds[0] as primary, not largest polygon. Cosmetic, not correctness-blocking. |
+| `frontend/src/components/canvas/ValidationBadgesLayer.tsx` | (centroid source) | Badge centroids from metaQ metadata, not recalculated post-edit | WARNING | Badge positions drift after vertex edits; corrected at next invalidation refetch. |
+
+No blocker anti-patterns. Previous blocker (missing QueryClientProvider in useUndoShortcut.test.ts) is now resolved.
 
 ### Human Verification Required
 
@@ -155,20 +152,28 @@ No items deferred to later phases. The explicit-mode manualSave gap is within Ph
 #### 4. Ctrl+Z undoes capital drag as single compound step (visual)
 
 **Test:** Drag a capital, observe polygon update. Press Ctrl+Z.
-**Expected:** Both the capital marker position and all affected neighbor polygons revert to pre-drag state in a single undo step. No partial revert (e.g., capital moves back but polygons stay at recalculated state).
+**Expected:** Both the capital marker position and all affected neighbor polygons revert to pre-drag state in a single undo step. No partial revert.
 **Why human:** Compound undo correctness is unit-tested but visual canvas completeness of the rollback (both DecorationsLayer and TerritoryLayer) requires human observation.
+
+#### 5. Ctrl+S in explicit save mode flushes and visually updates canvas
+
+**Test:** Set save mode to "explicit". Perform an edit (drag capital or vertex). Observe SaveStatusIndicator shows "unsaved". Press Ctrl+S.
+**Expected:** SaveStatusIndicator flips to "Salvo" AND the canvas re-renders with post-edit geometry within 500ms — no manual page reload required.
+**Why human:** Plan 10 implementation verified by code inspection (await manualSave() then invalidateQueries in useUndoShortcut.ts) but end-to-end visual confirmation requires running the app in explicit save mode.
 
 ### Gaps Summary
 
-Plan 09 successfully closed the primary gap from the initial verification: the five invalidation sites (capital drag, vertex-edit commit, merge, split, and undo/redo temporal subscriber) are all wired. SC1, SC2, and SC3 are now verified for the auto and per_op save modes.
+All automated gaps are closed. Phase 4 implementation is complete across all three save strategies:
 
-One targeted gap remains: **explicit save mode (Ctrl+S) does not invalidate the TanStack Query cache.** After a successful `manualSave()` call, `saveSnapshot()` writes the updated geometry to `territories.geojson` and `markSaved()` flips the indicator to "Salvo", but no `queryClient.invalidateQueries` is called. The canvas stays frozen at the pre-edit visual state. Users who prefer the explicit "save when I say so" workflow will see a confusing state: save confirmation shown, but map appears unchanged until they reload.
+- SC1 (explicit save mode): closed by Plan 10 — `useUndoShortcut.ts` awaits `manualSave()` then invalidates `['territories-geojson', projectId]` and `['territory-metadata', projectId]` on success.
+- SC1–SC5 (auto/per_op modes): closed by Plans 05–09 — `invalidateCanvasArtifacts` wired to all 4 edit success paths + temporal.subscribe.
+- Test regression from Plan 10 (missing `QueryClientProvider` in `useUndoShortcut.test.ts`): closed — `createWrapper()` factory and `{ wrapper: createWrapper() }` added to all 5 `renderHook` calls; 5/5 tests pass (confirmed by `npx vitest run`).
 
-The fix is contained to a single function. The main challenge is that `persistence.ts` is a Zustand-based service module with no React context, so `useQueryClient()` cannot be called directly. The cleanest patterns are: (a) register an invalidation callback via a module-level setter, (b) invalidate inside the Ctrl+S handler in `useUndoShortcut.ts` which already imports `manualSave` and runs in React context, or (c) pass `queryClient` as a parameter to `manualSave()`.
+Remaining items are human verification only (visual behavior, end-to-end latency).
 
-**SQLite persistence deviation (advisory, carried forward):** ROADMAP SC1 states "persisted to SQLite." The implementation persists edits via atomic file write (`territories.geojson`, `os.replace`). User-visible durability is met. No downstream phase depends on querying a territories SQLite table. Informational only.
+**Advisory (carried forward):** ROADMAP SC1 states "persisted to SQLite." The implementation uses atomic file write (`territories.geojson`, `os.replace`). User-visible durability is met. No downstream phase depends on a territories SQLite table. Informational only.
 
 ---
 
-_Verified: 2026-04-24T14:00:00Z_
+_Verified: 2026-04-24T15:40:00Z_
 _Verifier: Claude (gsd-verifier)_
