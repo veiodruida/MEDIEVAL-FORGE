@@ -72,3 +72,26 @@ export const reshapeGeometry = (
   req: ReshapeGeometryRequest,
 ): Promise<{ condado_id: string; ok: true }> =>
   patchJson(`/projects/${projectId}/territories/${condadoId}/geometry`, req)
+
+// --- Vertex handles (Plan 04 Task 3: Douglas-Peucker decimation endpoint) ---
+
+export interface VertexHandle {
+  lon: number
+  lat: number
+  source_index: number
+}
+
+export interface VertexHandlesResponse {
+  handles: VertexHandle[]
+}
+
+export const fetchVertexHandles = (
+  projectId: string,
+  condadoId: string,
+  target = 12,
+): Promise<VertexHandlesResponse> =>
+  fetch(`${API_BASE}/projects/${projectId}/territories/${condadoId}/vertex-handles?target=${target}`)
+    .then((r) => {
+      if (!r.ok) throw new EditApiError(r.status, r.statusText)
+      return r.json() as Promise<VertexHandlesResponse>
+    })

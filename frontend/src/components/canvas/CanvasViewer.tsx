@@ -32,6 +32,7 @@ import {
   endTransaction,
 } from '../../stores/useProjectStore'
 import { moveCapital, EditApiError } from '../../api/edit'
+import { SelectionFloatingToolbar } from './SelectionFloatingToolbar'
 
 interface CanvasViewerProps {
   projectId: string
@@ -484,6 +485,14 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
         </Stage>
         <LayerTogglePanel />
         <FitToViewButton onFit={fitToView} />
+        {/* SelectionFloatingToolbar: DOM div rendered outside Stage, positioned
+            viewport-relative above the rubber-band selection bounding box. */}
+        {editMode && (
+          <SelectionFloatingToolbar
+            condados={metaQ.data.condados}
+            stageRef={stageRef}
+          />
+        )}
       </div>
     </ProjectionProvider>
   )
