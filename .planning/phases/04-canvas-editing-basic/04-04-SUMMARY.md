@@ -175,6 +175,13 @@ All 9 voronoi service tests remain GREEN (no regression).
 - **Files modified:** `backend/tests/api/test_edit_api.py`
 - **Commit:** cf7f1f0
 
+**4. [Rule 1 - Bug] split endpoint returned new_territory_a.id as "{condado_id}_a" — frontend would 404 on next edit**
+- **Found during:** Post-implementation review
+- **Issue:** `voronoi.split_territory()` names the first piece `"{original_id}_a"` (e.g. `"leon_a"`). The endpoint stored the territory on disk under the original key `"leon"`. P05 frontend would take `new_territory_a.id = "leon_a"` into its store and any subsequent recalc/merge/patch against `"leon_a"` would 404 because `load_territories` only contains `"leon"` and `"leon_b"`.
+- **Fix:** `new_a = {**new_a, "id": condado_id}` after calling the service, so the response `new_territory_a.id` matches the persisted key. All 7 tests still pass.
+- **Files modified:** `backend/medieval_forge/api/edit.py`
+- **Commit:** 8a841ac
+
 ### Implementation Notes
 
 - All 6 endpoints implemented in the initial commit — the plan separated them across Tasks 1/2/3 for incremental TDD, but the implementations were correct on first pass after the above deviations were resolved.
