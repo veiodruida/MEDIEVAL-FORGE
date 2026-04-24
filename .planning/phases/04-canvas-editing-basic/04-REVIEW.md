@@ -1,184 +1,205 @@
 ---
 phase: 04-canvas-editing-basic
-reviewed: 2026-04-24T00:00:00Z
+reviewed: 2026-04-24T12:00:00Z
 depth: standard
-files_reviewed: 30
+files_reviewed: 15
+files_reviewed_list:
+  - frontend/src/api/edit.ts
+  - frontend/src/components/canvas/CanvasViewer.tsx
+  - frontend/src/components/canvas/InspectorSidebar.tsx
+  - frontend/src/components/canvas/SaveStatusIndicator.tsx
+  - frontend/src/components/canvas/SelectionFloatingToolbar.tsx
+  - frontend/src/components/canvas/SettingsPanel.tsx
+  - frontend/src/components/canvas/SplitTool.tsx
+  - frontend/src/components/canvas/ValidationBadgesLayer.tsx
+  - frontend/src/hooks/useBeforeUnloadGuard.ts
+  - frontend/src/hooks/useUndoShortcut.ts
+  - frontend/src/main.tsx
+  - frontend/src/pages/ProjectDetail.tsx
+  - frontend/src/services/persistence.ts
+  - frontend/src/services/validation.ts
+  - frontend/src/stores/useValidationStore.ts
 findings:
-  critical: 1
+  critical: 0
   warning: 4
-  info: 4
-  total: 9
+  info: 3
+  total: 7
 status: issues_found
 ---
 
 # Phase 04: Code Review Report
 
-**Reviewed:** 2026-04-24T00:00:00Z
+**Reviewed:** 2026-04-24T12:00:00Z
 **Depth:** standard
-**Files Reviewed:** 30
+**Files Reviewed:** 15
 **Status:** issues_found
 
 ## Summary
 
-Phase 4 introduces six backend edit endpoints (recalc, merge, split, reshape, vertex-handles, snapshot) and the full frontend canvas editor (rubber-band multi-select, merge toolbar, split tool, vertex-handle drag). The implementation is structurally sound and well-organized: atomic GeoJSON writes, proper transaction wrapping in most paths, zundo temporal middleware correctly integrated, and TypeScript strict mode enforced throughout.
+Phase 04 delivers the canvas editing pipeline: capital drag with Voronoi recalc, border vertex editing, territory merge and split, configurable persistence (auto/per_op/explicit), real-time validation badges, and 50-step named undo/redo. The overall structure is solid — the compound-transaction pattern, the zundo integration, the API layer, and the persistence store are all well-implemented. No security vulnerabilities or hardcoded secrets were found.
 
-One critical bug was found in the split endpoint: the new second territory inherits the original's capital coordinates, which is incorrect after the polygon is divided. Four warnings cover missing `finally` guards that can leave the temporal store permanently paused, a stale-closure read on freehand drawing completion, a fire-and-forget PATCH that pushes an undo label before confirming backend success, and a bare-click handler that silently clobbers existing rubber-band selections. Four info items cover dead code, a deprecated browser API, a fragile dynamic import, and a missing geometry validation.
+The VERIFICATION.md (dated 2026-04-24T11:15) identified a BLOCKER gap where TerritoryLayer/DecorationsLayer was disconnected from edit mutations. That gap was closed within Phase 08 via `invalidateCanvasArtifacts()` (CanvasViewer.tsx:171) and a `temporal.subscribe` handler (CanvasViewer.tsx:461). The canvas render path now re-fetches updated geometry after each edit.
 
----
-
-## Critical Issues
-
-### CR-01: Split territory inherits original capital coordinates for new_b
-
-**File:** `backend/medieval_forge/api/edit.py:158-163`
-
-**Issue:** After a territory is split into two halves, `new_b` is constructed using `**territories[condado_id]`, which copies `lon` and `lat` (the original territory's capital position) verbatim. The capital can only be geometrically inside one of the two resulting polygons. The other half immediately fails the `capital_outside` validation rule with no way to recover without a manual capital move. This means every split operation is guaranteed to produce a validation error on one of the two output territories.
-
-**Fix:**
-```python
-# Compute a safe interior point for new_b using Shapely's representative_point()
-new_b_shape = shape(new_b["geometry"])
-rep = new_b_shape.representative_point()
-
-territories[new_b_id] = {
-    **territories[condado_id],
-    "geometry": new_b["geometry"],
-    "id": new_b_id,
-    "name": territories[condado_id].get("name", "") + " (split)",
-    "lon": rep.x,   # override with a point guaranteed inside new_b
-    "lat": rep.y,
-}
-```
-
-Apply the same fix symmetrically to `new_a` to be safe:
-```python
-new_a_shape = shape(new_a["geometry"])
-rep_a = new_a_shape.representative_point()
-territories[condado_id] = {
-    **territories[condado_id],
-    "geometry": new_a["geometry"],
-    "lon": rep_a.x,
-    "lat": rep_a.y,
-}
-```
+Four warnings and three info items were identified. The most significant are: a double-invocation of `endTransaction()` on every vertex-edit session exit (WR-01), and `pushUndoLabel` firing synchronously before API success is confirmed during vertex-edit commit (WR-02). Both cause undo label/history desync in normal editing flows.
 
 ---
 
 ## Warnings
 
-### WR-01: Missing `finally` in merge handler leaves temporal store paused on exception
+### WR-01: Double `endTransaction()` on every vertex-edit session exit
 
-**File:** `frontend/src/components/canvas/SelectionFloatingToolbar.tsx`
+**File:** `frontend/src/components/canvas/CanvasViewer.tsx:413-454`
 
-**Issue:** `handleMerge` calls `beginTransaction()` (which pauses zundo temporal recording) but uses separate `endTransaction()` calls in the `catch` block and at the end of the success path rather than in `finally`. If any statement after the `try` block throws, `endTransaction()` is never called. The temporal store remains paused indefinitely, making undo completely non-functional for the rest of the session.
+**Issue:** The `useEffect` cleanup function (lines 448–451) fires on every dependency change, not only on component unmount. When `vertexEditId` transitions from `"X"` to `null` during normal editing, React executes the cleanup from the prior render before running the new effect body. At cleanup time `prevVertexEditIdRef.current` is still `"X"`, so `endTransaction()` (i.e., `temporal.resume()`) fires once. Then the new effect body runs, hits the commit branch, and calls `endTransaction()` again at line 443.
 
-**Fix:**
-```tsx
-beginTransaction()
-try {
-  // ... merge logic ...
-  pushUndoLabel(label)
-  onOperationFinalized()
-  clearSelection()
-} catch (err) {
-  console.error('mergeTerritories failed', err)
-  return
-} finally {
-  endTransaction()   // always runs, whether success or failure
-}
+The patched `resume()` in `useProjectStore.ts` nulls `prePauseSnapshot` on the first call, so the second call does not produce a duplicate undo history entry. However, it does re-enable `isTracking` after it was already re-enabled. Any state mutation occurring between the two `resume()` calls falls inside an unintended open-tracking window and gets recorded as a standalone undo entry outside the transaction boundary.
+
+**Fix:** Guard the cleanup so it fires only when the component is unmounting or when the session began but was never closed:
+
+```typescript
+const didBeginRef = useRef(false)
+
+useEffect(() => {
+  const prev = prevVertexEditIdRef.current
+  const curr = vertexEditId
+
+  if (!prev && curr) {
+    beginTransaction()
+    didBeginRef.current = true
+  }
+
+  if (prev && !curr && projectId) {
+    // ... commit logic unchanged ...
+    endTransaction()   // single call — cleanup below will not duplicate this
+    didBeginRef.current = false
+    pushUndoLabel(`Editar vértice — ${condado?.name ?? prev}`)
+  }
+
+  prevVertexEditIdRef.current = curr
+
+  return () => {
+    // Only runs if the session was opened and never closed (e.g. unmount mid-drag)
+    if (didBeginRef.current) {
+      endTransaction()
+      didBeginRef.current = false
+    }
+  }
+}, [vertexEditId, ...])
 ```
 
 ---
 
-### WR-02: Freehand `onStageMouseUp` reads stale `points` closure
+### WR-02: `pushUndoLabel` fires before `reshapeGeometry` API success is confirmed
 
-**File:** `frontend/src/components/canvas/SplitTool.tsx:169-179`
+**File:** `frontend/src/components/canvas/CanvasViewer.tsx:425-444`
 
-**Issue:** `onStageMouseUp` captures `points` from the render-time closure. During freehand drawing, `setPoints` uses functional updates that do not synchronously update the closed-over `points` value. When `mouseup` fires, `points` may be missing the final batched state updates, causing spurious 422 "cut does not bisect" errors.
+**Issue:** `reshapeGeometry()` is launched as a floating promise with `.then/.catch` attached. `endTransaction()` (line 443) and `pushUndoLabel()` (line 444) execute synchronously after the promise is launched, before the PATCH completes. If the backend returns an error, the undo label is pushed into the editor store anyway, but no matching geometry change was committed to zundo history (the pre-pause snapshot captured by `beginTransaction()` and the post-op state are equal — the PATCH failed, so no net change). This leaves the label stack one entry ahead of the temporal history, causing mismatched labels on all subsequent Ctrl+Z presses.
 
-**Fix:** Use a `ref` to track the live point list in parallel with state:
-```tsx
-const pointsRef = useRef<Array<[number, number]>>([])
+Compare with `handleCapitalDragEnd` (lines 360–376) which correctly `await`s the API call and pushes the label only on success.
 
-// In onStageMouseMove, update both:
-setPoints((prev) => {
-  const next = [...prev, [pos.x, pos.y]]
-  pointsRef.current = next
-  return next
-})
+**Fix:** Move label push into the `.then()` callback:
 
-// In onStageMouseUp, read from ref (always current):
-const sampled = pointsRef.current.filter((_, i) => i % 4 === 0)
-void commit(sampled)
-pointsRef.current = []
+```typescript
+if (geom && geom.type === 'Polygon') {
+  reshapeGeometry(projectId, prev, { geometry: geom }, { persist })
+    .then(() => {
+      onOperationFinalized()
+      invalidateCanvasArtifacts()
+      const storeState = {
+        territories: useProjectStore.getState().territories,
+        capitals: useProjectStore.getState().capitals,
+      }
+      setIssuesForIds([prev], validateTerritories([prev], storeState))
+      pushUndoLabel(`Editar vértice — ${condado?.name ?? prev}`)  // moved here
+    })
+    .catch((err) => {
+      console.error('reshapeGeometry failed', err)
+      // label not pushed on failure — no history entry to name
+    })
+}
+endTransaction()
+// pushUndoLabel removed from synchronous path
 ```
 
 ---
 
-### WR-03: Vertex-edit PATCH is fire-and-forget; undo label pushed before backend confirms
+### WR-03: Merge revalidation omits neighbors of removed territories
 
-**File:** `frontend/src/components/canvas/CanvasViewer.tsx:406-431`
+**File:** `frontend/src/components/canvas/SelectionFloatingToolbar.tsx:100-116`
 
-**Issue:** `reshapeGeometry` is called without `await` — `endTransaction()` and `pushUndoLabel(...)` execute synchronously unconditional on the PATCH outcome. If the backend errors, the undo stack contains a label for an operation the server never accepted, creating persistent client/server geometry drift.
+**Issue:** After a successful merge, `validateTerritories` is called with `[response.merged_id]` only (line 101). D-06 specifies: "re-validate only the affected territories and their immediate neighbors." The merged-away territories were previously adjacency neighbors of other condados. After merge their border topology changes, so their former neighbors can acquire new `capital_outside` or `polygon_invalid` conditions that are never caught until the next operation touches those condados. The validation badge layer then shows stale state for those neighbors.
 
-**Fix:** Move `endTransaction` and `pushUndoLabel` into the `.then()` callback, with rollback in `.catch()`.
+**Fix:** Extend the affected set to include neighbors of the removed territories:
+
+```typescript
+const removedNeighbors = response.removed_ids.flatMap(id =>
+  condados.find(c => c.id === id)?.neighbors ?? []
+).filter(nId => nId !== response.merged_id)
+
+const mergedAffected = [response.merged_id, ...new Set(removedNeighbors)]
+const mergeIssues: ValidationIssue[] = validateTerritories(mergedAffected, storeState)
+```
 
 ---
 
-### WR-04: Bare click on empty canvas clobbers existing rubber-band selection
+### WR-04: `MultiPolygon` capital validation ignores inner ring holes
 
-**File:** `frontend/src/hooks/useRubberBandSelection.ts:65-79`
+**File:** `frontend/src/services/validation.ts:82-109`
 
-**Issue:** `onMouseUp` calls `setRubberBandSelectionIds([])` unconditionally whenever `dragStartPos` is set, regardless of whether the mouse moved enough to form a selection. A single click anywhere discards any existing multi-territory selection before the user can act on it (e.g. click Fundir).
+**Issue:** In the `MultiPolygon` branch, `pointInPolygon` is called only with `polygon[0]` (the exterior ring). Inner rings (`polygon[1..n]`, representing holes) are not checked. A capital positioned geometrically inside a hole — a subtracted region — passes the exterior-ring test and does not trigger `capital_outside`. This is a correctness gap that would allow invalid states to be exported.
 
-**Fix:** Only update selection if drag exceeded a threshold:
-```tsx
-const didDrag =
-  pos &&
-  (Math.abs(pos.x - dragStartPos.x) > 4 || Math.abs(pos.y - dragStartPos.y) > 4)
+**Fix:** After confirming the capital is inside the exterior ring, verify it is not inside any hole:
 
-if (didDrag) {
-  // ... existing selection logic ...
+```typescript
+const inExterior = capital && pointInPolygon(capital, exterior)
+const inHole = inExterior && polygon.slice(1).some(
+  (hole) => pointInPolygon(capital, hole)
+)
+if (inExterior && !inHole) {
+  capitalFound = true
 }
-// If no drag, leave existing selection intact
 ```
 
 ---
 
 ## Info
 
-### IN-01: Dead code branch in VertexHandlesLayer ring-closure sync
+### IN-01: `Ctrl+S` silently consumes the keystroke in `auto`/`per_op` strategies
 
-**File:** `frontend/src/components/canvas/VertexHandlesLayer.tsx:79`
+**File:** `frontend/src/hooks/useUndoShortcut.ts:37-42`
 
-**Issue:** Branch `if (sourceIndex === newRing.length - 1) newRing[0] = [lon, lat]` is unreachable — the backend strips the closing duplicate (`ring[:-1]`) before generating handles, so no handle will ever have `source_index` equal to `newRing.length - 1`.
+**Issue:** `e.preventDefault()` is called unconditionally for Ctrl+S/Cmd+S regardless of save strategy. `manualSave()` immediately returns without side-effects when strategy is not `explicit`. The browser's native save dialog is suppressed, but the user gets no feedback. A user pressing Ctrl+S in auto or per_op mode will see nothing happen.
+
+**Fix:** Gate `preventDefault` on the strategy being `explicit`, or show a brief informational toast in other modes. Accepting the silent no-op is also valid but warrants a code comment explaining the intent.
 
 ---
 
-### IN-02: Deprecated `navigator.platform` for macOS detection
+### IN-02: `navigator.platform` is deprecated
 
 **File:** `frontend/src/hooks/useUndoShortcut.ts:21`
 
-**Issue:** `navigator.platform` deprecated since Chrome 118. **Fix:** Use `navigator.userAgentData?.platform` with fallback.
+**Issue:** `navigator.platform` has been deprecated since Chrome 118 and may generate console warnings in future browser versions.
+
+**Fix:**
+```typescript
+// Replace:
+const isMac = typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform)
+// With:
+const isMac = typeof navigator !== 'undefined' && navigator.userAgent.includes('Mac')
+```
 
 ---
 
-### IN-03: Fragile dynamic icon lookup in EditToolbar
+### IN-03: Merge primary territory selection is unresolved with no backlog entry
 
-**File:** `frontend/src/components/canvas/EditToolbar.tsx:11-14`
+**File:** `frontend/src/components/canvas/SelectionFloatingToolbar.tsx:85-86`
 
-**Issue:** Icons resolved via `(Icons as Record<string, React.ComponentType>)[iconName]` — silently returns `undefined` if Radix renames an icon. Add a dev-mode `console.warn` guard.
+**Issue:** `primary_id = selectionIds[0]` uses the first rubber-band–selected condado as the merge primary. The `TODO(P08)` comment notes this should use the largest-area territory instead. ROADMAP.md does not define a P09 or any later phase that closes this. The correct geometry to compute the largest area is already available in `useProjectStore.getState().territories`.
 
----
-
-### IN-04: Missing ring-closure check in `ReshapeGeometryRequest` validator
-
-**File:** `backend/medieval_forge/schemas.py:157-168`
-
-**Issue:** Validator doesn't verify `coordinates[0][0] === coordinates[0][-1]`. Shapely silently auto-closes open rings, so malformed GeoJSON can be stored and later break strict consumers (Unity importers, QGIS). **Fix:** Add explicit ring-closure assertion.
+**Suggestion:** Either compute the primary from polygon area using the shoelace formula at merge time, or create an explicit backlog item so this does not silently remain as a known deviation.
 
 ---
 
-_Reviewed: 2026-04-24T00:00:00Z_
+_Reviewed: 2026-04-24T12:00:00Z_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: standard_
