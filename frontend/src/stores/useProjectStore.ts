@@ -55,8 +55,8 @@ export const useProjectStore = create<ProjectStore>()(
 
       applyBatchUpdate: (territories, capitals) =>
         set((s) => ({
-          territories: { ...s.territories, ...territories },
-          capitals: { ...s.capitals, ...capitals },
+          territories: { ...s.territories, ...territories } as ProjectStore['territories'],
+          capitals: { ...s.capitals, ...capitals } as ProjectStore['capitals'],
         })),
 
       removeTerritories: (ids) =>
