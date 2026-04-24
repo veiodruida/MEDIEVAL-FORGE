@@ -175,6 +175,7 @@ metrics:
 |------|------|-------------|
 | 263a792 | feat | Validation service + badges layer + inspector detail + export gate (D-06) |
 | d3e58c4 | feat | Persistence strategy engine + SaveStatusIndicator + SettingsPanel + beforeunload guard (D-07) |
+| 22b2713 | fix | Wire D-06 validation to merge and split finalize paths (SelectionFloatingToolbar + SplitTool) |
 
 ## Deviations from Plan
 
@@ -194,7 +195,14 @@ metrics:
 - **Files modified:** `frontend/src/components/canvas/CanvasViewer.tsx`
 - **Commit:** 263a792
 
-**3. [Rule 2 - Missing] Unused type imports in validation.ts caused tsc error**
+**3. [Rule 2 - Missing] Validation not wired to merge and split finalize paths**
+- **Found during:** Post-task review — plan behavior spec states "After each finalize (capital drag end, merge success, split success, vertex-edit commit), call validateTerritories"
+- **Issue:** `SelectionFloatingToolbar.handleMerge` and `SplitTool.commit` had persist flag + `onOperationFinalized()` wired but no `validateTerritories` / `setIssuesForIds` call. The `non_adjacent_multipolygon` warning was shown as a Toast only, not stored in `useValidationStore` (so InspectorSidebar and export gate would not see it).
+- **Fix:** Added `validateTerritories` + `setIssuesForIds` calls after merge/split success in both files. For merge: also pushes `non_adjacent_merge` `ValidationIssue` to store alongside existing Toast. For split: validates both new territory halves. Added `setIssuesForIds` to `useCallback` dep array in `useSplitTool`.
+- **Files modified:** `frontend/src/components/canvas/SelectionFloatingToolbar.tsx`, `frontend/src/components/canvas/SplitTool.tsx`
+- **Commit:** 22b2713
+
+**4. [Rule 2 - Missing] Unused type imports in validation.ts caused tsc error**
 - **Found during:** TypeScript check — `TS6196: 'GeoJSONPolygon' is declared but never used`
 - **Issue:** Plan sample code imported `GeoJSONPolygon` and `GeoJSONMultiPolygon` as named type imports but the implementation uses duck-typing via `.type === 'Polygon'` checks; these types were unused.
 - **Fix:** Removed the two unused type imports.
