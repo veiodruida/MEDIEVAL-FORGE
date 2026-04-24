@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react'
 import { Layer, Circle, Text } from 'react-konva'
 import type Konva from 'konva'
 import { useProjection } from '../../context/ProjectionContext'
-import { geoToCanvas } from '../../lib/projection'
+import { geoToCanvas, canvasToGeo } from '../../lib/projection'
 import type { TerritoryMetadataCondado } from '../../hooks/useCanvasArtifacts'
 
 /**
@@ -20,6 +20,9 @@ interface Props {
   layerVisibility: { capitals: boolean; labels: boolean }
   currentScale: number
   minScale: number
+  // Phase 4 — edit mode props:
+  isEditMode: boolean
+  onCapitalDragEnd?: (condadoId: string, lon: number, lat: number) => void | Promise<void>
 }
 
 /**
@@ -61,7 +64,13 @@ function CenteredLabel(props: { x: number; y: number; text: string }) {
 
 /**
  * DecorationsLayer renders capital dots (D-04 dual-ring) + territory labels.
- * Layer is listening=false — purely visual, clicks pass through to TerritoryLayer.
+ *
+ * Phase 4 changes (Plan 05):
+ *   - Accepts `isEditMode` prop; Layer listening={isEditMode} (Pitfall 8 fix).
+ *     When isEditMode=false, Layer is purely visual (Phase 2 behavior preserved).
+ *   - Capital inner Circle is draggable={isEditMode}; onDragEnd fires onCapitalDragEnd
+ *     with geo coordinates converted via canvasToGeo.
+ *   - Dark outer ring remains non-draggable (decorative only).
  *
  * D-04 dual-ring capital (UI-SPEC §Color §capital):
  *   OUTER (dark ring): Circle radius=6.75 fill=rgba(0,0,0,0.6)
@@ -75,6 +84,8 @@ export function DecorationsLayer({
   layerVisibility,
   currentScale,
   minScale,
+  isEditMode,
+  onCapitalDragEnd,
 }: Props) {
   const projection = useProjection()
   const showLabels =
@@ -82,12 +93,16 @@ export function DecorationsLayer({
     currentScale >= LABEL_ZOOM_THRESHOLD_RELATIVE * minScale
 
   return (
-    <Layer listening={false}>
+    // Pitfall 8 fix: Layer must be listening when in edit mode so drag events fire.
+    // When isEditMode=false the Layer is purely visual — all click/drag events
+    // pass through to TerritoryLayer (Phase 2 read-only behavior preserved).
+    <Layer listening={isEditMode}>
       {layerVisibility.capitals &&
         condados.flatMap((c) => {
           const [x, y] = geoToCanvas(c.lon, c.lat, projection)
           const color = condadoColors[c.id] ?? '#666666'
           return [
+            // Dark outer ring — decorative, never draggable
             <Circle
               key={`cap-dark-${c.id}`}
               data-role="capital-dark-ring"
@@ -96,6 +111,8 @@ export function DecorationsLayer({
               radius={6.75}
               fill="rgba(0, 0, 0, 0.6)"
             />,
+            // Inner colored circle — draggable in edit mode (Research §Pattern 3)
+            // Per Pitfall 5: do NOT setState in onDragMove. Only react on onDragEnd.
             <Circle
               key={`cap-${c.id}`}
               data-role="capital"
@@ -105,6 +122,15 @@ export function DecorationsLayer({
               fill={color}
               stroke="#ffffff"
               strokeWidth={1.5}
+              draggable={isEditMode}
+              onDragEnd={(e) => {
+                if (!onCapitalDragEnd) return
+                const node = e.target
+                const canvasX = node.x()
+                const canvasY = node.y()
+                const [lon, lat] = canvasToGeo(canvasX, canvasY, projection)
+                void onCapitalDragEnd(c.id, lon, lat)
+              }}
             />,
           ]
         })}

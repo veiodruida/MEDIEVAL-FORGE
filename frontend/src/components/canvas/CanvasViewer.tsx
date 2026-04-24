@@ -24,6 +24,13 @@ import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts'
 import { useCanvasArtifacts } from '../../hooks/useCanvasArtifacts'
 import { useUIStore } from '../../stores/uiStore'
 import { useResearchStore, computeCondadoColors } from '../../stores/useResearchStore'
+import { useEditorStore } from '../../stores/useEditorStore'
+import {
+  useProjectStore,
+  beginTransaction,
+  endTransaction,
+} from '../../stores/useProjectStore'
+import { moveCapital, EditApiError } from '../../api/edit'
 
 interface CanvasViewerProps {
   projectId: string
@@ -131,6 +138,15 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
   const layerVisibility = useUIStore((s) => s.layerVisibility)
   const selectedId = useUIStore((s) => s.selectedTerritoryId)
   const select = useUIStore((s) => s.select)
+
+  // Phase 4 — edit mode state
+  const editMode = useEditorStore((s) => s.editMode)
+  const pushUndoLabel = useEditorStore((s) => s.pushUndoLabel)
+  const applyBatchUpdate = useProjectStore((s) => s.applyBatchUpdate)
+  const setCapital = useProjectStore((s) => s.setCapital)
+  // Note: storeProjectId may differ from the `projectId` prop until hydrate() is called;
+  // handleCapitalDragEnd uses the prop-passed projectId for the API call (always correct).
+  const storeProjectId = useProjectStore((s) => s.projectId)
 
   const loadCachedForProject = useResearchStore((s) => s.loadCachedForProject)
   const manualResult = useResearchStore((s) => s.manualResult)
@@ -287,6 +303,47 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
     [select],
   )
 
+  // Phase 4 — capital drag end handler (EDIT-01, EDIT-08)
+  // Research §Pattern 2: beginTransaction/endTransaction frames the compound op
+  // (1 capital update + N polygon updates) as exactly ONE undo step.
+  // The try/finally ensures endTransaction() always fires even on network error
+  // (T-04-05-03 mitigation).
+  const handleCapitalDragEnd = useCallback(
+    async (condadoId: string, lon: number, lat: number) => {
+      const condados = metaQ.data?.condados
+      const condado = condados?.find((c) => c.id === condadoId)
+      const label = `Mover capital de ${condado?.name ?? condadoId}`
+
+      // Capture pre-drag capital position for error rollback (T-04-05-01)
+      const priorCapital = useProjectStore.getState().capitals[condadoId]
+
+      // Compound-op batching: pause history, apply all mutations, resume once
+      beginTransaction()
+      try {
+        const response = await moveCapital(projectId, condadoId, { lon, lat })
+        // Apply all updates in one call so the post-resume snapshot is complete
+        applyBatchUpdate(response.updated_territories, { [condadoId]: [lon, lat] })
+      } catch (err) {
+        // Rollback: restore prior capital so store reflects reality
+        if (priorCapital) setCapital(condadoId, priorCapital)
+        // eslint-disable-next-line no-console
+        console.error('moveCapital failed', err instanceof EditApiError ? `${err.status}: ${err.message}` : err)
+        // Toast-on-error deferred to P07 (noted in plan output spec)
+        return // DON'T push undo label — nothing committed
+      } finally {
+        endTransaction()
+      }
+      // Only push label on success
+      pushUndoLabel(label)
+    },
+    // storeProjectId read for reference but projectId prop is authoritative for API calls
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [projectId, applyBatchUpdate, setCapital, pushUndoLabel, metaQ.data],
+  )
+
+  // Suppress unused-var lint for storeProjectId (used by P06/P07 hydrate checks)
+  void storeProjectId
+
   // ------------------------------------------------------------------------
   // EARLY RETURNS — safe because every hook above has been called. B-1:
   // `ref={setContainerRef}` MUST appear on the root div of EVERY branch so
@@ -376,6 +433,8 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
             }}
             currentScale={currentScale}
             minScale={minScale}
+            isEditMode={editMode}
+            onCapitalDragEnd={handleCapitalDragEnd}
           />
           <InteractionLayer territories={territoriesQ.data} />
         </Stage>

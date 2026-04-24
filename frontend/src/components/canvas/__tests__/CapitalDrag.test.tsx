@@ -1,12 +1,29 @@
-import { describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
-import { useEditorStore } from '../../../stores/useEditorStore'  // will fail RED until P03
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { render, screen, act } from '@testing-library/react'
+import { useEditorStore } from '../../../stores/useEditorStore'
+import { useProjectStore, beginTransaction, endTransaction } from '../../../stores/useProjectStore'
 import { DecorationsLayer } from '../DecorationsLayer'
 import { ProjectionProvider } from '../../../context/ProjectionContext'
 import { buildProjectionConfig } from '../../../lib/projection'
 import type { TerritoryMetadataCondado } from '../../../hooks/useCanvasArtifacts'
 
-// Minimal react-konva mock consistent with Phase 2 patterns
+// Mock the edit API so tests don't hit network
+vi.mock('../../../api/edit', () => ({
+  moveCapital: vi.fn(),
+  EditApiError: class EditApiError extends Error {
+    status: number
+    constructor(status: number, message: string) {
+      super(message)
+      this.name = 'EditApiError'
+      this.status = status
+    }
+  },
+}))
+
+// Import after mock so we get the mocked version
+import { moveCapital } from '../../../api/edit'
+
+// react-konva mock: Circle fires onDragEnd onClick so we can simulate drag in tests
 vi.mock('react-konva', () => ({
   Layer: ({ children }: { children?: React.ReactNode }) => (
     <div data-testid="konva-layer">{children}</div>
@@ -23,19 +40,23 @@ vi.mock('react-konva', () => ({
     onDragEnd?: (e: { target: { x: () => number; y: () => number } }) => void
     'data-role'?: string
     'data-id'?: string
-  }) => (
-    <div
-      data-testid="circle"
-      data-x={String(p.x ?? '')}
-      data-y={String(p.y ?? '')}
-      data-radius={String(p.radius ?? '')}
-      data-fill={p.fill ?? ''}
-      data-stroke={p.stroke ?? ''}
-      data-draggable={String(p.draggable ?? false)}
-      data-role={p['data-role'] ?? ''}
-      data-id={p['data-id'] ?? ''}
-    />
-  ),
+  }) => {
+    const node = { x: () => p.x ?? 0, y: () => p.y ?? 0 }
+    return (
+      <div
+        data-testid="circle"
+        data-x={String(p.x ?? '')}
+        data-y={String(p.y ?? '')}
+        data-radius={String(p.radius ?? '')}
+        data-fill={p.fill ?? ''}
+        data-stroke={p.stroke ?? ''}
+        data-draggable={String(p.draggable ?? false)}
+        data-role={p['data-role'] ?? ''}
+        data-id={p['data-id'] ?? ''}
+        onClick={() => p.onDragEnd?.({ target: node })}
+      />
+    )
+  },
   Text: (p: { text?: string }) => <div data-testid="text" data-text={p.text ?? ''} />,
 }))
 
@@ -78,11 +99,16 @@ function wrap(node: React.ReactNode) {
   return <ProjectionProvider value={PROJECTION}>{node}</ProjectionProvider>
 }
 
+beforeEach(() => {
+  // Clean store state between tests so pastStates don't bleed across
+  useProjectStore.setState({ territories: {}, capitals: {}, projectId: 'test-pid', loading: false })
+  useProjectStore.temporal.getState().clear()
+  useEditorStore.setState({ editMode: false, undoLabels: [], redoLabels: [] })
+  vi.clearAllMocks()
+})
+
 describe('CapitalDrag — edit mode gating (D-09 + D-01)', () => {
   it('capital Circle is draggable only in edit mode', () => {
-    // Set edit mode true
-    useEditorStore.setState({ editMode: true })
-
     const { rerender } = render(
       wrap(
         <DecorationsLayer
@@ -91,6 +117,7 @@ describe('CapitalDrag — edit mode gating (D-09 + D-01)', () => {
           layerVisibility={{ capitals: true, labels: false }}
           currentScale={1}
           minScale={0.34}
+          isEditMode={true}
         />,
       ),
     )
@@ -102,8 +129,7 @@ describe('CapitalDrag — edit mode gating (D-09 + D-01)', () => {
       expect(c.getAttribute('data-draggable')).toBe('true')
     })
 
-    // Toggle edit mode off
-    useEditorStore.setState({ editMode: false })
+    // Re-render with edit mode off
     rerender(
       wrap(
         <DecorationsLayer
@@ -112,6 +138,7 @@ describe('CapitalDrag — edit mode gating (D-09 + D-01)', () => {
           layerVisibility={{ capitals: true, labels: false }}
           currentScale={1}
           minScale={0.34}
+          isEditMode={false}
         />,
       ),
     )
@@ -124,11 +151,6 @@ describe('CapitalDrag — edit mode gating (D-09 + D-01)', () => {
   })
 
   it('onDragEnd fires handleCapitalDragEnd with converted geo coordinates', () => {
-    // This test verifies DecorationsLayer will accept an onCapitalDragEnd prop
-    // and call it with (condadoId, lon, lat) via canvasToGeo(x, y, projection)
-    // The actual implementation is in P03; this test will be RED until then.
-    useEditorStore.setState({ editMode: true })
-
     const handleCapitalDragEnd = vi.fn()
 
     render(
@@ -139,15 +161,126 @@ describe('CapitalDrag — edit mode gating (D-09 + D-01)', () => {
           layerVisibility={{ capitals: true, labels: false }}
           currentScale={1}
           minScale={0.34}
+          isEditMode={true}
           onCapitalDragEnd={handleCapitalDragEnd}
         />,
       ),
     )
 
-    // In edit mode with onCapitalDragEnd prop, the component should wire dragEnd
-    // When programmatically triggered, it should call handleCapitalDragEnd(condadoId, lon, lat)
-    // This assertion will fail RED because DecorationsLayer doesn't accept onCapitalDragEnd yet
-    expect(handleCapitalDragEnd).toBeDefined()
-    // Actual drag simulation deferred to P03 implementation test
+    // Find the inner capital circle for 'leon' and simulate drag end via onClick
+    const circles = screen.getAllByTestId('circle')
+    const leonInner = circles.find(
+      (c) => c.getAttribute('data-radius') === '6' && c.getAttribute('data-fill') === '#e03030',
+    )
+    expect(leonInner).toBeDefined()
+
+    // Simulate drag end (onClick → onDragEnd in mock)
+    leonInner!.click()
+
+    expect(handleCapitalDragEnd).toHaveBeenCalledOnce()
+    const [calledId, calledLon, calledLat] = handleCapitalDragEnd.mock.calls[0] as [string, number, number]
+    expect(calledId).toBe('leon')
+    // Coordinates should be numbers (geo-space output from canvasToGeo)
+    expect(typeof calledLon).toBe('number')
+    expect(typeof calledLat).toBe('number')
+  })
+
+  it('a capital drag produces exactly one past-state entry (compound op batching)', async () => {
+    // Stub moveCapital to return 3 updated territories
+    vi.mocked(moveCapital).mockResolvedValue({
+      updated_territories: {
+        leon: { type: 'Polygon', coordinates: [[[0, 0], [1, 0], [1, 1], [0, 0]]] },
+        castela: { type: 'Polygon', coordinates: [[[1, 0], [2, 0], [2, 1], [1, 0]]] },
+        galiza: { type: 'Polygon', coordinates: [[[0, 1], [1, 1], [1, 2], [0, 1]]] },
+      },
+      affected_ids: ['leon', 'castela', 'galiza'],
+    })
+
+    // Inline handler that replicates CanvasViewer.handleCapitalDragEnd compound-op pattern
+    const handleCapitalDragEnd = async (condadoId: string, lon: number, lat: number) => {
+      const applyBatchUpdate = useProjectStore.getState().applyBatchUpdate
+      beginTransaction()
+      try {
+        const response = await moveCapital('test-pid', condadoId, { lon, lat })
+        applyBatchUpdate(response.updated_territories, { [condadoId]: [lon, lat] })
+      } finally {
+        endTransaction()
+      }
+      useEditorStore.getState().pushUndoLabel(`Mover capital de León`)
+    }
+
+    render(
+      wrap(
+        <DecorationsLayer
+          condados={CONDADOS}
+          condadoColors={COLORS}
+          layerVisibility={{ capitals: true, labels: false }}
+          currentScale={1}
+          minScale={0.34}
+          isEditMode={true}
+          onCapitalDragEnd={handleCapitalDragEnd}
+        />,
+      ),
+    )
+
+    const circles = screen.getAllByTestId('circle')
+    const leonInner = circles.find(
+      (c) => c.getAttribute('data-radius') === '6' && c.getAttribute('data-fill') === '#e03030',
+    )
+    expect(leonInner).toBeDefined()
+
+    // Trigger drag end and await the async handler
+    await act(async () => {
+      leonInner!.click()
+    })
+
+    // The compound op (1 capital update + 3 territory updates) must register as ONE undo step
+    expect(useProjectStore.temporal.getState().pastStates.length).toBe(1)
+  })
+
+  it('pushes "Mover capital de {name}" label to useEditorStore after drag', async () => {
+    vi.mocked(moveCapital).mockResolvedValue({
+      updated_territories: {
+        leon: { type: 'Polygon', coordinates: [[[0, 0], [1, 0], [1, 1], [0, 0]]] },
+      },
+      affected_ids: ['leon'],
+    })
+
+    const handleCapitalDragEnd = async (condadoId: string, lon: number, lat: number) => {
+      const applyBatchUpdate = useProjectStore.getState().applyBatchUpdate
+      beginTransaction()
+      try {
+        const response = await moveCapital('test-pid', condadoId, { lon, lat })
+        applyBatchUpdate(response.updated_territories, { [condadoId]: [lon, lat] })
+      } finally {
+        endTransaction()
+      }
+      useEditorStore.getState().pushUndoLabel(`Mover capital de León`)
+    }
+
+    render(
+      wrap(
+        <DecorationsLayer
+          condados={CONDADOS}
+          condadoColors={COLORS}
+          layerVisibility={{ capitals: true, labels: false }}
+          currentScale={1}
+          minScale={0.34}
+          isEditMode={true}
+          onCapitalDragEnd={handleCapitalDragEnd}
+        />,
+      ),
+    )
+
+    const circles = screen.getAllByTestId('circle')
+    const leonInner = circles.find(
+      (c) => c.getAttribute('data-radius') === '6' && c.getAttribute('data-fill') === '#e03030',
+    )
+
+    await act(async () => {
+      leonInner!.click()
+    })
+
+    expect(useEditorStore.getState().undoLabels.at(-1)).toBe('Mover capital de León')
   })
 })

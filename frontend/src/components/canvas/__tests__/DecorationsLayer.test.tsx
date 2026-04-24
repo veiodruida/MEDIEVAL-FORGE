@@ -117,6 +117,7 @@ describe('DecorationsLayer — D-04 dual-ring capitals', () => {
           layerVisibility={{ capitals: true, labels: false }}
           currentScale={1}
           minScale={0.34}
+          isEditMode={false}
         />,
       ),
     )
@@ -153,6 +154,7 @@ describe('DecorationsLayer — D-04 dual-ring capitals', () => {
           layerVisibility={{ capitals: true, labels: false }}
           currentScale={1}
           minScale={0.34}
+          isEditMode={false}
         />,
       ),
     )
@@ -173,6 +175,7 @@ describe('DecorationsLayer — D-04 dual-ring capitals', () => {
           layerVisibility={{ capitals: false, labels: false }}
           currentScale={1}
           minScale={0.34}
+          isEditMode={false}
         />,
       ),
     )
@@ -190,6 +193,7 @@ describe('DecorationsLayer — label gating (D-04 + zoom threshold)', () => {
           layerVisibility={{ capitals: true, labels: true }}
           currentScale={0.5}
           minScale={0.34}
+          isEditMode={false}
         />,
       ),
     )
@@ -205,6 +209,7 @@ describe('DecorationsLayer — label gating (D-04 + zoom threshold)', () => {
           layerVisibility={{ capitals: true, labels: true }}
           currentScale={0.51}
           minScale={0.34}
+          isEditMode={false}
         />,
       ),
     )
@@ -229,6 +234,7 @@ describe('DecorationsLayer — label gating (D-04 + zoom threshold)', () => {
           layerVisibility={{ capitals: true, labels: true }}
           currentScale={1.49 * 0.34}
           minScale={0.34}
+          isEditMode={false}
         />,
       ),
     )
@@ -244,6 +250,7 @@ describe('DecorationsLayer — label gating (D-04 + zoom threshold)', () => {
           layerVisibility={{ capitals: true, labels: false }}
           currentScale={5}
           minScale={0.34}
+          isEditMode={false}
         />,
       ),
     )
@@ -252,7 +259,7 @@ describe('DecorationsLayer — label gating (D-04 + zoom threshold)', () => {
 })
 
 describe('DecorationsLayer — layer props', () => {
-  it('Layer has listening=false (decorative, not interactive)', () => {
+  it('Layer has listening=false when isEditMode=false (decorative, not interactive)', () => {
     render(
       wrap(
         <DecorationsLayer
@@ -261,10 +268,28 @@ describe('DecorationsLayer — layer props', () => {
           layerVisibility={{ capitals: true, labels: false }}
           currentScale={1}
           minScale={0.34}
+          isEditMode={false}
         />,
       ),
     )
     const layer = screen.getByTestId('konva-layer')
     expect(layer.getAttribute('data-listening')).toBe('false')
+  })
+
+  it('Layer has listening=true when isEditMode=true (edit mode enables drag events)', () => {
+    render(
+      wrap(
+        <DecorationsLayer
+          condados={CONDADOS}
+          condadoColors={COLORS}
+          layerVisibility={{ capitals: true, labels: false }}
+          currentScale={1}
+          minScale={0.34}
+          isEditMode={true}
+        />,
+      ),
+    )
+    const layer = screen.getByTestId('konva-layer')
+    expect(layer.getAttribute('data-listening')).toBe('true')
   })
 })
