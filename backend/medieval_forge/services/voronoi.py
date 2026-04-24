@@ -237,11 +237,11 @@ def split_territory(
     if not isinstance(polygon, Polygon):
         raise ValueError("split_territory requires a Polygon geometry, not MultiPolygon")
 
-    line = LineString(cut_line)
+    cut_line_geom = LineString(cut_line)
 
     # Pre-validation (Pitfall 4): cut line MUST cross the exterior at ≥ 2 distinct
     # points. If not, ops.split silently returns [original_polygon].
-    intersection = polygon.exterior.intersection(line)
+    intersection = polygon.exterior.intersection(cut_line_geom)
     n_crossings = 0
     if isinstance(intersection, Point):
         n_crossings = 1
@@ -255,7 +255,7 @@ def split_territory(
         )
 
     # Actual split
-    result = split(polygon, line)
+    result = split(polygon, cut_line_geom)
     polys = [g for g in result.geoms if isinstance(g, Polygon)]
     if len(polys) < 2:
         raise ValueError(
