@@ -78,6 +78,7 @@ async def territory_files(tmp_path, monkeypatch):
     proj_generated = fake_data_dir / "projects" / PROJECT_ID / "generated"
     proj_generated.mkdir(parents=True, exist_ok=True)
 
+    # scipy Voronoi requires >= 4 non-coplanar seeds; include 4 territories.
     territories_data = {
         "type": "FeatureCollection",
         "features": [
@@ -106,6 +107,40 @@ async def territory_files(tmp_path, monkeypatch):
                     "lat": 39.5,
                     "neighbors": ["leon"],
                     "duchy_id": "d_castela",
+                    "baronies": [],
+                },
+            },
+            {
+                "type": "Feature",
+                "id": "galiza",
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [[[-9.0, 43.0], [-8.0, 43.0], [-8.0, 44.0], [-9.0, 44.0], [-9.0, 43.0]]],
+                },
+                "properties": {
+                    "id": "galiza",
+                    "name": "Galiza",
+                    "lon": -8.5,
+                    "lat": 43.5,
+                    "neighbors": [],
+                    "duchy_id": "d_galiza",
+                    "baronies": [],
+                },
+            },
+            {
+                "type": "Feature",
+                "id": "aragon",
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [[[-1.0, 41.0], [0.0, 41.0], [0.0, 42.0], [-1.0, 42.0], [-1.0, 41.0]]],
+                },
+                "properties": {
+                    "id": "aragon",
+                    "name": "Aragón",
+                    "lon": -0.5,
+                    "lat": 41.5,
+                    "neighbors": [],
+                    "duchy_id": "d_aragon",
                     "baronies": [],
                 },
             },
