@@ -147,6 +147,11 @@ async def split_territory_endpoint(
     new_a = result["new_territory_a"]
     new_b = result["new_territory_b"]
 
+    # Override new_a id to match stored key: voronoi.py returns "{condado_id}_a"
+    # but we keep the original territory on disk under its existing condado_id.
+    # P05 frontend must reference the same id it sent to avoid 404 on next edit.
+    new_a = {**new_a, "id": condado_id}
+
     if persist:
         territories[condado_id]["geometry"] = new_a["geometry"]
         new_b_id = new_b["id"]
