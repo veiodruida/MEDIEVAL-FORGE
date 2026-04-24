@@ -1,9 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook } from '@testing-library/react'
 import { fireEvent } from '@testing-library/dom'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import React from 'react'
 import { useUndoShortcut } from '../useUndoShortcut'
 import { useProjectStore } from '../../stores/useProjectStore'
 import { useEditorStore } from '../../stores/useEditorStore'
+
+function createWrapper() {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return ({ children }: { children: React.ReactNode }) =>
+    React.createElement(QueryClientProvider, { client: queryClient }, children)
+}
 
 beforeEach(() => {
   vi.restoreAllMocks()
@@ -22,7 +30,7 @@ describe('useUndoShortcut — keyboard bindings', () => {
       clear: vi.fn(),
     } as ReturnType<typeof useProjectStore.temporal.getState>)
 
-    renderHook(() => useUndoShortcut())
+    renderHook(() => useUndoShortcut(), { wrapper: createWrapper() })
 
     fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
     expect(undoSpy).toHaveBeenCalledTimes(1)
@@ -40,7 +48,7 @@ describe('useUndoShortcut — keyboard bindings', () => {
       clear: vi.fn(),
     } as ReturnType<typeof useProjectStore.temporal.getState>)
 
-    renderHook(() => useUndoShortcut())
+    renderHook(() => useUndoShortcut(), { wrapper: createWrapper() })
 
     fireEvent.keyDown(window, { key: 'y', ctrlKey: true })
     expect(redoSpy).toHaveBeenCalledTimes(1)
@@ -64,7 +72,7 @@ describe('useUndoShortcut — keyboard bindings', () => {
       configurable: true,
     })
 
-    renderHook(() => useUndoShortcut())
+    renderHook(() => useUndoShortcut(), { wrapper: createWrapper() })
 
     fireEvent.keyDown(window, { key: 'z', metaKey: true })
     expect(undoSpy).toHaveBeenCalledTimes(1)
@@ -89,7 +97,7 @@ describe('useUndoShortcut — keyboard bindings', () => {
 
     const popUndoLabelSpy = vi.spyOn(useEditorStore.getState(), 'popUndoLabel')
 
-    renderHook(() => useUndoShortcut())
+    renderHook(() => useUndoShortcut(), { wrapper: createWrapper() })
 
     fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
     expect(popUndoLabelSpy).toHaveBeenCalledTimes(1)
@@ -108,7 +116,7 @@ describe('useUndoShortcut — keyboard bindings', () => {
 
     const popRedoLabelSpy = vi.spyOn(useEditorStore.getState(), 'popRedoLabel')
 
-    renderHook(() => useUndoShortcut())
+    renderHook(() => useUndoShortcut(), { wrapper: createWrapper() })
 
     fireEvent.keyDown(window, { key: 'y', ctrlKey: true })
     expect(popRedoLabelSpy).toHaveBeenCalledTimes(1)
