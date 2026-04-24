@@ -12,6 +12,8 @@
     "test:e2e:update": "playwright test --update-snapshots"
   },
   "dependencies": {
+    "@radix-ui/react-icons": "^1.3.2",
+    "@radix-ui/react-toast": "^1.2.15",
     "@radix-ui/themes": "^3.3.0",
     "@tanstack/react-query": "^5.99.0",
     "konva": "^10.2.5",
