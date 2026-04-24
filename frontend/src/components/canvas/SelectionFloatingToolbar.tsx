@@ -13,6 +13,9 @@ import { geoToCanvas } from '../../lib/projection'
 import { useProjection } from '../../context/ProjectionContext'
 import type { TerritoryMetadataCondado } from '../../hooks/useCanvasArtifacts'
 import { useSaveStrategy, onOperationFinalized } from '../../services/persistence'
+import { useValidationStore } from '../../stores/useValidationStore'
+import { validateTerritories } from '../../services/validation'
+import type { ValidationIssue } from '../../types/editing'
 
 interface Props {
   condados: TerritoryMetadataCondado[]
@@ -42,6 +45,7 @@ export function SelectionFloatingToolbar({ condados, stageRef }: Props) {
   const projectId = useProjectStore((s) => s.projectId)
   const projection = useProjection()
   const strategy = useSaveStrategy()
+  const setIssuesForIds = useValidationStore((s) => s.setIssuesForIds)
   const [toastMsg, setToastMsg] = useState<string | null>(null)
   const [toastOpen, setToastOpen] = useState(false)
 
@@ -90,10 +94,24 @@ export function SelectionFloatingToolbar({ condados, stageRef }: Props) {
       // Apply merged geometry to primary territory; remove the others
       applyBatchUpdate({ [response.merged_id]: response.merged_territory }, {})
       removeTerritories(response.removed_ids)
+      // D-06: revalidate merged territory after finalize
+      const mergedAffected = [response.merged_id]
+      const storeState = {
+        territories: useProjectStore.getState().territories,
+        capitals: useProjectStore.getState().capitals,
+      }
+      const mergeIssues: ValidationIssue[] = validateTerritories(mergedAffected, storeState)
       if (response.warning === 'non_adjacent_multipolygon') {
+        mergeIssues.push({
+          condado_id: response.merged_id,
+          severity: 'warning',
+          rule: 'non_adjacent_merge',
+          message: 'Território não adjacente — multipolígono criado',
+        })
         setToastMsg('Territórios não adjacentes. Fundir criará um multipolígono (aviso de validação).')
         setToastOpen(true)
       }
+      setIssuesForIds(mergedAffected, mergeIssues)
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error('mergeTerritories failed', err)
