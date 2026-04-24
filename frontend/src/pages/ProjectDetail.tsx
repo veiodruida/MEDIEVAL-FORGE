@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { Box, Button, Card, Callout, Flex, Heading, Tabs, Text, TextField } from '@radix-ui/themes'
+import { Box, Button, Card, Callout, Flex, Heading, Tabs, Text, TextField, Tooltip } from '@radix-ui/themes'
 import { useQueryClient } from '@tanstack/react-query'
 import { useProject, useUpdateProject, useIngestStream, useGenerate, useExport, useIngestStatus, useTerritoryTemplate, useRenderModern, type Project } from '../api/client'
 import { TerritoryEditor, type TerritoryData } from './TerritoryEditor'
@@ -13,6 +13,7 @@ import { buildProjectionConfig } from '../lib/projection'
 import { ResearchDialog } from '../components/research/ResearchDialog'
 import { useResearchStore } from '../stores/useResearchStore'
 import { useEditorStore } from '../stores/useEditorStore'
+import { useValidationStore } from '../stores/useValidationStore'
 import { ErrorBoundary } from 'react-error-boundary'
 
 const STATUS_LABEL: Record<string, string> = {
@@ -58,6 +59,7 @@ export function ProjectDetail() {
   const { data: templateData } = useTerritoryTemplate(templateRegion)
 
   const editMode = useEditorStore((s) => s.editMode)
+  const errorCount = useValidationStore((s) => s.issues.filter((i) => i.severity === 'error').length)
 
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState({ name: '', period_start: 0, period_end: 0 })
@@ -192,10 +194,14 @@ export function ProjectDetail() {
         <Card mb="4" style={{ border: '2px solid var(--green-6)', background: 'var(--green-1)' }}>
           <Flex justify="between" align="center" mb="3">
             <Heading size="3" style={{ color: 'var(--green-11)' }}>Mapa gerado</Heading>
-            <Button variant="soft" color="green" onClick={() => exportZip.mutate()}
-              disabled={exportZip.isPending}>
-              {exportZip.isPending ? 'Preparando ZIP…' : '3. Exportar ZIP (Unity)'}
-            </Button>
+            <Tooltip content={errorCount > 0 ? 'Corrija os erros de validação primeiro' : 'Exportar pacote Unity'}>
+              <span>
+                <Button variant="soft" color="green" onClick={() => exportZip.mutate()}
+                  disabled={exportZip.isPending || errorCount > 0}>
+                  {exportZip.isPending ? 'Preparando ZIP…' : '3. Exportar ZIP (Unity)'}
+                </Button>
+              </span>
+            </Tooltip>
           </Flex>
           <Flex gap="3" wrap="wrap">
             {[

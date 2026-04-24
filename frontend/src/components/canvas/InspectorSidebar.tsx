@@ -1,6 +1,8 @@
+import { useMemo } from 'react'
 import { Badge, Box, Flex, Heading, ScrollArea, Text } from '@radix-ui/themes'
 import { useUIStore } from '../../stores/uiStore'
 import { useResearchStore } from '../../stores/useResearchStore'
+import { useValidationStore } from '../../stores/useValidationStore'
 import type {
   TerritoryMetadata,
   TerritoryMetadataCondado,
@@ -72,6 +74,14 @@ export function InspectorSidebar({
   const selectedId = useUIStore((s) => s.selectedTerritoryId)
   const select = useUIStore((s) => s.select)
   const manualResult = useResearchStore((s) => s.manualResult)
+  // Pull the raw issues array (stable reference from store) then filter with useMemo.
+  // Inline filter in the selector returns a new array every call, triggering the
+  // React useSyncExternalStore "getSnapshot must be cached" infinite loop.
+  const allIssues = useValidationStore((s) => s.issues)
+  const validationIssues = useMemo(
+    () => (selectedId ? allIssues.filter((i) => i.condado_id === selectedId) : []),
+    [allIssues, selectedId],
+  )
 
   const condado: TerritoryMetadataCondado | undefined = selectedId
     ? metadata.condados.find((c) => c.id === selectedId)
@@ -200,6 +210,27 @@ export function InspectorSidebar({
           <Text size="2" color="gray" as="p">{condado.name}</Text>
         )}
       </Box>
+
+      {/* Validation issues (D-06) — shown when condado has errors/warnings */}
+      {validationIssues.length > 0 && (
+        <Box>
+          <Text size="1" weight="bold" color="red" as="p" mb="1">Problemas de Validação</Text>
+          <Flex direction="column" gap="1">
+            {validationIssues.map((issue, idx) => (
+              <Flex key={idx} gap="2" align="center">
+                <Badge
+                  color={issue.severity === 'error' ? 'red' : 'orange'}
+                  variant="soft"
+                  size="1"
+                >
+                  {issue.severity === 'error' ? 'Erro' : 'Aviso'}
+                </Badge>
+                <Text size="1">{issue.message}</Text>
+              </Flex>
+            ))}
+          </Flex>
+        </Box>
+      )}
 
       {/* Group 4: Adjacent territories */}
       <Box>

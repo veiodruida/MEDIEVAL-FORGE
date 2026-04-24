@@ -37,6 +37,9 @@ import {
 import { moveCapital, reshapeGeometry, EditApiError } from '../../api/edit'
 import { SelectionFloatingToolbar } from './SelectionFloatingToolbar'
 import { VertexHandlesLayer } from './VertexHandlesLayer'
+import { ValidationBadgesLayer } from './ValidationBadgesLayer'
+import { validateTerritories } from '../../services/validation'
+import { useValidationStore } from '../../stores/useValidationStore'
 
 interface CanvasViewerProps {
   projectId: string
@@ -154,6 +157,7 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
   const pushUndoLabel = useEditorStore((s) => s.pushUndoLabel)
   const applyBatchUpdate = useProjectStore((s) => s.applyBatchUpdate)
   const setCapital = useProjectStore((s) => s.setCapital)
+  const setIssuesForIds = useValidationStore((s) => s.setIssuesForIds)
   // Note: storeProjectId may differ from the `projectId` prop until hydrate() is called;
   // handleCapitalDragEnd uses the prop-passed projectId for the API call (always correct).
   const storeProjectId = useProjectStore((s) => s.projectId)
@@ -335,10 +339,12 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
 
       // Compound-op batching: pause history, apply all mutations, resume once
       beginTransaction()
+      let affectedIds: string[] = []
       try {
         const response = await moveCapital(projectId, condadoId, { lon, lat })
         // Apply all updates in one call so the post-resume snapshot is complete
         applyBatchUpdate(response.updated_territories, { [condadoId]: [lon, lat] })
+        affectedIds = response.affected_ids
       } catch (err) {
         // Rollback: restore prior capital so store reflects reality
         if (priorCapital) setCapital(condadoId, priorCapital)
@@ -351,10 +357,18 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
       }
       // Only push label on success
       pushUndoLabel(label)
+      // D-06: revalidate affected territories after finalize
+      if (affectedIds.length > 0) {
+        const storeState = {
+          territories: useProjectStore.getState().territories,
+          capitals: useProjectStore.getState().capitals,
+        }
+        setIssuesForIds(affectedIds, validateTerritories(affectedIds, storeState))
+      }
     },
     // storeProjectId read for reference but projectId prop is authoritative for API calls
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [projectId, applyBatchUpdate, setCapital, pushUndoLabel, metaQ.data],
+    [projectId, applyBatchUpdate, setCapital, pushUndoLabel, metaQ.data, setIssuesForIds],
   )
 
   // Suppress unused-var lint for storeProjectId (used by P06/P07 hydrate checks)
@@ -390,6 +404,14 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
       const condado = metaQ.data?.condados.find((c) => c.id === prev)
       if (geom && geom.type === 'Polygon') {
         reshapeGeometry(projectId, prev, { geometry: geom })
+          .then(() => {
+            // D-06: revalidate after successful vertex-edit commit
+            const storeState = {
+              territories: useProjectStore.getState().territories,
+              capitals: useProjectStore.getState().capitals,
+            }
+            setIssuesForIds([prev], validateTerritories([prev], storeState))
+          })
           .catch((err) => {
             // eslint-disable-next-line no-console
             console.error('reshapeGeometry failed', err)
@@ -406,7 +428,7 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [vertexEditId, projectId, pushUndoLabel, metaQ.data])
+  }, [vertexEditId, projectId, pushUndoLabel, metaQ.data, setIssuesForIds])
 
   // NOTE: Esc handler for vertex-edit exit was here in P06. Superseded by useEditKeyboardMap
   // (P07 Task 3) which handles the full Phase-4 keyboard map including Esc priority chain.
@@ -561,6 +583,8 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
           )}
           {/* Split tool preview layer: dashed iris cut-line + vertex dots */}
           {splitTool.previewLayer}
+          {/* ValidationBadgesLayer: red/amber 8px dots at condado centroids (D-06) */}
+          <ValidationBadgesLayer condados={condadosForRubberBand} />
         </Stage>
         {/* Split tool toast: 422 error rendered outside Stage (DOM, not canvas) */}
         {splitTool.toastEl}
