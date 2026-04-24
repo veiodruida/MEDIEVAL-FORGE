@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { useProjectStore } from '../stores/useProjectStore'
 import { useEditorStore } from '../stores/useEditorStore'
 import { manualSave } from '../services/persistence'
@@ -16,6 +17,7 @@ import { manualSave } from '../services/persistence'
  * Input guard: no-ops when focus is in INPUT / TEXTAREA / contentEditable.
  */
 export function useUndoShortcut() {
+  const queryClient = useQueryClient()
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const isMac = typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform)
@@ -35,9 +37,27 @@ export function useUndoShortcut() {
       }
 
       if (e.key === 's' || e.key === 'S') {
-        // Ctrl+S / Cmd+S: flush explicit-mode snapshot (D-07)
+        // Ctrl+S / Cmd+S: flush explicit-mode snapshot (D-07).
+        // GAP-10: After successful flush, invalidate TanStack Query cache so
+        // canvas re-renders with post-edit geometry. Mirrors CanvasViewer's
+        // invalidateCanvasArtifacts pattern but runs ONLY in the explicit path
+        // (CanvasViewer skips invalidation for explicit mode by design).
         e.preventDefault()
-        void manualSave()
+        void (async () => {
+          try {
+            await manualSave()
+            const { projectId } = useProjectStore.getState()
+            if (!projectId) return
+            queryClient.invalidateQueries({ queryKey: ['territories-geojson', projectId] })
+            queryClient.invalidateQueries({ queryKey: ['territory-metadata', projectId] })
+          } catch (err) {
+            // manualSave currently does not throw (catches internally and calls
+            // markUnsaved), but guard defensively so a future throw does not
+            // trigger invalidation of a stale/unsaved cache.
+            // eslint-disable-next-line no-console
+            console.error('Ctrl+S flush failed', err)
+          }
+        })()
         return
       }
 
@@ -61,5 +81,5 @@ export function useUndoShortcut() {
 
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [])
+  }, [queryClient])
 }
