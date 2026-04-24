@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { useProjectStore } from '../stores/useProjectStore'
 import { useEditorStore } from '../stores/useEditorStore'
+import { manualSave } from '../services/persistence'
 
 /**
  * Binds Ctrl+Z / Ctrl+Y (Cmd+Z / Cmd+Y on macOS) to zundo temporal.undo/redo.
@@ -10,6 +11,7 @@ import { useEditorStore } from '../stores/useEditorStore'
  * Redo inverts. Both operations must be kept in sync with temporal.undo/redo.
  *
  * Also handles Cmd+Shift+Z (macOS alternate redo binding).
+ * Also handles Ctrl+S / Cmd+S → manualSave() flush (D-07 explicit strategy).
  *
  * Input guard: no-ops when focus is in INPUT / TEXTAREA / contentEditable.
  */
@@ -29,6 +31,13 @@ export function useUndoShortcut() {
           target.tagName === 'TEXTAREA' ||
           target.isContentEditable)
       ) {
+        return
+      }
+
+      if (e.key === 's' || e.key === 'S') {
+        // Ctrl+S / Cmd+S: flush explicit-mode snapshot (D-07)
+        e.preventDefault()
+        void manualSave()
         return
       }
 

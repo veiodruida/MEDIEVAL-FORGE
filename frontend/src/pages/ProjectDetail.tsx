@@ -14,6 +14,9 @@ import { ResearchDialog } from '../components/research/ResearchDialog'
 import { useResearchStore } from '../stores/useResearchStore'
 import { useEditorStore } from '../stores/useEditorStore'
 import { useValidationStore } from '../stores/useValidationStore'
+import { SaveStatusIndicator } from '../components/canvas/SaveStatusIndicator'
+import { SettingsPanel } from '../components/canvas/SettingsPanel'
+import { useBeforeUnloadGuard } from '../hooks/useBeforeUnloadGuard'
 import { ErrorBoundary } from 'react-error-boundary'
 
 const STATUS_LABEL: Record<string, string> = {
@@ -60,6 +63,9 @@ export function ProjectDetail() {
 
   const editMode = useEditorStore((s) => s.editMode)
   const errorCount = useValidationStore((s) => s.issues.filter((i) => i.severity === 'error').length)
+
+  // D-07: browser navigation guard when explicit mode has unsaved changes
+  useBeforeUnloadGuard()
 
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState({ name: '', period_start: 0, period_end: 0 })
@@ -115,7 +121,11 @@ export function ProjectDetail() {
     <Box p="6">
       <Flex justify="between" align="center" mb="4">
         <Heading>{project.name}</Heading>
-        <Link to="/projects"><Button variant="soft">← Todos os projetos</Button></Link>
+        <Flex gap="3" align="center">
+          <SaveStatusIndicator />
+          <SettingsPanel />
+          <Link to="/projects"><Button variant="soft">← Todos os projetos</Button></Link>
+        </Flex>
       </Flex>
 
       {/* Barra de progresso */}

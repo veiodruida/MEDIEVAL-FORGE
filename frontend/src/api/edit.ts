@@ -6,6 +6,9 @@ import type {
   SplitRequest,
   SplitResponse,
   ReshapeGeometryRequest,
+  GeoJSONPolygon,
+  GeoJSONMultiPolygon,
+  Position,
 } from '../types/editing'
 
 const API_BASE = '/api'
@@ -46,32 +49,55 @@ async function patchJson<TReq, TRes>(path: string, body: TReq): Promise<TRes> {
   return res.json() as Promise<TRes>
 }
 
+/**
+ * D-07: Persist flag controls whether each backend edit endpoint writes to
+ * territories.geojson. When persist=false, the backend computes and returns
+ * the new geometry but does NOT call save_territories. The frontend holds
+ * the unsaved state in Zustand until the user flushes via Ctrl+S
+ * (POST /api/projects/{id}/geometry/save).
+ */
+export interface EditOptions {
+  persist: boolean
+}
+
 export const moveCapital = (
   projectId: string,
   condadoId: string,
   req: MoveCapitalRequest,
-): Promise<MoveCapitalResponse> =>
-  postJson(`/projects/${projectId}/territories/${condadoId}/recalc`, req)
+  opts: EditOptions = { persist: true },
+): Promise<MoveCapitalResponse> => {
+  const qs = opts.persist ? '' : '?persist=false'
+  return postJson(`/projects/${projectId}/territories/${condadoId}/recalc${qs}`, req)
+}
 
 export const mergeTerritories = (
   projectId: string,
   req: MergeRequest,
-): Promise<MergeResponse> =>
-  postJson(`/projects/${projectId}/territories/merge`, req)
+  opts: EditOptions = { persist: true },
+): Promise<MergeResponse> => {
+  const qs = opts.persist ? '' : '?persist=false'
+  return postJson(`/projects/${projectId}/territories/merge${qs}`, req)
+}
 
 export const splitTerritory = (
   projectId: string,
   condadoId: string,
   req: SplitRequest,
-): Promise<SplitResponse> =>
-  postJson(`/projects/${projectId}/territories/${condadoId}/split`, req)
+  opts: EditOptions = { persist: true },
+): Promise<SplitResponse> => {
+  const qs = opts.persist ? '' : '?persist=false'
+  return postJson(`/projects/${projectId}/territories/${condadoId}/split${qs}`, req)
+}
 
 export const reshapeGeometry = (
   projectId: string,
   condadoId: string,
   req: ReshapeGeometryRequest,
-): Promise<{ condado_id: string; ok: true }> =>
-  patchJson(`/projects/${projectId}/territories/${condadoId}/geometry`, req)
+  opts: EditOptions = { persist: true },
+): Promise<{ condado_id: string; ok: true }> => {
+  const qs = opts.persist ? '' : '?persist=false'
+  return patchJson(`/projects/${projectId}/territories/${condadoId}/geometry${qs}`, req)
+}
 
 // --- Vertex handles (Plan 04 Task 3: Douglas-Peucker decimation endpoint) ---
 
@@ -95,3 +121,21 @@ export const fetchVertexHandles = (
       if (!r.ok) throw new EditApiError(r.status, r.statusText)
       return r.json() as Promise<VertexHandlesResponse>
     })
+
+// --- D-07: Full-snapshot save (explicit strategy flush) ---
+
+export interface SaveSnapshotRequest {
+  territories: Record<string, GeoJSONPolygon | GeoJSONMultiPolygon>
+  capitals: Record<string, Position>
+}
+
+/**
+ * Flush full in-memory geometry snapshot to backend (D-07 explicit strategy).
+ * Called on Ctrl+S when strategy === 'explicit'.
+ * Backend endpoint: POST /api/projects/{id}/geometry/save
+ */
+export const saveSnapshot = (
+  projectId: string,
+  req: SaveSnapshotRequest,
+): Promise<{ ok: true }> =>
+  postJson(`/projects/${projectId}/geometry/save`, req)

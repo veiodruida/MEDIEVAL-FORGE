@@ -13,6 +13,7 @@ import { useUIStore } from '../../stores/uiStore'
 import { splitTerritory, EditApiError } from '../../api/edit'
 import { canvasToGeo, type ProjectionConfig } from '../../lib/projection'
 import type { TerritoryMetadataCondado } from '../../hooks/useCanvasArtifacts'
+import { useSaveStrategy, onOperationFinalized } from '../../services/persistence'
 
 interface Args {
   condados: TerritoryMetadataCondado[]
@@ -50,6 +51,7 @@ export function useSplitTool({ condados, stageRef, projection }: Args) {
   const projectId = useProjectStore((s) => s.projectId)
   const applyBatchUpdate = useProjectStore((s) => s.applyBatchUpdate)
   const removeTerritories = useProjectStore((s) => s.removeTerritories)
+  const strategy = useSaveStrategy()
 
   // Canvas-space points of the in-progress cut line (transient drawing state)
   const [points, setPoints] = useState<Array<[number, number]>>([])
@@ -83,12 +85,13 @@ export function useSplitTool({ condados, stageRef, projection }: Args) {
         canvasToGeo(x, y, projection),
       )
 
+      const persist = strategy !== 'explicit'
       beginTransaction()
       try {
         const response = await splitTerritory(projectId, selectedId, {
           cut_line: geoCutLine,
           mode: subMode,
-        })
+        }, { persist })
         // Remove original; add both halves
         removeTerritories([response.original_id])
         applyBatchUpdate(
@@ -99,6 +102,7 @@ export function useSplitTool({ condados, stageRef, projection }: Args) {
           {},
         )
         pushUndoLabel(`Dividir ${condado?.name ?? selectedId}`)
+        onOperationFinalized()
       } catch (err) {
         // T-04-07-01: surface 422 backend detail as Portuguese toast (Pitfall 4)
         let msg = 'Linha de corte deve cruzar o território em dois pontos.'
@@ -119,7 +123,7 @@ export function useSplitTool({ condados, stageRef, projection }: Args) {
       setActiveTool('select')
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [projectId, selectedId, condados, subMode, projection, applyBatchUpdate, removeTerritories, pushUndoLabel, setActiveTool],
+    [projectId, selectedId, condados, subMode, projection, strategy, applyBatchUpdate, removeTerritories, pushUndoLabel, setActiveTool],
   )
 
   // Mode dispatch — mousedown

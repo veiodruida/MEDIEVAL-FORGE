@@ -40,6 +40,7 @@ import { VertexHandlesLayer } from './VertexHandlesLayer'
 import { ValidationBadgesLayer } from './ValidationBadgesLayer'
 import { validateTerritories } from '../../services/validation'
 import { useValidationStore } from '../../stores/useValidationStore'
+import { useSaveStrategy, onOperationFinalized } from '../../services/persistence'
 
 interface CanvasViewerProps {
   projectId: string
@@ -158,6 +159,7 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
   const applyBatchUpdate = useProjectStore((s) => s.applyBatchUpdate)
   const setCapital = useProjectStore((s) => s.setCapital)
   const setIssuesForIds = useValidationStore((s) => s.setIssuesForIds)
+  const saveStrategy = useSaveStrategy()
   // Note: storeProjectId may differ from the `projectId` prop until hydrate() is called;
   // handleCapitalDragEnd uses the prop-passed projectId for the API call (always correct).
   const storeProjectId = useProjectStore((s) => s.projectId)
@@ -338,10 +340,11 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
       const priorCapital = useProjectStore.getState().capitals[condadoId]
 
       // Compound-op batching: pause history, apply all mutations, resume once
+      const persist = saveStrategy !== 'explicit'
       beginTransaction()
       let affectedIds: string[] = []
       try {
-        const response = await moveCapital(projectId, condadoId, { lon, lat })
+        const response = await moveCapital(projectId, condadoId, { lon, lat }, { persist })
         // Apply all updates in one call so the post-resume snapshot is complete
         applyBatchUpdate(response.updated_territories, { [condadoId]: [lon, lat] })
         affectedIds = response.affected_ids
@@ -355,8 +358,9 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
       } finally {
         endTransaction()
       }
-      // Only push label on success
+      // Only push label and finalize on success
       pushUndoLabel(label)
+      onOperationFinalized()
       // D-06: revalidate affected territories after finalize
       if (affectedIds.length > 0) {
         const storeState = {
@@ -368,7 +372,7 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
     },
     // storeProjectId read for reference but projectId prop is authoritative for API calls
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [projectId, applyBatchUpdate, setCapital, pushUndoLabel, metaQ.data, setIssuesForIds],
+    [projectId, saveStrategy, applyBatchUpdate, setCapital, pushUndoLabel, metaQ.data, setIssuesForIds],
   )
 
   // Suppress unused-var lint for storeProjectId (used by P06/P07 hydrate checks)
@@ -402,9 +406,12 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
     if (prev && !curr && projectId) {
       const geom = useProjectStore.getState().territories[prev]
       const condado = metaQ.data?.condados.find((c) => c.id === prev)
+      const persist = saveStrategy !== 'explicit'
       if (geom && geom.type === 'Polygon') {
-        reshapeGeometry(projectId, prev, { geometry: geom })
+        reshapeGeometry(projectId, prev, { geometry: geom }, { persist })
           .then(() => {
+            // D-07: notify persistence engine on success
+            onOperationFinalized()
             // D-06: revalidate after successful vertex-edit commit
             const storeState = {
               territories: useProjectStore.getState().territories,
@@ -428,7 +435,7 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [vertexEditId, projectId, pushUndoLabel, metaQ.data, setIssuesForIds])
+  }, [vertexEditId, projectId, saveStrategy, pushUndoLabel, metaQ.data, setIssuesForIds])
 
   // NOTE: Esc handler for vertex-edit exit was here in P06. Superseded by useEditKeyboardMap
   // (P07 Task 3) which handles the full Phase-4 keyboard map including Esc priority chain.

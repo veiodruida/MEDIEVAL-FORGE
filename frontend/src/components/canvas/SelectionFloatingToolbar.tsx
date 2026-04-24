@@ -12,6 +12,7 @@ import type Konva from 'konva'
 import { geoToCanvas } from '../../lib/projection'
 import { useProjection } from '../../context/ProjectionContext'
 import type { TerritoryMetadataCondado } from '../../hooks/useCanvasArtifacts'
+import { useSaveStrategy, onOperationFinalized } from '../../services/persistence'
 
 interface Props {
   condados: TerritoryMetadataCondado[]
@@ -40,6 +41,7 @@ export function SelectionFloatingToolbar({ condados, stageRef }: Props) {
   const removeTerritories = useProjectStore((s) => s.removeTerritories)
   const projectId = useProjectStore((s) => s.projectId)
   const projection = useProjection()
+  const strategy = useSaveStrategy()
   const [toastMsg, setToastMsg] = useState<string | null>(null)
   const [toastOpen, setToastOpen] = useState(false)
 
@@ -78,12 +80,13 @@ export function SelectionFloatingToolbar({ condados, stageRef }: Props) {
     const primary_id = selectionIds[0]
     const label = `Fundir ${selectionIds.length} territórios`
 
+    const persist = strategy !== 'explicit'
     beginTransaction()
     try {
       const response = await mergeTerritories(projectId, {
         condado_ids: selectionIds,
         primary_id,
-      })
+      }, { persist })
       // Apply merged geometry to primary territory; remove the others
       applyBatchUpdate({ [response.merged_id]: response.merged_territory }, {})
       removeTerritories(response.removed_ids)
@@ -99,6 +102,7 @@ export function SelectionFloatingToolbar({ condados, stageRef }: Props) {
     }
     endTransaction()
     pushUndoLabel(label)
+    onOperationFinalized()
     clearSelection()
   }
 
