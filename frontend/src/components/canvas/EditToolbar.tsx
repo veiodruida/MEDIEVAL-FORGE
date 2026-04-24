@@ -1,25 +1,31 @@
-import { Flex, Button, Tooltip, Separator } from '@radix-ui/themes'
+import { Flex, Button, Tooltip, Separator, SegmentedControl } from '@radix-ui/themes'
 import { useEditorStore } from '../../stores/useEditorStore'
 import { useUIStore } from '../../stores/uiStore'
 
 /**
- * EditToolbar — Phase 4 toolbar with Edit mode toggle + Editar Vértices button.
+ * EditToolbar — Phase 4 toolbar.
  *
- * "Editar Vértices" button (P06):
- *   - Visible when editMode is true.
- *   - Active (solid) when vertexEditCondadoId is set.
- *   - Disabled when no single territory is selected AND not already in vertex-edit mode.
- *   - Clicking enters vertex-edit for the selected territory; clicking again exits.
+ * Buttons:
+ *   Editar        — global edit mode toggle (P05)
+ *   Editar Vértices — enters vertex-edit for selected territory (P06)
+ *   Dividir       — activates split tool; shows sub-mode segmented control (P07)
+ *   Undo/Redo     — keyboard + toolbar buttons deferred to separate UndoRedoButtons
+ *                   component; wired in Task 2 of P07.
  *
- * V keyboard shortcut deferred to P07 alongside the full keyboard map.
- * Split/Undo/Redo buttons deferred to P07.
+ * V keyboard shortcut and full keyboard map deferred to P07 Task 3 (useEditKeyboardMap).
  */
 export function EditToolbar() {
   const editMode = useEditorStore((s) => s.editMode)
   const toggleEditMode = useEditorStore((s) => s.toggleEditMode)
   const vertexEditId = useEditorStore((s) => s.vertexEditCondadoId)
   const setVertexEditCondadoId = useEditorStore((s) => s.setVertexEditCondadoId)
+  const activeTool = useEditorStore((s) => s.activeTool)
+  const setActiveTool = useEditorStore((s) => s.setActiveTool)
+  const splitSubMode = useEditorStore((s) => s.splitSubMode)
+  const setSplitSubMode = useEditorStore((s) => s.setSplitSubMode)
   const selectedId = useUIStore((s) => s.selectedTerritoryId)
+
+  const splitActive = activeTool === 'split'
 
   return (
     <Flex
@@ -52,7 +58,30 @@ export function EditToolbar() {
           </Button>
         </Tooltip>
       )}
-      {/* Placeholder slots for P07 (Split, Undo/Redo) */}
+      {editMode && (
+        <Tooltip content="Dividir território com linha de corte (S)">
+          <Button
+            variant={splitActive ? 'solid' : 'soft'}
+            size="2"
+            disabled={!selectedId && !splitActive}
+            onClick={() => setActiveTool(splitActive ? 'select' : 'split')}
+          >
+            Dividir
+          </Button>
+        </Tooltip>
+      )}
+      {editMode && splitActive && (
+        <SegmentedControl.Root
+          value={splitSubMode}
+          onValueChange={(v) => setSplitSubMode(v as 'snap' | 'polyline' | 'freehand')}
+          size="1"
+        >
+          <SegmentedControl.Item value="snap">Snap</SegmentedControl.Item>
+          <SegmentedControl.Item value="polyline">Polilinha</SegmentedControl.Item>
+          <SegmentedControl.Item value="freehand">Livre</SegmentedControl.Item>
+        </SegmentedControl.Root>
+      )}
+      {/* Undo/Redo buttons wired in Task 2 of P07 */}
     </Flex>
   )
 }

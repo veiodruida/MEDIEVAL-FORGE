@@ -23,6 +23,7 @@ import {
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts'
 import { useCanvasArtifacts } from '../../hooks/useCanvasArtifacts'
 import { useRubberBandSelection } from '../../hooks/useRubberBandSelection'
+import { useSplitTool } from './SplitTool'
 import { useUIStore } from '../../stores/uiStore'
 import { useResearchStore, computeCondadoColors } from '../../stores/useResearchStore'
 import { useEditorStore } from '../../stores/useEditorStore'
@@ -422,6 +423,15 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
     stageRef,
   })
 
+  // Phase 4 — split tool hook (EDIT-04). Hook-style like useRubberBandSelection.
+  // projection passed directly (null when not yet resolved) — hook no-ops when null.
+  // Called unconditionally so hook order stays stable across loading/error/content branches.
+  const splitTool = useSplitTool({
+    condados: condadosForRubberBand,
+    stageRef,
+    projection,
+  })
+
   // ------------------------------------------------------------------------
   // EARLY RETURNS — safe because every hook above has been called. B-1:
   // `ref={setContainerRef}` MUST appear on the root div of EVERY branch so
@@ -485,14 +495,26 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
           height={viewportH}
           // Pitfall 2 mitigation (P06): disable Stage pan when activeTool === 'select'
           // so mousedown-drag is captured by the rubber-band hook, not Stage DnD.
-          draggable={activeTool !== 'select'}
+          // Also disable when activeTool === 'split' so cut-line drawing owns mousedown.
+          draggable={activeTool !== 'select' && activeTool !== 'split'}
           dragBoundFunc={dragBound}
           onWheel={handleWheel}
           onClick={handleStageClick}
           onTap={handleStageClick}
-          onMouseDown={rubberBand.onMouseDown}
-          onMouseMove={rubberBand.onMouseMove}
-          onMouseUp={rubberBand.onMouseUp}
+          onMouseDown={(e) => {
+            // Split tool owns mousedown when split is active; rubber-band deferred
+            if (activeTool !== 'split') rubberBand.onMouseDown(e)
+            splitTool.onStageMouseDown(e)
+          }}
+          onMouseMove={(e) => {
+            if (activeTool !== 'split') rubberBand.onMouseMove(e)
+            splitTool.onStageMouseMove(e)
+          }}
+          onMouseUp={() => {
+            if (activeTool !== 'split') rubberBand.onMouseUp()
+            splitTool.onStageMouseUp()
+          }}
+          onDblClick={() => splitTool.onStageDblClick()}
         >
           <BackgroundLayer
             src={terrainSrc}
@@ -537,7 +559,11 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
               />
             </Layer>
           )}
+          {/* Split tool preview layer: dashed iris cut-line + vertex dots */}
+          {splitTool.previewLayer}
         </Stage>
+        {/* Split tool toast: 422 error rendered outside Stage (DOM, not canvas) */}
+        {splitTool.toastEl}
         <LayerTogglePanel />
         <FitToViewButton onFit={fitToView} />
         {/* SelectionFloatingToolbar: DOM div rendered outside Stage, positioned
