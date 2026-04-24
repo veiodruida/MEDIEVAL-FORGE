@@ -5,12 +5,14 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useProject, useUpdateProject, useIngestStream, useGenerate, useExport, useIngestStatus, useTerritoryTemplate, useRenderModern, type Project } from '../api/client'
 import { TerritoryEditor, type TerritoryData } from './TerritoryEditor'
 import { CanvasViewer } from '../components/canvas/CanvasViewer'
+import { EditToolbar } from '../components/canvas/EditToolbar'
 import { InspectorSidebar } from '../components/canvas/InspectorSidebar'
 import { LegendCard } from '../components/canvas/LegendCard'
 import { useCanvasArtifacts } from '../hooks/useCanvasArtifacts'
 import { buildProjectionConfig } from '../lib/projection'
 import { ResearchDialog } from '../components/research/ResearchDialog'
 import { useResearchStore } from '../stores/useResearchStore'
+import { useEditorStore } from '../stores/useEditorStore'
 import { ErrorBoundary } from 'react-error-boundary'
 
 const STATUS_LABEL: Record<string, string> = {
@@ -54,6 +56,8 @@ export function ProjectDetail() {
   const iberiaQids = new Set(['Q29', 'Q45'])
   const templateRegion = project && iberiaQids.has(project.country_qid) ? 'iberia' : null
   const { data: templateData } = useTerritoryTemplate(templateRegion)
+
+  const editMode = useEditorStore((s) => s.editMode)
 
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState({ name: '', period_start: 0, period_end: 0 })
@@ -138,12 +142,22 @@ export function ProjectDetail() {
           leaves a 20-50px margin; minHeight guards short viewports. Tune here if the
           canvas feels cramped. */}
       {isGenerated && (
-        <Flex mb="4" style={{ height: 'calc(100vh - 220px)', minHeight: '500px', borderRadius: 8, overflow: 'hidden' }}>
+        <Box mb="4" style={{ borderRadius: 8, overflow: 'hidden', border: '1px solid var(--gray-4)' }}>
+          <EditToolbar />
+          <Flex style={{ height: 'calc(100vh - 260px)', minHeight: '500px' }}>
           <Box
             className="canvas-region"
             style={{ flex: 1, background: '#1a1a2e', overflow: 'hidden', position: 'relative' }}
           >
-            <CanvasViewer projectId={project.id} cacheVersion={project.updated_at} />
+            <div style={{
+              position: 'relative',
+              width: '100%',
+              height: '100%',
+              outline: editMode ? '2px solid var(--accent-9)' : 'none',
+              outlineOffset: editMode ? '-2px' : '0',
+            }}>
+              <CanvasViewer projectId={project.id} cacheVersion={project.updated_at} />
+            </div>
             <LegendCard />
           </Box>
           <Box
@@ -169,7 +183,8 @@ export function ProjectDetail() {
               <InspectorSidebarWrapper projectId={project.id} project={project} />
             </ErrorBoundary>
           </Box>
-        </Flex>
+          </Flex>
+        </Box>
       )}
 
       {/* Preview — destaque quando disponível */}
