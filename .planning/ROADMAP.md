@@ -117,6 +117,8 @@ Six phases take Medieval Forge from zero to a fully validated, Unity-ready map p
 - **4.2** Voronoi recalc service — `services/voronoi.py` full scipy recompute + Shapely land-mask clip, neighbor filter via `ridge_points`, uuid-to-index map rebuilt per computation, `POST /api/edit/move-capital` endpoint (EDIT-01)
 - **4.3** Border vertex drag + merge — vertex drag Konva interaction handles, `POST /api/edit/reshape-territory`, Shapely `unary_union` merge, adjacency rebuild post-merge, `POST /api/edit/merge` (EDIT-02, EDIT-03)
 - **4.4** Split infrastructure + undo wiring — cut-line draw tool, Shapely boolean partition, `shapely.orient()` post-split, undo/redo keyboard bindings Ctrl+Z/Ctrl+Y, undo UI controls (EDIT-04, EDIT-07, EDIT-08)
+- [ ] `04-11-PLAN.md` — gap closure: wire `useProjectStore.hydrate()` in CanvasViewer (data adapter + re-hydrate on projectId/cacheVersion) — closes UAT T1/T2/T4/T5 + primary T3 guard (EDIT-01, EDIT-02, EDIT-03, EDIT-07, EDIT-08)
+- [ ] `04-12-PLAN.md` — gap closure: shift-click multi-select in territory click handler (toggles rubberBandSelectionIds in edit mode) — closes UAT T3 secondary (EDIT-03)
 
 ---
 
@@ -176,7 +178,7 @@ Six phases take Medieval Forge from zero to a fully validated, Unity-ready map p
 | 1. Data Pipeline + Backend Scaffold | 0/5 | Not started | - |
 | 2. Read-Only Canvas Viewer | 4/5 | Gap closure planning (02-05) | - |
 | 3. LLM Research Integration | 0/4 | Not started | - |
-| 4. Canvas Editing — Basic | 0/4 | Not started | - |
+| 4. Canvas Editing — Basic | 10/12 | Gap closure planning (04-11, 04-12) | - |
 | 5. Canvas Editing — Advanced | 0/2 | Not started | - |
 | 6. Validation Gate + Export Polish | 0/3 | Not started | - |
 
