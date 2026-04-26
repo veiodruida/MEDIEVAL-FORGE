@@ -150,6 +150,32 @@ async def territory_files(tmp_path, monkeypatch):
         json.dumps(territories_data, ensure_ascii=False),
         encoding="utf-8",
     )
+
+    # qlo-01: write a minimal territory_metadata.json so move_capital
+    # can derive a bbox via load_land_mask_and_bbox.  No lookup_condado.png
+    # is written → the helper degrades gracefully to (None, bbox), which
+    # still triggers bbox-based clipping in recalc_neighbors.
+    metadata = {
+        "region": "test",
+        "map_size": [1920, 1080],
+        "bounds": {
+            "lon_min": -10.0, "lon_max": 5.0,
+            "lat_min": 35.0, "lat_max": 45.0,
+        },
+        "kingdoms": {},
+        "duchies": {},
+        "condados": [
+            {"id": "leon", "name": "León", "lon": -5.5, "lat": 42.5, "duchy": "d_leon"},
+            {"id": "castela", "name": "Castela", "lon": -3.5, "lat": 39.5, "duchy": "d_castela"},
+            {"id": "galiza", "name": "Galiza", "lon": -8.5, "lat": 43.5, "duchy": "d_galiza"},
+            {"id": "aragon", "name": "Aragón", "lon": -0.5, "lat": 41.5, "duchy": "d_aragon"},
+        ],
+        "baronies": [],
+    }
+    (proj_generated / "territory_metadata.json").write_text(
+        json.dumps(metadata, ensure_ascii=False),
+        encoding="utf-8",
+    )
     yield proj_generated
 
 
@@ -184,6 +210,46 @@ async def test_post_recalc_move_capital_returns_200_with_updated_territories(cli
     assert "affected_ids" in body, "Response must contain affected_ids"
     assert isinstance(body["updated_territories"], dict), "updated_territories must be a dict"
     assert isinstance(body["affected_ids"], list), "affected_ids must be a list"
+
+
+@pytest.mark.asyncio
+async def test_move_capital_clips_returned_polygons_to_bbox(client: AsyncClient):
+    """qlo-01 regression: after move_capital, every returned polygon's exterior
+    coords must lie within the project's bbox (loaded from
+    territory_metadata.json by load_land_mask_and_bbox).  This guards against
+    the previous behavior where Voronoi cells could extend into the ocean.
+    """
+    # Bounds from territory_files fixture: lon ∈ [-10, 5], lat ∈ [35, 45].
+    response = await client.post(
+        f"/api/projects/{PROJECT_ID}/territories/leon/recalc",
+        json={"lon": -5.5, "lat": 42.5},
+    )
+    assert response.status_code == 200, (
+        f"Expected 200, got {response.status_code}: {response.text}"
+    )
+    body = response.json()
+    updated = body["updated_territories"]
+    assert len(updated) >= 1, "Recalc must return at least the moved cell"
+
+    def _walk_coords(geom):
+        if geom["type"] == "Polygon":
+            for ring in geom["coordinates"]:
+                yield from ring
+        elif geom["type"] == "MultiPolygon":
+            for poly in geom["coordinates"]:
+                for ring in poly:
+                    yield from ring
+
+    # Slack tolerance for floating-point boundary touching.
+    EPS = 1e-6
+    for cid, geom in updated.items():
+        for x, y in _walk_coords(geom):
+            assert -10.0 - EPS <= x <= 5.0 + EPS, (
+                f"{cid}: lon {x} outside bbox [-10, 5]"
+            )
+            assert 35.0 - EPS <= y <= 45.0 + EPS, (
+                f"{cid}: lat {y} outside bbox [35, 45]"
+            )
 
 
 @pytest.mark.asyncio
