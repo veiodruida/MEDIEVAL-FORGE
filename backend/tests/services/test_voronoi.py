@@ -147,6 +147,140 @@ def test_find_affected_neighbors_returns_moved_plus_ridge_neighbors():
 # recalc_neighbors tests
 # ---------------------------------------------------------------------------
 
+def _grid_territory_data(seeds: list[tuple[float, float]]) -> dict:
+    """Wrap seed tuples into the territory_data shape recalc_neighbors expects.
+
+    Each condado list = [id, name, lon, lat, duchy_id, baronies] — matches
+    the on-disk territory_iberia.json format.  IDs are deterministic strings
+    so tests can reference them.
+    """
+    return {
+        "condados": [
+            [f"c{i}", f"name{i}", lon, lat, "d0", []]
+            for i, (lon, lat) in enumerate(seeds)
+        ]
+    }
+
+
+def test_recalc_neighbors_no_clip_backwards_compat():
+    """Test A (qlo): without land_mask/bbox, behavior matches the legacy
+    code path — unbounded edge cells are silently skipped, only bounded cells
+    appear in the result.  Guards backwards compatibility for any caller
+    that still invokes recalc_neighbors with the original 4-arg signature.
+    """
+    seeds = [(2.0, 2.0), (8.0, 2.0), (2.0, 8.0), (8.0, 8.0)]
+    td = _grid_territory_data(seeds)
+    result = recalc_neighbors("c0", 2.0, 2.0, td)
+    # All 4 cells of a 2x2 grid are unbounded (corner seeds) — the legacy
+    # code path skips them all.  This is the documented historic behavior.
+    assert result["updated_territories"] == {}, (
+        "Without clip geom, all-corner seeds yield only unbounded cells which "
+        "the legacy path skips."
+    )
+    # Legacy behavior: affected_ids reflects affected_indices (NOT survivors)
+    # when no clipping is in effect — preserves backwards-compat with callers
+    # that relied on this for highlighting / progress UI.
+    assert set(result["affected_ids"]) == {"c0", "c1", "c2"}
+
+
+def test_recalc_neighbors_clips_to_bbox():
+    """Test B (qlo): with bbox supplied, every returned polygon's exterior
+    coordinates lie within the bbox, AND previously-unbounded edge cells are
+    now bounded (and present in the result).
+    """
+    from shapely.geometry import shape as _shape
+    # 4 seeds near the corners of a (0,0)-(10,10) bbox — all are normally
+    # unbounded but clipping by the bbox makes them all finite squares.
+    seeds = [(2.0, 2.0), (8.0, 2.0), (2.0, 8.0), (8.0, 8.0)]
+    td = _grid_territory_data(seeds)
+    result = recalc_neighbors(
+        "c0", 2.0, 2.0, td,
+        bbox=(0.0, 0.0, 10.0, 10.0),
+    )
+    assert len(result["updated_territories"]) >= 1, (
+        "Bbox clip must rescue at least one previously-unbounded cell."
+    )
+    # The moved cell c0 must specifically appear (it is in affected_indices).
+    assert "c0" in result["updated_territories"], (
+        "Moved cell must be in updated_territories after bbox clip."
+    )
+    for cid, geom in result["updated_territories"].items():
+        poly = _shape(geom)
+        for x, y in poly.exterior.coords:
+            assert -1e-9 <= x <= 10.0 + 1e-9, f"{cid}: lon {x} outside bbox"
+            assert -1e-9 <= y <= 10.0 + 1e-9, f"{cid}: lat {y} outside bbox"
+
+
+def test_recalc_neighbors_clips_to_land_mask():
+    """Test C (qlo): land_mask = left half of a 10x10 bbox (a vertical
+    coastline at x=5).  A seed near x=4.5 produces a polygon entirely
+    contained within the land mask.
+    """
+    from shapely.geometry import Polygon as _Polygon, shape as _shape
+    from shapely import contains as _contains
+    land_mask = _Polygon([(0, 0), (5, 0), (5, 10), (0, 10), (0, 0)])
+    # Place the moved seed deep inside the left half so its Voronoi cell
+    # naturally extends across x=5 and gets clipped.
+    seeds = [(4.5, 5.0), (8.0, 2.0), (8.0, 8.0), (1.0, 1.0), (1.0, 9.0)]
+    td = _grid_territory_data(seeds)
+    result = recalc_neighbors(
+        "c0", 4.5, 5.0, td,
+        land_mask=land_mask,
+    )
+    assert "c0" in result["updated_territories"], (
+        "Moved cell c0 must be in updated_territories after land mask clip."
+    )
+    moved_geom = _shape(result["updated_territories"]["c0"])
+    # Tight contains tolerance via tiny buffer (numerical noise from clipping).
+    assert _contains(land_mask.buffer(1e-6), moved_geom), (
+        f"Moved cell must be contained within land mask; got coords with "
+        f"max x={max(x for x, _ in moved_geom.exterior.coords):.6f}"
+    )
+    # And every coord should be at x <= 5 + 1e-6.
+    for x, _y in moved_geom.exterior.coords:
+        assert x <= 5.0 + 1e-6, f"coord lon={x} extends past coastline x=5"
+
+
+def test_recalc_neighbors_drops_cells_fully_outside_land_mask():
+    """Test D (qlo): cells whose Voronoi region falls entirely outside the
+    land mask must be omitted from BOTH updated_territories AND affected_ids.
+    No empty/zero-area geometries returned.
+    """
+    from shapely.geometry import Polygon as _Polygon
+    # Land mask = left half only.  Seeds c1 & c2 sit on the right side
+    # (x=8) — their Voronoi cells will be entirely in the ocean half and
+    # must be dropped after clipping.
+    land_mask = _Polygon([(0, 0), (5, 0), (5, 10), (0, 10), (0, 0)])
+    # Configure so that c1, c2 are clearly affected neighbors of moved c0
+    # (so they enter affected_indices) but lie wholly outside land_mask.
+    seeds = [(2.5, 5.0), (8.0, 2.5), (8.0, 7.5), (2.5, 1.0), (2.5, 9.0)]
+    td = _grid_territory_data(seeds)
+    result = recalc_neighbors(
+        "c0", 2.5, 5.0, td,
+        land_mask=land_mask,
+        bbox=(0.0, 0.0, 10.0, 10.0),  # bbox helps bound c1/c2 before clip
+    )
+    # c1 and c2 cells live entirely in x > 5 → must be dropped post-clip.
+    assert "c1" not in result["updated_territories"], (
+        "c1 lives in ocean half — must be dropped."
+    )
+    assert "c2" not in result["updated_territories"], (
+        "c2 lives in ocean half — must be dropped."
+    )
+    assert "c1" not in result["affected_ids"], (
+        "Dropped cells must NOT appear in affected_ids."
+    )
+    assert "c2" not in result["affected_ids"], (
+        "Dropped cells must NOT appear in affected_ids."
+    )
+    # Sanity: no empty geometries leaked into result.
+    from shapely.geometry import shape as _shape
+    for cid, geom in result["updated_territories"].items():
+        s = _shape(geom)
+        assert not s.is_empty, f"{cid} returned an empty geometry"
+        assert s.area > 0, f"{cid} returned a zero-area geometry"
+
+
 def test_recalc_neighbors_returns_updated_geometries_within_500ms():
     """
     Performance contract (EDIT-01): recalc for a moved capital on the real
