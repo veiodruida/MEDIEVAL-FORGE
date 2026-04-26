@@ -13,7 +13,7 @@ from typing import Any
 
 import numpy as np
 from scipy.spatial import Voronoi
-from shapely import is_valid, simplify
+from shapely import is_valid
 from shapely.geometry import (
     LineString,
     MultiPolygon,
@@ -279,48 +279,93 @@ def split_territory(
 
 
 # ---------------------------------------------------------------------------
-# Decimate (Douglas-Peucker binary search)
+# Decimate (curvature-weighted uniform-stride sampler)
 # ---------------------------------------------------------------------------
 
 def decimate_polygon(
     geometry: dict,
     target_vertices: int = 12,
-    tolerance_range: tuple[float, float] = (0.0, 1.0),
-    max_iterations: int = 20,
+    **_ignored: Any,
 ) -> dict:
-    """Reduce polygon to ~target_vertices via Douglas-Peucker binary search. D-02 + EDIT-02.
+    """Reduce polygon to ~target_vertices, preserving high-curvature corners. D-02 + EDIT-02.
 
-    Uses `shapely.simplify(preserve_topology=True)` (Research §Pattern 6).
-    Known issue #2165: simplify can still return invalid geometry; we fall back
-    to the last valid result if that happens.
+    Scale-independent: operates on vertex INDICES, not metric tolerances, so
+    it produces consistent results for unit-square, lon/lat-degree, and pixel
+    coordinate systems alike. Replaces the previous Douglas-Peucker
+    binary-search implementation, which was effectively a no-op for real
+    Galician condado polygons (~0.5° span, ~287 vertices) because
+    `tolerance_range=(0.0, 1.0)` was wildly mis-scaled and Shapely #2165
+    invalidations caused the search to never converge (orphan bug
+    260426-qc0).
+
+    Algorithm:
+      1. Score every original vertex by local turning-angle magnitude
+         (cross product of incoming/outgoing edges, normalized by segment
+         lengths). Higher = sharper corner.
+      2. Always keep the top-K highest-curvature vertices (K = max(2, target/2)).
+      3. Fill remaining slots by uniform float-stride over the full ring,
+         skipping indices already kept.
+      4. Sort selected indices ascending to preserve ring orientation;
+         close ring by repeating first coord.
+
+    Backwards-compat: previous kwargs `tolerance_range` and `max_iterations`
+    are accepted via **_ignored for any stale callers.
 
     :param geometry: GeoJSON Polygon geometry dict.
-    :param target_vertices: approximate handle count (±3 tolerance acceptable).
-    :param tolerance_range: (low, high) binary-search bounds — caller can tune per
-                            coordinate system (geographic degrees vs canvas pixels).
+    :param target_vertices: approximate handle count (±3 tolerance).
     :return: GeoJSON Polygon geometry dict with reduced vertex count.
     """
     polygon = _to_shapely(geometry)
     if not isinstance(polygon, Polygon):
         raise ValueError("decimate_polygon requires a Polygon geometry")
 
-    low, high = tolerance_range
-    best = polygon
+    coords = list(polygon.exterior.coords)[:-1]  # drop closing duplicate
+    n = len(coords)
+    if n <= target_vertices:
+        return _to_geojson(polygon)
 
-    for _ in range(max_iterations):
-        mid = (low + high) / 2
-        simplified = simplify(polygon, tolerance=mid, preserve_topology=True)
-        if not is_valid(simplified) or not isinstance(simplified, Polygon):
-            # Bail per Shapely issue #2165 — stay on the high side to reduce vertices more
-            high = mid
-            continue
-        n = len(simplified.exterior.coords)
-        if abs(n - target_vertices) <= 3:
-            return _to_geojson(simplified)
-        if n > target_vertices:
-            low = mid
-        else:
-            high = mid
-        best = simplified
+    # 1. Curvature score per vertex.
+    scores: list[float] = []
+    for i in range(n):
+        ax, ay = coords[(i - 1) % n]
+        bx, by = coords[i]
+        cx, cy = coords[(i + 1) % n]
+        v1x, v1y = bx - ax, by - ay
+        v2x, v2y = cx - bx, cy - by
+        cross = abs(v1x * v2y - v1y * v2x)
+        l1 = (v1x * v1x + v1y * v1y) ** 0.5
+        l2 = (v2x * v2x + v2y * v2y) ** 0.5
+        denom = l1 * l2
+        scores.append(cross / denom if denom > 0 else 0.0)
 
-    return _to_geojson(best)
+    # 2. Always keep top-K highest-curvature vertices.
+    k_corners = max(2, target_vertices // 2)
+    corner_indices = sorted(
+        range(n), key=lambda i: scores[i], reverse=True
+    )[:k_corners]
+    keep: set[int] = set(corner_indices)
+
+    # 3. Fill remaining slots by uniform float-stride over the ring.
+    if len(keep) < target_vertices:
+        stride = n / target_vertices
+        for j in range(target_vertices):
+            idx = int(round(j * stride)) % n
+            if idx not in keep:
+                keep.add(idx)
+                if len(keep) >= target_vertices:
+                    break
+
+    # 4. Sort by original index to preserve ring orientation; close ring.
+    ordered = sorted(keep)
+    new_coords = [coords[i] for i in ordered]
+    new_coords.append(new_coords[0])
+
+    new_poly = Polygon(new_coords)
+    # Topology safeguard — if curvature sampling produces self-intersection
+    # (rare for convex-ish Voronoi cells), fall back to plain stride.
+    if not is_valid(new_poly):
+        stride_int = max(1, n // target_vertices)
+        fallback = [coords[i] for i in range(0, n, stride_int)][:target_vertices]
+        fallback.append(fallback[0])
+        new_poly = Polygon(fallback)
+    return _to_geojson(new_poly)

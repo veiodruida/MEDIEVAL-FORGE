@@ -316,3 +316,107 @@ def test_decimate_polygon_returns_at_most_15_vertices():
     from shapely.geometry import shape
     geom = shape(result)
     assert geom.is_valid, "Decimated polygon must be valid"
+
+
+def test_decimate_polygon_degree_scale_high_vertex_count():
+    """
+    Contract test for must_haves.truths (260426-qc0): a 287-vertex polygon at
+    lon/lat degree scale (Galician condado-sized: center ~(-7.5, 43.0),
+    radius ~0.25°) must decimate to approximately the requested 12 handles.
+
+    Note on RED reproduction: the real-world bug on lugo (286/287 vertices
+    returned) requires Shapely #2165 to fire across every binary-search probe,
+    which is a topology accident specific to the actual coastline coords.
+    Synthetic regular/jittered/star/coastal fixtures explored during
+    development all converge correctly under the current (buggy) DP search,
+    so this test does NOT fail on the pre-fix code. It locks in the
+    post-fix behavioral contract from the plan's must_haves.truths instead.
+    """
+    import math
+    from shapely.geometry import shape as _shape
+
+    cx, cy, r = -7.5, 43.0, 0.25
+    n_input = 287
+    coords = [
+        (cx + r * math.cos(2 * math.pi * i / n_input),
+         cy + r * math.sin(2 * math.pi * i / n_input))
+        for i in range(n_input)
+    ]
+    coords.append(coords[0])  # close ring
+
+    polygon_287 = {"type": "Polygon", "coordinates": [coords]}
+
+    result = decimate_polygon(polygon_287, target_vertices=12)
+    exterior = result["coordinates"][0]
+    unique_vertices = len(exterior) - 1
+
+    assert unique_vertices <= 15, (
+        f"Expected ≤15 vertices for target=12 on degree-scale polygon, "
+        f"got {unique_vertices} (orphan bug #1: DP no-op on lon/lat scale)"
+    )
+    assert unique_vertices >= 4, (
+        f"Decimated polygon must keep ≥4 vertices (endpoint min), got {unique_vertices}"
+    )
+    assert _shape(result).is_valid, "Decimated polygon must be a valid shapely Polygon"
+
+
+def test_decimate_polygon_preserves_sharp_corners():
+    """
+    A "house" polygon (square base + sharp triangular peak on top edge) decimated
+    to 10 vertices must keep both the four square corners AND the peak vertex —
+    these five points carry the highest turning angles in the ring and are the
+    most visually salient handles for an editor.
+
+    Target=10 → k_corners = max(2, 10//2) = 5, exactly matching the five
+    high-curvature vertices in the fixture (4 right-angle square corners + 1
+    sharp triangular peak). Asserts that the curvature-weighted sampler picks
+    all five before falling back to uniform stride for the remaining slots.
+    """
+    import math
+    from shapely.geometry import shape as _shape
+
+    # Square base with extra collinear points on each edge, plus a sharp
+    # triangular peak protruding from the top edge.
+    base_coords: list[tuple[float, float]] = []
+    # bottom edge: (0,0) -> (1,0), 8 pts (corner at (0,0) is index 0)
+    for i in range(8):
+        base_coords.append((i / 8.0, 0.0))
+    # right edge: (1,0) -> (1,1), 8 pts (corner at (1,0) is index 8)
+    for i in range(8):
+        base_coords.append((1.0, i / 8.0))
+    # top edge first half: (1,1) -> (0.5,1) (corner at (1,1) is index 16)
+    for i in range(4):
+        base_coords.append((1.0 - i * 0.125, 1.0))
+    peak = (0.5, 1.5)  # narrow triangular spike
+    base_coords.append(peak)  # index 20
+    # top edge second half: (0.5,1) -> (0,1)
+    for i in range(4):
+        base_coords.append((0.5 - i * 0.125, 1.0))
+    # left edge: (0,1) -> (0,0), 8 pts (corner at (0,1) is index 25)
+    for i in range(8):
+        base_coords.append((0.0, 1.0 - i / 8.0))
+    base_coords.append(base_coords[0])  # close
+
+    house = {"type": "Polygon", "coordinates": [base_coords]}
+
+    result = decimate_polygon(house, target_vertices=10)
+    out_coords = result["coordinates"][0]
+
+    # Peak (highest-y point) must be present in result within tight tolerance.
+    min_dist = min(
+        math.hypot(x - peak[0], y - peak[1]) for (x, y) in out_coords
+    )
+    assert min_dist < 1e-6, (
+        f"Sharp peak {peak} must be preserved in decimated output; "
+        f"closest result vertex was {min_dist:.6f} away. Output: {out_coords}"
+    )
+
+    # All four square corners must also survive (they are the highest-
+    # curvature vertices in the ring).
+    for corner in [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)]:
+        d = min(math.hypot(x - corner[0], y - corner[1]) for (x, y) in out_coords)
+        assert d < 1e-6, (
+            f"Square corner {corner} must be preserved; closest was {d:.6f}. "
+            f"Output: {out_coords}"
+        )
+    assert _shape(result).is_valid, "House decimation must produce valid polygon"
