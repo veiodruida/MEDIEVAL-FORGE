@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database import get_db
+from ..services.project_meta import touch_project
 from ..schemas import (
     MoveCapitalRequest, MoveCapitalResponse,
     MergeRequest, MergeResponse,
@@ -122,6 +123,8 @@ async def move_capital(
             if aid in territories:
                 territories[aid]["geometry"] = geom
         await save_territories(project_id, territories)
+        await touch_project(session, project_id)
+        await session.commit()
 
     return MoveCapitalResponse(
         updated_territories=updated_territories,
@@ -167,6 +170,8 @@ async def merge_territories_endpoint(
         for rid in removed_ids:
             territories.pop(rid, None)
         await save_territories(project_id, territories)
+        await touch_project(session, project_id)
+        await session.commit()
 
     return MergeResponse(
         merged_id=body.primary_id,
@@ -223,6 +228,8 @@ async def split_territory_endpoint(
             "name": territories[condado_id].get("name", "") + " (split)",
         }
         await save_territories(project_id, territories)
+        await touch_project(session, project_id)
+        await session.commit()
 
     return SplitResponse(
         original_id=condado_id,
@@ -263,6 +270,8 @@ async def reshape_geometry(
         if persist:
             territories[condado_id]["geometry"] = body.geometry
             await save_territories(project_id, territories)
+            await touch_project(session, project_id)
+            await session.commit()
     except HTTPException:
         raise
     except Exception as e:
@@ -299,6 +308,8 @@ async def save_geometry_snapshot(
             merged[cid]["lat"] = lat
     # Snapshot is authoritative: any id in existing but not in snapshot is dropped.
     await save_territories(project_id, merged)
+    await touch_project(session, project_id)
+    await session.commit()
     return {"ok": True, "count": len(merged)}
 
 
