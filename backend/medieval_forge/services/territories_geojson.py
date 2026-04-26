@@ -338,4 +338,20 @@ async def save_territories(project_id: str, territories: dict[str, dict]) -> Non
         ensure_ascii=False,
     )
     tmp_path.write_text(payload, encoding="utf-8")
-    os.replace(tmp_path, out_path)
+    # Windows: os.replace can fail with PermissionError if another process
+    # (e.g. an in-flight FileResponse stream from a previous /preview fetch)
+    # still holds a handle on out_path. Retry briefly before giving up.
+    import time
+    last_err = None
+    for attempt in range(5):
+        try:
+            os.replace(tmp_path, out_path)
+            return
+        except PermissionError as e:
+            last_err = e
+            time.sleep(0.05 * (attempt + 1))
+    # Final attempt failed — surface a clear error
+    raise PermissionError(
+        f"Could not atomically replace {out_path.name} after 5 retries "
+        f"(file locked by another process); last error: {last_err}"
+    )
