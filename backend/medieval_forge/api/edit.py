@@ -227,18 +227,30 @@ async def reshape_geometry(
     if condado_id not in territories:
         raise HTTPException(status_code=404, detail=f"condado {condado_id} not found")
 
-    poly = shape(body.geometry)
-    if not is_valid(poly):
-        poly = poly.buffer(0)
+    try:
+        poly = shape(body.geometry)
         if not is_valid(poly):
-            raise HTTPException(
-                status_code=422,
-                detail="reshaped polygon is invalid and could not be repaired",
-            )
+            poly = poly.buffer(0)
+            if not is_valid(poly):
+                raise HTTPException(
+                    status_code=422,
+                    detail="reshaped polygon is invalid and could not be repaired",
+                )
 
-    if persist:
-        territories[condado_id]["geometry"] = body.geometry
-        await save_territories(project_id, territories)
+        if persist:
+            territories[condado_id]["geometry"] = body.geometry
+            await save_territories(project_id, territories)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(
+            "reshape_geometry failed for project=%s condado=%s",
+            project_id, condado_id,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=f"reshape failed: {type(e).__name__}: {e}",
+        )
 
     return {"condado_id": condado_id, "ok": True}
 

@@ -77,7 +77,11 @@ export function ProjectNew() {
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
-  const effectiveCountry = selectedPreset ? selectedPreset.country : customCountry
+  // Presets carry a display-friendly `country` (e.g. "Espanha+Portugal") AND a
+  // resolver-friendly `country_qid` (e.g. "Q29,Q45"). The backend validator
+  // splits on comma and resolves each token, so multi-country presets MUST be
+  // submitted via country_qid — otherwise the "+" separator triggers 422.
+  const effectiveCountry = selectedPreset ? selectedPreset.country_qid : customCountry
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
