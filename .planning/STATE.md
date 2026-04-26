@@ -121,9 +121,10 @@ None yet.
 | 260426-q3v | Fix orphan bug: Gerar mapa uses stale 4-condado research file instead of rich cached research from DB | 2026-04-26 | 29a31f1 | [260426-q3v-fix-orphan-bug-gerar-mapa-uses-stale-4-c](./quick/260426-q3v-fix-orphan-bug-gerar-mapa-uses-stale-4-c/) |
 | 260426-qc0 | Fix orphan bug: vertex-handles endpoint ignores target parameter — decimate_polygon is no-op | 2026-04-26 | e1228fc | [260426-qc0-fix-orphan-bug-vertex-handles-endpoint-i](./quick/260426-qc0-fix-orphan-bug-vertex-handles-endpoint-i/) |
 | 260426-qlo | Fix orphan bug: recalc_neighbors does not clip Voronoi cells to land mask after capital move | 2026-04-26 | 6e252ba | [260426-qlo-fix-orphan-bug-recalc-neighbors-does-not](./quick/260426-qlo-fix-orphan-bug-recalc-neighbors-does-not/) |
+| 260426-qvu | Fix orphan bug: project.updated_at not bumped on edit endpoints | 2026-04-26 | 30aee4d | [260426-qvu-fix-orphan-bug-project-updated-at-not-bu](./quick/260426-qvu-fix-orphan-bug-project-updated-at-not-bu/) |
 
 ## Session Continuity
 
-Last session: 2026-04-26T18:09:12.414Z
-Stopped at: Completed quick task 260426-qlo: Fix recalc_neighbors clipping to land mask + bbox
+Last session: 2026-04-26T18:21:25.436Z
+Stopped at: Completed quick task 260426-qvu: bump Project.updated_at on edit endpoints (5 orphan bugs all closed)
 Resume file: None
