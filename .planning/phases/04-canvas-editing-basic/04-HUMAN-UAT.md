@@ -1,9 +1,9 @@
 ---
-status: diagnosed
+status: partial
 phase: 04-canvas-editing-basic
 source: [04-VERIFICATION.md]
 started: 2026-04-24T15:45:00Z
-updated: 2026-04-25T00:45:00Z
+updated: 2026-04-26T14:35:00Z
 ---
 
 ## Current Test
@@ -134,3 +134,50 @@ Every automated test calls `useProjectStore.getState().applyBatchUpdate(...)` or
 **Files that will change**: `frontend/src/components/canvas/CanvasViewer.tsx`, possibly `frontend/src/pages/ProjectDetail.tsx`, and a click-handler file for shift-click (e.g., `TerritoryLayer` or `SelectionManager`).
 
 **Regression risk**: low for the hydration fix (adds wiring that everything already expects); medium for shift-click (new interaction path, must not break rubber-band).
+
+---
+
+## Round 2 — Verification 2026-04-26 (Playwright MCP)
+
+After plans 04-11 (hydrate), 04-12 (shift-click), and 04-13 (backend recalc 500) shipped, a second human UAT round revealed that the canvas still appeared frozen post-edit. Root cause was deeper than expected and required additional fixes:
+
+### Bugs found and fixed in this round
+
+**Plan 04-13 follow-up — backend `move_capital` 500 (commit `506a893`)**
+- `recalc_neighbors` built Voronoi seeds from `territories.geojson` properties, but lon/lat live in `territory_metadata.json`. 91 of 92 seeds collapsed to (0,0) → `scipy.QhullError` → mute 500.
+- Fix: load capitals from metadata; broaden exception handler.
+
+**Plan 04-14 — browser stale cache (commit `ab869fe`)**
+- `?v=updated_at` cache-buster did not change between edits because `project.updated_at` was never bumped on edit endpoints. Browser served prior responses from HTTP cache without revalidating, so TanStack's "fresh" data was actually stale.
+- Fix: add `Cache-Control: no-cache, must-revalidate` to `/preview/{filename}` responses.
+
+**Plan 04-15 — `reshape_geometry` 500 + ProjectNew preset bug (commit `19e0d88`)**
+- `reshape_geometry` had the same blind ValueError-only handler as `move_capital`. Broadened.
+- `ProjectNew` submitted `selectedPreset.country` (display "Espanha+Portugal") as `country_qid`. Backend resolver splits on `,` → "+" caused 422 on every multi-country preset (Iberian Peninsula, British Isles, Balkans). Switched to `selectedPreset.country_qid`.
+
+**Windows file-lock + ERR_CONTENT_LENGTH_MISMATCH (commits `3299aa4`, `635d4c5`, `37deb7f`)**
+- `save_territories` atomic `os.replace` failed on Windows when an in-flight `FileResponse` stream still held the target open.
+- Initial fixes (retry, direct-write fallback) caused new bugs (truncating the file mid-stream → corrupt response → TanStack rejected the refetch → frontend kept stale data).
+- Final fix: `/preview/{filename}` now reads bytes into memory and returns via `Response`, releasing the file handle immediately. Atomic replace then succeeds without contention.
+
+### Final test results (verified via Playwright MCP)
+
+| # | Test | Status | Evidence |
+|---|------|--------|----------|
+| 1 | Capital drag re-render | ✅ pass | After drag, polygons in Konva change shape (sum delta -817 to -1242 in test runs); geometry on disk reflects new Voronoi cell. |
+| 2 | Vertex drag commit | ✅ pass | After vertex drag + exit-vertex-mode, polygon coords change in Konva (4 coords moved for the dragged vertex + closing duplicate). PATCH /geometry → 200, refetch returns new geometry. |
+| 3 | Shift-click + Fundir | ✅ pass | Shift-click on 2 territories shows Fundir button; clicking it merges visually (count 83 → 81, sum delta -74). |
+| 4 | Ctrl+Z compound undo | ❌ architectural gap | Listener fires (`defaultPrevented: true`); `temporal.undo()` reverts the in-memory store, but disk still holds the post-edit state. Canvas re-fetches from disk → stays at post-edit state. **Requires backend "inverse operation" support that does not exist yet** (e.g., re-call `move_capital` with prior position on undo). |
+| 5 | Ctrl+S explicit save | ✅ pass | User confirmed in initial UAT round. |
+
+### Outstanding bugs discovered (separate from this UAT but documented)
+
+1. **`vertex-handles` decimation broken** — endpoint asked for `target=12` returns full polygon vertex count (e.g., 286 for lugo's 287-pt polygon). `decimate_polygon` doesn't actually decimate in this code path. Severity: usability (handles cluttered) but vertex drag still works mechanically.
+2. **13 condados in `territory_metadata.json` but missing from `territories.geojson`** — generation pipeline drops territories without OSM polygon match (e.g., "braganca", "madrid", "leon", "malaga"). Capital drag on these → 404. Generator-side bug.
+3. **`recalc_neighbors` does not clip to land mask** — moved capital can produce Voronoi cells extending into ocean. Already documented in `voronoi.py` ("real app clips against land mask / bbox").
+4. **"Gerar mapa" used a stale 4-condado research file** instead of the cached rich research in DB (91 condados for Q29,Q45). Pipeline bug — manual provider's source-of-truth selection is wrong.
+5. **`project.updated_at` not bumped on edit endpoints** — neutralized by the no-cache header but architecturally cleaner if the field were maintained.
+
+### Phase 04 verdict
+
+**4 of 5 success criteria are functional end-to-end.** Ctrl+Z compound undo (T4) needs a backend "undo log" or inverse-operation endpoint to be truly functional — not an implementation bug, an architectural gap that warrants a dedicated phase (or carries to Phase 5/6). All other operations work as specified by the original Phase 04 goal.
