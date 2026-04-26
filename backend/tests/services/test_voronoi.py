@@ -250,10 +250,11 @@ def test_recalc_neighbors_drops_cells_fully_outside_land_mask():
     # Land mask = left half only.  Seeds c1 & c2 sit on the right side
     # (x=8) — their Voronoi cells will be entirely in the ocean half and
     # must be dropped after clipping.
-    land_mask = _Polygon([(0, 0), (5, 0), (5, 10), (0, 10), (0, 0)])
-    # Configure so that c1, c2 are clearly affected neighbors of moved c0
-    # (so they enter affected_indices) but lie wholly outside land_mask.
-    seeds = [(2.5, 5.0), (8.0, 2.5), (8.0, 7.5), (2.5, 1.0), (2.5, 9.0)]
+    # Land mask = strictly x <= 4.  c1/c2 sit at x=9 → midpoint with c0
+    # is at x ≈ 5.75, so their entire Voronoi cells lie at x >= 5.75 (well
+    # outside the land mask) and clipping must drop them.
+    land_mask = _Polygon([(0, 0), (4, 0), (4, 10), (0, 10), (0, 0)])
+    seeds = [(2.5, 5.0), (9.0, 2.5), (9.0, 7.5), (2.5, 1.0), (2.5, 9.0)]
     td = _grid_territory_data(seeds)
     result = recalc_neighbors(
         "c0", 2.5, 5.0, td,

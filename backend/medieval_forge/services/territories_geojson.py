@@ -45,7 +45,7 @@ class _ProjCfg:
         self.lon_scale = lon_scale
 
 
-def _pixel_polygon_to_lonlat(geom: dict, cfg: _ProjCfg, W: int, H: int) -> dict:
+def pixel_polygon_to_lonlat(geom: dict, cfg: _ProjCfg, W: int, H: int) -> dict:
     """Apply the inverse of map_generator.geo_to_pixel to every vertex.
 
     W and H must be the actual pixel dimensions of the raster array that
@@ -100,7 +100,7 @@ def build_territories_geojson(
             continue
         u = unary_union(geoms)
         unioned[ci] = u
-        lonlat_geojson = _pixel_polygon_to_lonlat(mapping(u), cfg, pc_W, pc_H)
+        lonlat_geojson = pixel_polygon_to_lonlat(mapping(u), cfg, pc_W, pc_H)
         features.append({
             "type": "Feature",
             "id": c[0],
