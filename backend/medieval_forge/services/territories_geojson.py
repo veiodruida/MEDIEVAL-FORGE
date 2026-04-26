@@ -126,6 +126,22 @@ def build_territories_geojson(
                 neigh_ids.add(idx_to_id[other_ci])
         feat["properties"]["neighbors"] = sorted(neigh_ids)
 
+    # quick-260426-pcy soft-assertion: every metadata condado MUST have a
+    # corresponding feature in the geojson we are about to write. The previous
+    # silent drop (Problem B + the H1 fallback skip) hid 12 missing condados
+    # for an entire UAT round. We log loudly on any future regression so the
+    # symptom is visible without raising — legitimate generation failures
+    # (degenerate geom, unrecoverable upstream error) still produce a usable
+    # file, but the orphan list shows up in the server log.
+    meta_ids = {c[0] for c in condados}
+    feat_ids = {f["id"] for f in features}
+    missing = meta_ids - feat_ids
+    if missing:
+        logger.error(
+            "territories.geojson MISSING %d condados from metadata: %s",
+            len(missing), sorted(missing)[:10],
+        )
+
     out_path = out_dir / "territories.geojson"
     out_path.write_text(
         json.dumps({"type": "FeatureCollection", "features": features}, ensure_ascii=False),
@@ -227,14 +243,26 @@ def emit_territories_from_disk(
             pixel_val = meta_ci
             condado_id = condados[meta_ci][0]
         else:
-            # Legacy identity mapping: orig_idx == meta_ci (safe only when no drops).
+            # Legacy identity mapping: orig_idx == meta_ci (safe only when no
+            # drops occurred upstream).  quick-260426-pcy: this path used to
+            # silently skip orig_idx >= len(condados) — the exact failure mode
+            # that produced 12 orphans (alcacer/beja/braga/braganca/chaves/
+            # evora/lamego/porto/salamanca/santarem/tui/viana) on project
+            # 2d402c81 because original_condados was None at generation time.
+            # Silent skip turned into hard failure: any caller that omits
+            # original_condados AND has out-of-range orig_idx values is hitting
+            # the Problem B bug and must pass the full list (production call
+            # site at services/generator.py:361 already does this).
             idx = orig_idx
             if idx < 0 or idx >= len(condados):
-                logger.warning(
-                    "lookup_condado_colors.json idx %d out of range (len=%d) — skipping",
-                    idx, len(condados),
+                raise ValueError(
+                    f"lookup_condado_colors.json idx {idx} out of range "
+                    f"(len(condados)={len(condados)}). emit_territories_from_disk "
+                    f"was called without original_condados, so the legacy "
+                    f"identity mapping (orig_idx == meta_ci) is in effect — but "
+                    f"map_generator emitted an idx that does not fit. "
+                    f"Pass original_condados to remap correctly."
                 )
-                continue
             pixel_val = idx
             condado_id = condados[idx][0]
 

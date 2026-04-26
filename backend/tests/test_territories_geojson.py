@@ -269,10 +269,19 @@ def test_pixel_polygon_to_lonlat_uses_actual_pc_shape_not_upscaled_dims(
     )
 
 
-def test_emit_territories_from_disk_out_of_range_idx_skipped_not_crashed(
+def test_emit_territories_from_disk_out_of_range_idx_raises(
     tmp_path, monkeypatch,
 ):
-    """Out-of-range idx warns + is skipped; remaining features still emitted."""
+    """Out-of-range idx in legacy fallback path now raises ValueError.
+
+    quick-260426-pcy contract change: the previous behaviour silently skipped
+    orig_idx >= len(condados), which masked Problem B for an entire UAT round
+    (project 2d402c81 dropped 12 condados because original_condados was None
+    at generation time).  Silent skip is the antipattern that hid the bug;
+    the legacy identity path now refuses to proceed and instructs callers to
+    pass original_condados so the orig_idx → meta_ci remap is correct.
+    """
+    import pytest
     pid = str(uuid.uuid4())
     from medieval_forge.services import paths as _paths
     monkeypatch.setattr(_paths, "PROJECTS_ROOT", tmp_path / "projects")
@@ -280,17 +289,15 @@ def test_emit_territories_from_disk_out_of_range_idx_skipped_not_crashed(
     gen.mkdir(parents=True)
 
     _paint_two_colors(gen / "lookup_condado.png", (10, 20, 30), (40, 50, 60))
-    # idx=9 is out of range (only 1 condado in metadata)
+    # idx=9 is out of range (only 1 condado in metadata) — must raise.
     (gen / "lookup_condado_colors.json").write_text(
         json.dumps({"10,20,30": 0, "40,50,60": 9})
     )
     _write_metadata(gen, [("C_A", "Alpha", -7.5, 42.0, "D1", [])])
 
     cfg = _ProjCfg(-10.0, 0.0, 36.0, 44.0, 20, 20, 1, 0.78)
-    out = emit_territories_from_disk(pid, gen, cfg)
-    data = json.loads(out.read_text())
-    # Only C_A emitted; the out-of-range entry is silently skipped.
-    assert {f["id"] for f in data["features"]} == {"C_A"}
+    with pytest.raises(ValueError, match="out of range"):
+        emit_territories_from_disk(pid, gen, cfg)
 
 
 # ---------------------------------------------------------------------------
