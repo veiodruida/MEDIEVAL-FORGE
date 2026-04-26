@@ -154,4 +154,13 @@ async def get_preview(project_id: str, filename: str) -> FileResponse:
     if not target.exists():
         raise HTTPException(status_code=404, detail=f"preview {filename!r} not generated yet")
     media_type = _MEDIA_TYPES.get(target.suffix, "application/octet-stream")
-    return FileResponse(target, media_type=media_type)
+    # no-cache forces the browser to revalidate every request. Edit endpoints
+    # (move_capital, merge, reshape) rewrite these files in place but the
+    # ?v=updated_at cache-buster is not bumped on every edit — without this
+    # header the browser serves a stale response and the canvas appears frozen
+    # despite TanStack Query refetching. (UAT 2026-04-26)
+    return FileResponse(
+        target,
+        media_type=media_type,
+        headers={"Cache-Control": "no-cache, must-revalidate"},
+    )
