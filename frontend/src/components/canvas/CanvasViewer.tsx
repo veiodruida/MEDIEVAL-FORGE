@@ -212,6 +212,104 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
     }
   }, [metaQ.data, projection])
 
+  // Guard: hydrate runs exactly once per (projectId, cacheVersion) tuple.
+  // Without this, post-auto-save query invalidation re-fetches territoriesQ.data →
+  // reference changes → naive effect re-runs → overwrites in-memory edits and
+  // pollutes undo history. See checker BLOCKER 2 / 04-HUMAN-UAT.md.
+  const hydratedKeyRef = useRef<string | null>(null)
+
+  // Hydrate the edit-side geometry store once queries resolve.
+  // Without this, Phase-4 edit features short-circuit on empty store
+  // (SelectionFloatingToolbar guard, VertexHandlesLayer render, undo history,
+  // manualSave snapshot). See 04-HUMAN-UAT.md Root Cause (2026-04-25).
+  //
+  // History safety (checker BLOCKER 1): hydrate() writes through the
+  // temporal-wrapped setter; partialize includes territories+capitals, so
+  // the naive call would push one undo entry on every hydrate. We pause
+  // tracking, hydrate, clear history, then restore tracking. Undo stack
+  // stays empty until the user performs their first real edit.
+  //
+  // Single-run guard (checker BLOCKER 2): auto-save invalidates the
+  // territories query after every edit; without the hydratedKeyRef guard
+  // the refetch would silently overwrite in-memory edits.
+  useEffect(() => {
+    if (!metaQ.data) return
+
+    const key = `${projectId}|${cacheVersion ?? ''}`
+    if (hydratedKeyRef.current === key) return
+
+    let cancelled = false
+
+    async function run() {
+      // Fetch raw FeatureCollection directly — Option B per checker WARNING 3.
+      // territoriesQ.data is post-`select` (Konva points, non-reversible).
+      let resp: Response
+      try {
+        resp = await fetch(
+          `/api/projects/${encodeURIComponent(projectId)}/preview/territories.geojson${
+            cacheVersion ? `?v=${encodeURIComponent(cacheVersion)}` : ''
+          }`,
+        )
+      } catch {
+        return
+      }
+      if (!resp.ok) return
+      const rawFC = (await resp.json()) as {
+        type: 'FeatureCollection'
+        features: Array<{
+          type: 'Feature'
+          id?: string
+          properties: { id: string }
+          geometry:
+            | { type: 'Polygon'; coordinates: [number, number][][] }
+            | { type: 'MultiPolygon'; coordinates: [number, number][][][] }
+        }>
+      }
+      if (cancelled || !metaQ.data) return
+
+      // Build territories record
+      const territoriesRecord: Record<
+        string,
+        { type: 'Polygon'; coordinates: [number, number][][] } |
+        { type: 'MultiPolygon'; coordinates: [number, number][][][] }
+      > = {}
+      for (const f of rawFC.features) {
+        territoriesRecord[f.properties.id] = f.geometry
+      }
+
+      // Build capitals record
+      const capitalsRecord: Record<string, [number, number]> = {}
+      for (const c of metaQ.data.condados) {
+        capitalsRecord[c.id] = [c.lon, c.lat]
+      }
+
+      // HISTORY-SAFE HYDRATE (checker BLOCKER 1 mitigation):
+      //   1. pause() — disables tracking
+      //   2. hydrate() — updates state; diff is skipped because isTracking=false
+      //   3. clear() — wipes pastStates/futureStates (also resets history across
+      //      project switches so old project's undo stack doesn't bleed in)
+      //   4. setState({ isTracking: true }) — restore tracking directly.
+      //      We bypass the project's patched resume() because that helper
+      //      flushes a one-entry batch (intended for beginTransaction/endTransaction
+      //      user edits). Hydrate is not a user edit → restore tracking manually.
+      const temporal = useProjectStore.temporal
+      temporal.getState().pause()
+      try {
+        useProjectStore.getState().hydrate(projectId, territoriesRecord, capitalsRecord)
+        temporal.getState().clear()
+      } finally {
+        temporal.setState({ isTracking: true })
+      }
+
+      hydratedKeyRef.current = key
+    }
+
+    void run()
+    return () => {
+      cancelled = true
+    }
+  }, [projectId, cacheVersion, metaQ.data])
+
   // Fit-to-view callback (shared by auto-fit on mount, button click, Ctrl+0).
   // Uses viewportW/viewportH directly (state) rather than stage.width()/height()
   // so it recomputes with fresh dims on the SAME render as the resize update —

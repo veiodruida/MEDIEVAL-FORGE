@@ -7,7 +7,7 @@ interface TerritoryPolygonProps {
   fill: string
   isSelected: boolean
   showBorders: boolean
-  onClick: (id: string) => void
+  onClick: (id: string, shift: boolean) => void
 }
 
 /**
@@ -33,7 +33,7 @@ function TerritoryPolygonBase({
       fill={fill}
       stroke={showBorders ? "rgba(0, 0, 0, 0.35)" : "transparent"}
       strokeWidth={showBorders ? (isSelected ? 2.5 : 1) : 0}
-      onClick={() => onClick(territory.id)}
+      onClick={(e) => onClick(territory.id, e.evt.shiftKey === true)}
       listening
     />
   )
