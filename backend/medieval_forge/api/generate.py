@@ -18,6 +18,7 @@ import asyncio
 from ..services.generator import GENERATED_FILE_WHITELIST, run_generation
 from ..services.paths import is_valid_uuid, project_dir
 from ..services.render_modern import render_modern_map
+from ..services.territory_builder import build_territory_data_from_cache
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/projects", tags=["generate"])
@@ -69,6 +70,13 @@ async def trigger_generate(
         )
 
     # Compose config: project bbox → project.generator_config → request body
+    # Precedence for territory_data (QUICK-260426-q3v fix for orphan bug #4):
+    #   1. Latest ResearchCache row keyed on (country_qid, period_start, period_end)
+    #      — this is the canonical source of truth (e.g., 91-condado manual research).
+    #   2. Request body — IGNORED unless `force_body_territory_data: true` is set,
+    #      which acts as a power-user/test escape hatch.
+    # The cache key is derived from the project row, never the body — so a
+    # malicious client cannot redirect the lookup (T-q3v-04).
     merged: dict = {}
     # Injetar bbox do projeto no RegionConfig (evita usar bounds padrão incorretos)
     if project.bbox_lon_min is not None:
@@ -79,13 +87,30 @@ async def trigger_generate(
     merged.update(project.generator_config or {})
     if body:
         merged.update(body)
+
+    force_body = bool(merged.pop("force_body_territory_data", False))
+    if not force_body:
+        cached_td = await build_territory_data_from_cache(
+            db, project, project_dir(project_id)
+        )
+        if cached_td is not None:
+            logger.info(
+                "generate: using cached research (%d condados) for project=%s",
+                len(cached_td.get("condados", [])),
+                project_id,
+            )
+            merged["territory_data"] = cached_td
+    else:
+        logger.info("generate: force_body_territory_data=true — skipping cache lookup for project=%s", project_id)
+
     if "territory_data" not in merged:
         raise HTTPException(
             status_code=422,
             detail=(
-                'territory_data is required (provide in request body as '
-                '{"territory_data": {"kingdoms":..., "duchies":..., "condados":...}} '
-                "or persist into project.generator_config first)"
+                "No cached research found and no territory_data provided. "
+                "Run research first (POST /projects/{id}/research/manual or via an LLM provider), "
+                "or include territory_data explicitly in the request body with "
+                '"force_body_territory_data": true.'
             ),
         )
 
