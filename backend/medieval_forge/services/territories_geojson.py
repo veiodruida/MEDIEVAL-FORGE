@@ -337,27 +337,18 @@ async def save_territories(project_id: str, territories: dict[str, dict]) -> Non
         {"type": "FeatureCollection", "features": features},
         ensure_ascii=False,
     )
-    # Atomic write via .tmp + os.replace fails on Windows when a concurrent
-    # FileResponse stream still holds a handle on out_path. For a local
-    # single-user app the crash-safety guarantee of the atomic pattern
-    # isn't worth the file-lock contention — fall back to direct overwrite
-    # if the atomic replace fails. (UAT 2026-04-26 Windows file-lock bug)
+    tmp_path.write_text(payload, encoding="utf-8")
+    # The /preview endpoint now reads files into memory and releases the
+    # handle immediately (api/generate.py), so this atomic replace is no
+    # longer racing with streaming readers. A short retry loop is kept as
+    # belt-and-suspenders in case some other code path (export, renderer)
+    # opens the file briefly during a save.
     import time
-    try:
-        tmp_path.write_text(payload, encoding="utf-8")
-        # Try atomic replace first (POSIX-clean path)
-        for _attempt in range(3):
-            try:
-                os.replace(tmp_path, out_path)
-                return
-            except PermissionError:
-                time.sleep(0.1)
-        # Atomic failed — clean up tmp and write directly
+    for _attempt in range(5):
         try:
-            tmp_path.unlink()
-        except OSError:
-            pass
-        out_path.write_text(payload, encoding="utf-8")
-    except Exception:
-        # Surface the original tmp-write or direct-write error
-        raise
+            os.replace(tmp_path, out_path)
+            return
+        except PermissionError:
+            time.sleep(0.1)
+    # Final failure — re-raise to surface a clear error
+    os.replace(tmp_path, out_path)

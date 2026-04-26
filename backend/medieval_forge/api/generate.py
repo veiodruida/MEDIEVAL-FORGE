@@ -8,8 +8,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException, status
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database import AsyncSessionLocal, get_db
@@ -141,7 +140,7 @@ async def trigger_render_modern(
 
 
 @router.get("/{project_id}/preview/{filename}")
-async def get_preview(project_id: str, filename: str) -> FileResponse:
+async def get_preview(project_id: str, filename: str) -> Response:
     if not is_valid_uuid(project_id):
         raise HTTPException(status_code=400, detail="project_id must be a valid UUID")
     if filename not in GENERATED_FILE_WHITELIST:
@@ -154,13 +153,21 @@ async def get_preview(project_id: str, filename: str) -> FileResponse:
     if not target.exists():
         raise HTTPException(status_code=404, detail=f"preview {filename!r} not generated yet")
     media_type = _MEDIA_TYPES.get(target.suffix, "application/octet-stream")
+    # Read into memory instead of streaming via FileResponse: this releases
+    # the file handle as soon as the bytes are loaded, so concurrent edit
+    # endpoints (move_capital / merge / reshape) can write to the file
+    # without colliding with an in-flight stream. On Windows this is
+    # mandatory — POSIX-style file replace fails with PermissionError if
+    # any handle is still open. The previous FileResponse approach kept
+    # the handle open for the whole streaming lifetime, blocking writes.
+    # (UAT 2026-04-26 Windows file-lock + ERR_CONTENT_LENGTH_MISMATCH bugs.)
+    payload = target.read_bytes()
     # no-cache forces the browser to revalidate every request. Edit endpoints
-    # (move_capital, merge, reshape) rewrite these files in place but the
-    # ?v=updated_at cache-buster is not bumped on every edit — without this
-    # header the browser serves a stale response and the canvas appears frozen
-    # despite TanStack Query refetching. (UAT 2026-04-26)
-    return FileResponse(
-        target,
+    # rewrite these files in place but the ?v=updated_at cache-buster is not
+    # bumped on every edit — without this header the browser serves a stale
+    # response and the canvas appears frozen despite TanStack refetching.
+    return Response(
+        content=payload,
         media_type=media_type,
         headers={"Cache-Control": "no-cache, must-revalidate"},
     )
