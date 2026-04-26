@@ -27,6 +27,12 @@ frontend/vite.config.js
 # Playwright runtime output
 frontend/test-results/
 frontend/playwright-report/
+.playwright-mcp/
+
+# Ad-hoc debug screenshots in repo root
+/before-edit.png
+/after-edit-click.png
+/after-failed-drag.png
 
 # npm lock (committed for reproducible installs)
 # frontend/package-lock.json  <- intentionally tracked

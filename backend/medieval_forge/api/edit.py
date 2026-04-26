@@ -1,6 +1,9 @@
 """Phase 4 edit endpoints. Thin request/response layer over services/voronoi.py."""
 from __future__ import annotations
 
+import json
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,7 +17,27 @@ from ..schemas import (
     VertexHandle, VertexHandlesResponse,
 )
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter()
+
+
+def _load_capitals(project_id: str) -> dict[str, tuple[float, float]]:
+    """Read capital lon/lat from territory_metadata.json.
+
+    territories.geojson stores only id/name/neighbors in feature properties;
+    real lon/lat live in territory_metadata.json under condados[].
+    Returns empty dict if metadata is missing — caller falls back to defaults.
+    """
+    from ..services.paths import project_dir
+    try:
+        meta_path = project_dir(project_id) / "generated" / "territory_metadata.json"
+    except ValueError:
+        return {}
+    if not meta_path.exists():
+        return {}
+    metadata = json.loads(meta_path.read_text(encoding="utf-8"))
+    return {c["id"]: (c["lon"], c["lat"]) for c in metadata.get("condados", []) if "lon" in c and "lat" in c}
 
 
 @router.post(
@@ -36,11 +59,22 @@ async def move_capital(
     if condado_id not in territories:
         raise HTTPException(status_code=404, detail=f"condado {condado_id} not found")
 
+    # Capital lon/lat live in territory_metadata.json, NOT in territories.geojson
+    # properties. Without this merge, 91 of 92 seeds collapse to (0,0) and
+    # scipy.Voronoi raises QhullError → 500 (regression discovered 2026-04-26 UAT).
+    capitals = _load_capitals(project_id)
+
     # Build territory_data in the format voronoi.recalc_neighbors expects:
     # {"condados": [[id, name, lon, lat, duchy_id, baronies], ...]}
     territory_data = {
         "condados": [
-            [cid, t.get("name", ""), t.get("lon", 0.0), t.get("lat", 0.0), t.get("duchy_id", ""), t.get("baronies", [])]
+            [
+                cid,
+                t.get("name", ""),
+                *capitals.get(cid, (t.get("lon", 0.0), t.get("lat", 0.0))),
+                t.get("duchy_id", ""),
+                t.get("baronies", []),
+            ]
             for cid, t in territories.items()
         ]
     }
@@ -49,6 +83,10 @@ async def move_capital(
         result = voro_svc.recalc_neighbors(condado_id, body.lon, body.lat, territory_data)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:
+        # QhullError, MemoryError, etc. — surface a clear message instead of a mute 500
+        logger.exception("recalc_neighbors failed for project=%s condado=%s", project_id, condado_id)
+        raise HTTPException(status_code=500, detail=f"recalc failed: {type(e).__name__}: {e}")
 
     updated_territories = result["updated_territories"]
     affected_ids = result["affected_ids"]
