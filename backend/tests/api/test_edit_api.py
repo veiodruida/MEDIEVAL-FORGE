@@ -11,15 +11,17 @@ A local project_id constant stands in for a real loaded project — sufficient f
 added so the edit endpoints can load/save territories.geojson from disk.
 """
 import json
+from datetime import datetime, timezone
 
 import pytest
 import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 
 from medieval_forge.main import app
 from medieval_forge.database import get_db
-from medieval_forge.models import Base
+from medieval_forge.models import Base, Project
 
 # ---------------------------------------------------------------------------
 # Local fixtures (augment shared conftest to add a loaded project)
@@ -365,3 +367,98 @@ async def test_patch_geometry_returns_200(client: AsyncClient):
     assert response.status_code == 200, (
         f"Expected 200 for valid reshape request, got {response.status_code}: {response.text}"
     )
+
+
+# ---------------------------------------------------------------------------
+# qvu-01: Project.updated_at must strictly advance after each edit endpoint
+# ---------------------------------------------------------------------------
+
+def _aware(dt):
+    """SQLite via aiosqlite returns naive datetimes; normalize to UTC-aware."""
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+async def _seed_project(db_session) -> datetime:
+    """Insert a Project row with a fixed past updated_at; return that timestamp."""
+    initial = datetime(2020, 1, 1, tzinfo=timezone.utc)
+    project = Project(
+        id=PROJECT_ID,
+        name="test",
+        country_qid="Q29",
+        period_start=1000,
+        period_end=1100,
+        status="created",
+        created_at=initial,
+        updated_at=initial,
+    )
+    db_session.add(project)
+    await db_session.commit()
+    return initial
+
+
+async def _read_updated_at(db_session) -> datetime:
+    """Re-fetch Project.updated_at from the DB, bypassing ORM identity cache."""
+    db_session.expire_all()
+    result = await db_session.execute(select(Project).where(Project.id == PROJECT_ID))
+    proj = result.scalar_one()
+    return _aware(proj.updated_at)
+
+
+@pytest.mark.asyncio
+async def test_move_capital_bumps_project_updated_at(client: AsyncClient, db_session):
+    before = _aware(await _seed_project(db_session))
+    response = await client.post(
+        f"/api/projects/{PROJECT_ID}/territories/leon/recalc",
+        json={"lon": -5.6, "lat": 42.4},
+    )
+    assert response.status_code == 200, response.text
+    after = await _read_updated_at(db_session)
+    assert after > before, f"updated_at did not advance: {before!r} -> {after!r}"
+
+
+@pytest.mark.asyncio
+async def test_merge_bumps_project_updated_at(client: AsyncClient, db_session):
+    before = _aware(await _seed_project(db_session))
+    response = await client.post(
+        f"/api/projects/{PROJECT_ID}/territories/merge",
+        json={"primary_id": "leon", "condado_ids": ["leon", "castela"]},
+    )
+    assert response.status_code == 200, response.text
+    after = await _read_updated_at(db_session)
+    assert after > before, f"updated_at did not advance: {before!r} -> {after!r}"
+
+
+@pytest.mark.asyncio
+async def test_split_bumps_project_updated_at(client: AsyncClient, db_session):
+    before = _aware(await _seed_project(db_session))
+    response = await client.post(
+        f"/api/projects/{PROJECT_ID}/territories/leon/split",
+        json={"cut_line": BISECTING_CUT_LINE, "mode": "polyline"},
+    )
+    assert response.status_code == 200, response.text
+    after = await _read_updated_at(db_session)
+    assert after > before, f"updated_at did not advance: {before!r} -> {after!r}"
+
+
+@pytest.mark.asyncio
+async def test_reshape_geometry_bumps_project_updated_at(client: AsyncClient, db_session):
+    before = _aware(await _seed_project(db_session))
+    response = await client.patch(
+        f"/api/projects/{PROJECT_ID}/territories/leon/geometry",
+        json={"geometry": LEON_POLYGON},
+    )
+    assert response.status_code == 200, response.text
+    after = await _read_updated_at(db_session)
+    assert after > before, f"updated_at did not advance: {before!r} -> {after!r}"
+
+
+@pytest.mark.asyncio
+async def test_save_geometry_snapshot_bumps_project_updated_at(client: AsyncClient, db_session):
+    before = _aware(await _seed_project(db_session))
+    response = await client.post(
+        f"/api/projects/{PROJECT_ID}/geometry/save",
+        json={"territories": {"leon": LEON_POLYGON}, "capitals": {}},
+    )
+    assert response.status_code == 200, response.text
+    after = await _read_updated_at(db_session)
+    assert after > before, f"updated_at did not advance: {before!r} -> {after!r}"
