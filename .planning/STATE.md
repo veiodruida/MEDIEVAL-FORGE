@@ -117,9 +117,10 @@ None yet.
 | 260422-ktb | Apply research result to canvas: color territories by kingdom + auto-load cached research + inspector badges | 2026-04-22 | 00fc737 | [260422-ktb-apply-research-result-to-canvas-color-te](./quick/260422-ktb-apply-research-result-to-canvas-color-te/) |
 | 260422-l7g | Fix research flow: dates persist to project + country_qid supports multi-country (Q29,Q45) | 2026-04-22 | acd858b | [260422-l7g-fix-research-flow-date-changes-must-pers](./quick/260422-l7g-fix-research-flow-date-changes-must-pers/) |
 | 260422-m1f | Fix MultiPolygon territories rendering as white and non-clickable on canvas | 2026-04-22 | d96c9a4 | [260422-m1f-fix-multipolygon-territories-rendering-a](./quick/260422-m1f-fix-multipolygon-territories-rendering-a/) |
+| 260426-pcy | Fix orphan bug: 13 condados in territory_metadata.json missing from territories.geojson — generation pipeline drops territories without OSM polygon match | 2026-04-26 | 3095107 | [260426-pcy-fix-orphan-bug-13-condados-in-territory-](./quick/260426-pcy-fix-orphan-bug-13-condados-in-territory-/) |
 
 ## Session Continuity
 
-Last session: 2026-04-22T14:52:07.836Z
-Stopped at: Completed quick task 260422-m1f: Fix MultiPolygon territories rendering as white and non-clickable on canvas
+Last session: 2026-04-26T17:15:32.953Z
+Stopped at: Completed quick task 260426-pcy: Fix orphan bug — 13 condados missing from territories.geojson
 Resume file: None
