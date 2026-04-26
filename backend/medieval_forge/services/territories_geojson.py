@@ -337,21 +337,27 @@ async def save_territories(project_id: str, territories: dict[str, dict]) -> Non
         {"type": "FeatureCollection", "features": features},
         ensure_ascii=False,
     )
-    tmp_path.write_text(payload, encoding="utf-8")
-    # Windows: os.replace can fail with PermissionError if another process
-    # (e.g. an in-flight FileResponse stream from a previous /preview fetch)
-    # still holds a handle on out_path. Retry briefly before giving up.
+    # Atomic write via .tmp + os.replace fails on Windows when a concurrent
+    # FileResponse stream still holds a handle on out_path. For a local
+    # single-user app the crash-safety guarantee of the atomic pattern
+    # isn't worth the file-lock contention — fall back to direct overwrite
+    # if the atomic replace fails. (UAT 2026-04-26 Windows file-lock bug)
     import time
-    last_err = None
-    for attempt in range(5):
+    try:
+        tmp_path.write_text(payload, encoding="utf-8")
+        # Try atomic replace first (POSIX-clean path)
+        for _attempt in range(3):
+            try:
+                os.replace(tmp_path, out_path)
+                return
+            except PermissionError:
+                time.sleep(0.1)
+        # Atomic failed — clean up tmp and write directly
         try:
-            os.replace(tmp_path, out_path)
-            return
-        except PermissionError as e:
-            last_err = e
-            time.sleep(0.05 * (attempt + 1))
-    # Final attempt failed — surface a clear error
-    raise PermissionError(
-        f"Could not atomically replace {out_path.name} after 5 retries "
-        f"(file locked by another process); last error: {last_err}"
-    )
+            tmp_path.unlink()
+        except OSError:
+            pass
+        out_path.write_text(payload, encoding="utf-8")
+    except Exception:
+        # Surface the original tmp-write or direct-write error
+        raise
