@@ -119,9 +119,10 @@ None yet.
 | 260422-m1f | Fix MultiPolygon territories rendering as white and non-clickable on canvas | 2026-04-22 | d96c9a4 | [260422-m1f-fix-multipolygon-territories-rendering-a](./quick/260422-m1f-fix-multipolygon-territories-rendering-a/) |
 | 260426-pcy | Fix orphan bug: 13 condados in territory_metadata.json missing from territories.geojson — generation pipeline drops territories without OSM polygon match | 2026-04-26 | 3095107 | [260426-pcy-fix-orphan-bug-13-condados-in-territory-](./quick/260426-pcy-fix-orphan-bug-13-condados-in-territory-/) |
 | 260426-q3v | Fix orphan bug: Gerar mapa uses stale 4-condado research file instead of rich cached research from DB | 2026-04-26 | 29a31f1 | [260426-q3v-fix-orphan-bug-gerar-mapa-uses-stale-4-c](./quick/260426-q3v-fix-orphan-bug-gerar-mapa-uses-stale-4-c/) |
+| 260426-qc0 | Fix orphan bug: vertex-handles endpoint ignores target parameter — decimate_polygon is no-op | 2026-04-26 | e1228fc | [260426-qc0-fix-orphan-bug-vertex-handles-endpoint-i](./quick/260426-qc0-fix-orphan-bug-vertex-handles-endpoint-i/) |
 
 ## Session Continuity
 
-Last session: 2026-04-26T17:47:50.355Z
-Stopped at: Completed quick task 260426-q3v: Fix orphan bug — generator now prefers DB-cached research over body
+Last session: 2026-04-26T17:57:37.518Z
+Stopped at: Completed quick task 260426-qc0: Fix vertex-handles decimation — curvature-weighted stride sampler
 Resume file: None
