@@ -16,7 +16,7 @@ from shapely.geometry import mapping, shape
 from shapely.ops import unary_union
 
 from .paths import project_dir
-from .territories_geojson import _ProjCfg, _pixel_polygon_to_lonlat
+from .territories_geojson import _ProjCfg, pixel_polygon_to_lonlat
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +46,7 @@ def build_baronies_geojson(
         if not geoms:
             continue
         u = unary_union(geoms)
-        lonlat = _pixel_polygon_to_lonlat(mapping(u), cfg, pb_W, pb_H)
+        lonlat = pixel_polygon_to_lonlat(mapping(u), cfg, pb_W, pb_H)
         condado_id = condados[b["condado_idx"]][0] if 0 <= b["condado_idx"] < len(condados) else ""
         features.append({
             "type": "Feature",

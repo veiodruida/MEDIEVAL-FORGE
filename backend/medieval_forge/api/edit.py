@@ -79,8 +79,31 @@ async def move_capital(
         ]
     }
 
+    # qlo-01: load land mask + bbox from project's generated/ artifacts so
+    # recalc_neighbors can clip Voronoi cells to the actual land area
+    # (matches generation-time behavior; previously cells could extend into
+    # the ocean and edge cells were silently dropped).
+    land_mask = None
+    bbox = None
     try:
-        result = voro_svc.recalc_neighbors(condado_id, body.lon, body.lat, territory_data)
+        from ..services.paths import project_dir
+        generated_dir = project_dir(project_id) / "generated"
+        land_mask, bbox = voro_svc.load_land_mask_and_bbox(generated_dir)
+    except ValueError:
+        # Non-UUID project_id (test path) — no clipping
+        pass
+    if land_mask is None and bbox is None:
+        logger.info(
+            "move_capital: no land_mask/bbox for project=%s — recalc unclipped",
+            project_id,
+        )
+
+    try:
+        result = voro_svc.recalc_neighbors(
+            condado_id, body.lon, body.lat, territory_data,
+            land_mask=land_mask,
+            bbox=bbox,
+        )
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:
