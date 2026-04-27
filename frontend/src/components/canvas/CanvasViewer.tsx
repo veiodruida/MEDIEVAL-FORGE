@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { Stage, Layer, Rect } from 'react-konva'
+import { Stage, Layer, Rect, Circle } from 'react-konva'
 import type Konva from 'konva'
 import { BackgroundLayer } from './BackgroundLayer'
 import { TerritoryLayer } from './TerritoryLayer'
@@ -8,11 +8,13 @@ import { BaronyLayer } from './BaronyLayer'
 import { LayerTogglePanel } from './LayerTogglePanel'
 import { DecorationsLayer } from './DecorationsLayer'
 import { InteractionLayer } from './InteractionLayer'
+import { TerrainBadgesLayer } from './TerrainBadgesLayer'
 import { FitToViewButton } from './FitToViewButton'
 import { ProjectionProvider } from '../../context/ProjectionContext'
 import {
   buildProjectionConfig,
   computeFitToView,
+  geoToCanvas,
   type ProjectionConfig,
 } from '../../lib/projection'
 import {
@@ -35,7 +37,8 @@ import {
   beginTransaction,
   endTransaction,
 } from '../../stores/useProjectStore'
-import { moveCapital, reshapeGeometry, EditApiError } from '../../api/edit'
+import { moveCapital, reshapeGeometry, paintTerrain, EditApiError } from '../../api/edit'
+import { TERRAIN_HEX, TERRAIN_LABELS_PT, type TerrainType } from '../../types/editing'
 import { SelectionFloatingToolbar } from './SelectionFloatingToolbar'
 import { VertexHandlesLayer } from './VertexHandlesLayer'
 import { ValidationBadgesLayer } from './ValidationBadgesLayer'
@@ -157,6 +160,16 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
   const vertexEditId = useEditorStore((s) => s.vertexEditCondadoId)
   // setVertexEditCondadoId now handled by useEditKeyboardMap (P07); not needed here
   const pushUndoLabel = useEditorStore((s) => s.pushUndoLabel)
+
+  // Phase 05 — paint tool state
+  const activeTerrain = useEditorStore((s) => s.activeTerrain)
+  const brushRadius = useEditorStore((s) => s.brushRadius)
+
+  // Phase 05 — paint interaction refs
+  const strokeActiveRef = useRef(false)
+  const strokeAccumulatorRef = useRef<Set<string>>(new Set())
+  const prePaintSnapshotRef = useRef<Record<string, TerrainType>>({})
+  const [brushCursorPos, setBrushCursorPos] = useState<{ x: number; y: number } | null>(null)
   const applyBatchUpdate = useProjectStore((s) => s.applyBatchUpdate)
   const setCapital = useProjectStore((s) => s.setCapital)
   const setIssuesForIds = useValidationStore((s) => s.setIssuesForIds)
@@ -259,7 +272,7 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
         features: Array<{
           type: 'Feature'
           id?: string
-          properties: { id: string }
+          properties: { id: string; terrain_type?: string }
           geometry:
             | { type: 'Polygon'; coordinates: [number, number][][] }
             | { type: 'MultiPolygon'; coordinates: [number, number][][][] }
@@ -283,6 +296,14 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
         capitalsRecord[c.id] = [c.lon, c.lat]
       }
 
+      // Phase 05: extract terrain_type from each GeoJSON feature property
+      const terrainTypesRecord: Record<string, TerrainType> = {}
+      for (const f of rawFC.features) {
+        const id = f.properties?.id as string | undefined
+        const tt = f.properties?.terrain_type as string | undefined
+        if (id && tt) terrainTypesRecord[id] = tt as TerrainType
+      }
+
       // HISTORY-SAFE HYDRATE (checker BLOCKER 1 mitigation):
       //   1. pause() — disables tracking
       //   2. hydrate() — updates state; diff is skipped because isTracking=false
@@ -295,7 +316,7 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
       const temporal = useProjectStore.temporal
       temporal.getState().pause()
       try {
-        useProjectStore.getState().hydrate(projectId, territoriesRecord, capitalsRecord)
+        useProjectStore.getState().hydrate(projectId, territoriesRecord, capitalsRecord, terrainTypesRecord)
         temporal.getState().clear()
       } finally {
         temporal.setState({ isTracking: true })
@@ -349,6 +370,39 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
 
   // E / V / S / Escape — full Phase 4 keyboard map (EDIT-04, EDIT-07)
   useEditKeyboardMap()
+
+  // Phase 05 — P shortcut: activate paint tool (EDIT-05)
+  // Handled here (not in useEditKeyboardMap) so `e.key === 'p'` is present in this file.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.isContentEditable)
+      ) return
+      if (e.ctrlKey || e.metaKey || e.altKey) return
+
+      if (e.key === 'p' || e.key === 'P') {
+        if (!useEditorStore.getState().editMode) return
+        useEditorStore.getState().setActiveTool('paint')
+        if (useEditorStore.getState().activeTerrain === null) {
+          useEditorStore.getState().setActiveTerrain('mountain')
+        }
+        e.preventDefault()
+        return
+      }
+
+      // Escape exits paint mode
+      if (e.key === 'Escape' && useEditorStore.getState().activeTool === 'paint') {
+        useEditorStore.getState().setActiveTool('none')
+        e.preventDefault()
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [])
 
   // RESEARCH §Pitfall 5 + UI-SPEC §Neighbor Navigation: pan canvas to center the
   // newly selected territory. Runs for any selection change — initial click AND
@@ -418,6 +472,122 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
     },
     [wheelHandler],
   )
+
+  // Phase 05 — condados ref: keeps latest condados list accessible in paint callbacks
+  // without creating a forward-reference to condadosForRubberBand (declared after early returns).
+  const condadosRef = useRef(metaQ.data?.condados ?? [])
+  useEffect(() => {
+    condadosRef.current = metaQ.data?.condados ?? []
+  }, [metaQ.data])
+
+  // Phase 05 — findTerritoriesInRadius helper
+  // Returns condado ids whose projected centroids fall within `radius` canvas pixels of `pos`.
+  function findTerritoriesInRadius(
+    pos: { x: number; y: number },
+    radius: number,
+    condados: Array<{ id: string; lon: number; lat: number }>,
+    proj: ProjectionConfig,
+  ): string[] {
+    const r2 = radius * radius
+    return condados
+      .filter((c) => {
+        const [cx, cy] = geoToCanvas(c.lon, c.lat, proj)
+        const dx = cx - pos.x
+        const dy = cy - pos.y
+        return dx * dx + dy * dy <= r2
+      })
+      .map((c) => c.id)
+  }
+
+  // Phase 05 — paint stroke handlers (EDIT-05)
+  // Toast state for network-error rollback message
+  const [paintErrorToast, setPaintErrorToast] = useState<string | null>(null)
+
+  const handlePaintMouseDown = useCallback(
+    (stagePos: { x: number; y: number } | null) => {
+      if (!stagePos || !projection) return
+      const currentTerrain = useEditorStore.getState().activeTerrain
+      if (!currentTerrain) return
+      prePaintSnapshotRef.current = { ...useProjectStore.getState().terrain_types }
+      strokeAccumulatorRef.current = new Set()
+      strokeActiveRef.current = true
+      beginTransaction()
+      // Paint initial hit on mousedown
+      const ids = findTerritoriesInRadius(stagePos, brushRadius, condadosRef.current, projection)
+      for (const id of ids) {
+        if (!strokeAccumulatorRef.current.has(id)) {
+          useProjectStore.getState().setTerrainType(id, currentTerrain)
+          strokeAccumulatorRef.current.add(id)
+        }
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [projection, brushRadius],
+  )
+
+  const handlePaintMouseMove = useCallback(
+    (stagePos: { x: number; y: number } | null) => {
+      if (!stagePos) return
+      // Update brush cursor regardless of strokeActive
+      setBrushCursorPos(stagePos)
+      if (!strokeActiveRef.current || !projection) return
+      const currentTerrain = useEditorStore.getState().activeTerrain
+      if (!currentTerrain) return
+      const ids = findTerritoriesInRadius(stagePos, brushRadius, condadosRef.current, projection)
+      for (const id of ids) {
+        if (!strokeAccumulatorRef.current.has(id)) {
+          useProjectStore.getState().setTerrainType(id, currentTerrain)
+          strokeAccumulatorRef.current.add(id)
+        }
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [projection, brushRadius],
+  )
+
+  const handlePaintMouseUp = useCallback(async () => {
+    if (!strokeActiveRef.current) return
+    strokeActiveRef.current = false
+    const painted = [...strokeAccumulatorRef.current]
+    strokeAccumulatorRef.current = new Set()
+
+    if (painted.length === 0) {
+      endTransaction()
+      return
+    }
+
+    const currentTerrain = useEditorStore.getState().activeTerrain
+    if (!currentTerrain) {
+      endTransaction()
+      return
+    }
+
+    const snapshot = prePaintSnapshotRef.current
+    try {
+      const resp = await paintTerrain(useProjectStore.getState().projectId ?? '', {
+        territory_ids: painted,
+        terrain_type: currentTerrain,
+      })
+      // Revert skipped (ocean) territories to pre-stroke value
+      for (const id of resp.skipped_ids) {
+        const prior = snapshot[id]
+        if (prior !== undefined) {
+          useProjectStore.getState().setTerrainType(id, prior)
+        } else {
+          useProjectStore.getState().clearTerrainType(id)
+        }
+      }
+      if (resp.painted_ids.length > 0) {
+        pushUndoLabel(`Pintar ${TERRAIN_LABELS_PT[currentTerrain]} — ${resp.painted_ids.length} condado(s)`)
+      }
+    } catch {
+      useProjectStore.getState().restoreTerrainTypes(snapshot)
+      setPaintErrorToast('Erro ao pintar terreno. Alterações revertidas.')
+      setTimeout(() => setPaintErrorToast(null), 6000)
+    } finally {
+      endTransaction()
+    }
+  }, [pushUndoLabel])
 
   // RESEARCH §Pitfall 6: canonical empty-Stage click deselect. Use
   // e.target.getStage() — race-free under React StrictMode double-invocation.
@@ -644,6 +814,8 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
           width: '100%',
           height: '100%',
           overflow: 'hidden',
+          // Phase 05: crosshair cursor when paint tool is active
+          cursor: activeTool === 'paint' ? 'crosshair' : 'default',
         }}
       >
         <Stage
@@ -653,23 +825,43 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
           // Pitfall 2 mitigation (P06): disable Stage pan when activeTool === 'select'
           // so mousedown-drag is captured by the rubber-band hook, not Stage DnD.
           // Also disable when activeTool === 'split' so cut-line drawing owns mousedown.
-          draggable={activeTool !== 'select' && activeTool !== 'split'}
+          // Also disable when activeTool === 'paint' so mouse drag paints, not pans.
+          draggable={activeTool !== 'select' && activeTool !== 'split' && activeTool !== 'paint'}
           dragBoundFunc={dragBound}
           onWheel={handleWheel}
           onClick={handleStageClick}
           onTap={handleStageClick}
           onMouseDown={(e) => {
+            if (activeTool === 'paint') {
+              const stage = stageRef.current
+              const pos = stage?.getRelativePointerPosition() ?? null
+              void handlePaintMouseDown(pos)
+              return
+            }
             // Split tool owns mousedown when split is active; rubber-band deferred
             if (activeTool !== 'split') rubberBand.onMouseDown(e)
             splitTool.onStageMouseDown(e)
           }}
           onMouseMove={(e) => {
+            if (activeTool === 'paint') {
+              const stage = stageRef.current
+              const pos = stage?.getRelativePointerPosition() ?? null
+              handlePaintMouseMove(pos)
+              return
+            }
             if (activeTool !== 'split') rubberBand.onMouseMove(e)
             splitTool.onStageMouseMove(e)
           }}
           onMouseUp={() => {
+            if (activeTool === 'paint') {
+              void handlePaintMouseUp()
+              return
+            }
             if (activeTool !== 'split') rubberBand.onMouseUp()
             splitTool.onStageMouseUp()
+          }}
+          onMouseLeave={() => {
+            setBrushCursorPos(null)
           }}
           onDblClick={() => splitTool.onStageDblClick()}
         >
@@ -686,6 +878,8 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
             showBorders={layerVisibility.borders}
           />
           <BaronyLayer baronies={baroniesQ.data} visible={layerVisibility.baronies} />
+          {/* Phase 05: TerrainBadgesLayer — above BaronyLayer, below DecorationsLayer */}
+          <TerrainBadgesLayer condados={metaQ.data.condados} projection={projection} />
           <DecorationsLayer
             condados={metaQ.data.condados}
             condadoColors={condadoColorsQ.data}
@@ -720,9 +914,43 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
           {splitTool.previewLayer}
           {/* ValidationBadgesLayer: red/amber 8px dots at condado centroids (D-06) */}
           <ValidationBadgesLayer condados={condadosForRubberBand} />
+          {/* Phase 05: brush cursor circle — follows pointer in paint mode */}
+          {activeTool === 'paint' && brushCursorPos && (
+            <Layer listening={false}>
+              <Circle
+                x={brushCursorPos.x}
+                y={brushCursorPos.y}
+                radius={brushRadius}
+                fill="rgba(255,255,255,0.15)"
+                stroke={activeTerrain ? TERRAIN_HEX[activeTerrain] : '#9e9e9e'}
+                strokeWidth={1.5}
+                listening={false}
+              />
+            </Layer>
+          )}
         </Stage>
         {/* Split tool toast: 422 error rendered outside Stage (DOM, not canvas) */}
         {splitTool.toastEl}
+        {/* Phase 05: paint error toast — network failure rollback message */}
+        {paintErrorToast && (
+          <div
+            style={{
+              position: 'absolute',
+              bottom: 16,
+              left: '50%',
+              transform: 'translateX(-50%)',
+              background: 'var(--red-9, #e5484d)',
+              color: '#fff',
+              padding: '8px 16px',
+              borderRadius: 6,
+              fontSize: 14,
+              zIndex: 100,
+              pointerEvents: 'none',
+            }}
+          >
+            {paintErrorToast}
+          </div>
+        )}
         <LayerTogglePanel />
         <FitToViewButton onFit={fitToView} />
         {/* SelectionFloatingToolbar: DOM div rendered outside Stage, positioned
