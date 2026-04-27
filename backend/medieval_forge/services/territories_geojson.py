@@ -324,6 +324,7 @@ async def load_territories(project_id: str) -> dict[str, dict]:
             "neighbors": props.get("neighbors", []),
             "duchy_id": props.get("duchy_id", ""),
             "baronies": props.get("baronies", []),
+            "terrain_type": props.get("terrain_type"),  # Optional[str] — None when absent (Phase 5)
         }
     return result
 
@@ -346,19 +347,23 @@ async def save_territories(project_id: str, territories: dict[str, dict]) -> Non
 
     features = []
     for cid, t in territories.items():
+        properties = {
+            "id": cid,
+            "name": t.get("name", ""),
+            "lon": t.get("lon", 0.0),
+            "lat": t.get("lat", 0.0),
+            "neighbors": t.get("neighbors", []),
+            "duchy_id": t.get("duchy_id", ""),
+            "baronies": t.get("baronies", []),
+        }
+        # Phase 5: persist terrain_type only when present (keeps file compact for un-painted features)
+        if t.get("terrain_type"):
+            properties["terrain_type"] = t["terrain_type"]
         features.append({
             "type": "Feature",
             "id": cid,
             "geometry": t.get("geometry", {}),
-            "properties": {
-                "id": cid,
-                "name": t.get("name", ""),
-                "lon": t.get("lon", 0.0),
-                "lat": t.get("lat", 0.0),
-                "neighbors": t.get("neighbors", []),
-                "duchy_id": t.get("duchy_id", ""),
-                "baronies": t.get("baronies", []),
-            },
+            "properties": properties,
         })
 
     payload = json.dumps(

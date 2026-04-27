@@ -9,6 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database import get_db
 from ..services.project_meta import touch_project
+from shapely.geometry import Point
+
 from ..schemas import (
     MoveCapitalRequest, MoveCapitalResponse,
     MergeRequest, MergeResponse,
@@ -16,6 +18,7 @@ from ..schemas import (
     ReshapeGeometryRequest,
     SaveSnapshotRequest,
     VertexHandle, VertexHandlesResponse,
+    PaintTerrainRequest, PaintTerrainResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -311,6 +314,74 @@ async def save_geometry_snapshot(
     await touch_project(session, project_id)
     await session.commit()
     return {"ok": True, "count": len(merged)}
+
+
+@router.post(
+    "/projects/{project_id}/edit/paint-terrain",
+    response_model=PaintTerrainResponse,
+)
+async def paint_terrain(
+    project_id: str,
+    body: PaintTerrainRequest,
+    session: AsyncSession = Depends(get_db),
+) -> PaintTerrainResponse:
+    """EDIT-05: assign terrain_type to territories whose centroids fall on land.
+
+    Ocean centroids (per land_mask.contains) and unknown territory_ids land in
+    skipped_ids. Persists terrain_type into territories.geojson properties for
+    painted_ids only.
+
+    Security: filters territory_ids to known_ids for THIS project before any
+    geometry lookup (T-5-01 — prevents cross-project injection).
+    Pydantic Literal rejects invalid terrain_type values with 422 (T-5-02).
+    """
+    from ..services import voronoi as voro_svc
+    from ..services.territories_geojson import load_territories, save_territories
+    from ..services.paths import project_dir
+
+    territories = await load_territories(project_id)
+    if not territories:
+        # No project data — every requested id is unknown, all skipped
+        return PaintTerrainResponse(painted_ids=[], skipped_ids=list(body.territory_ids))
+
+    # Security guard (T-5-01): filter ids to those known for THIS project
+    # before any geometry lookup — prevents arbitrary ID injection.
+    known_ids = set(territories.keys())
+
+    # Reuse generation-time land mask (Shapely geometry in lon/lat space)
+    land_mask = None
+    try:
+        generated_dir = project_dir(project_id) / "generated"
+        land_mask, _ = voro_svc.load_land_mask_and_bbox(generated_dir)
+    except ValueError:
+        # Non-UUID project_id (test path) — treat as no land mask clipping
+        pass
+
+    painted_ids: list[str] = []
+    skipped_ids: list[str] = []
+    for tid in body.territory_ids:
+        if tid not in known_ids:
+            skipped_ids.append(tid)
+            continue
+        t = territories[tid]
+        lon = t.get("lon")
+        lat = t.get("lat")
+        if lon is None or lat is None:
+            skipped_ids.append(tid)
+            continue
+        if land_mask is not None and not land_mask.contains(Point(lon, lat)):
+            skipped_ids.append(tid)
+            continue
+        # Apply terrain type
+        t["terrain_type"] = body.terrain_type
+        painted_ids.append(tid)
+
+    if painted_ids:
+        await save_territories(project_id, territories)
+        await touch_project(session, project_id)
+        await session.commit()
+
+    return PaintTerrainResponse(painted_ids=painted_ids, skipped_ids=skipped_ids)
 
 
 @router.get(
