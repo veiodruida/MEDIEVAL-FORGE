@@ -14,7 +14,7 @@ def test_unknown_condado_id_raises_validation_error():
 
     result = ResearchResult(
         kingdoms={"k1": "Leon"},
-        duchies={"d1": ("k1", "Duchy of Leon")},
+        duchies={"d1": {"kingdom_id": "k1", "name": "Duchy of Leon"}},
         condados_assignment=[
             CondadoAssignment(condado_id="not-in-project", kingdom_id="k1", duchy_id="d1")
         ],
@@ -31,7 +31,7 @@ def test_all_known_condado_ids_passes():
 
     result = ResearchResult(
         kingdoms={"k1": "Leon"},
-        duchies={"d1": ("k1", "Duchy of Leon")},
+        duchies={"d1": {"kingdom_id": "k1", "name": "Duchy of Leon"}},
         condados_assignment=[
             CondadoAssignment(condado_id="c1", kingdom_id="k1", duchy_id="d1"),
             CondadoAssignment(condado_id="c2", kingdom_id="k1", duchy_id="d1"),
@@ -50,7 +50,7 @@ def test_partial_assignment_allowed():
     # LLM only assigned c1, but c2 and c3 also exist in the project (legitimate omission).
     result = ResearchResult(
         kingdoms={"k1": "Leon"},
-        duchies={"d1": ("k1", "Duchy of Leon")},
+        duchies={"d1": {"kingdom_id": "k1", "name": "Duchy of Leon"}},
         condados_assignment=[
             CondadoAssignment(condado_id="c1", kingdom_id="k1", duchy_id="d1"),
         ],

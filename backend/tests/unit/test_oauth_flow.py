@@ -98,7 +98,8 @@ async def test_oauth_callback_stores_token_in_credentials(auth_client, monkeypat
 
     stored = app.state.credentials.get("gemini", {})
     assert stored.get("access_token") == "ya29.test"
-    assert stored.get("source") == "oauth"
+    # OAuth tokens persist to DB for survival across restarts; source is 'disk'.
+    assert stored.get("source") == "disk"
 
 
 async def test_oauth_start_cleans_expired_states(auth_client):

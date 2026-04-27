@@ -53,7 +53,8 @@ describe("useResearchStream", () => {
 
     expect(result.current.status).toBe("success");
     expect(result.current.result).toEqual(mockResult);
-    expect(result.current.messages).toContain("Some streamed token");
+    // messages is StreamMessage[] (each has text + ts) — extract the text values
+    expect(result.current.messages.map((m) => m.text)).toContain("Some streamed token");
     expect(result.current.error).toBeNull();
   });
 

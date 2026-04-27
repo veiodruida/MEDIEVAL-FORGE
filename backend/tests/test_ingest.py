@@ -457,8 +457,8 @@ async def test_sse_stream(client, tmp_path, monkeypatch):
         async for chunk in resp.aiter_text():
             body_chunks.append(chunk)
     full_body = "".join(body_chunks)
-    # Verify expected event substrings (the producer emits Starting, stub page 1/2, Wrote, DONE).
-    assert "Starting wikidata ingest" in full_body
+    # Verify expected event substrings (the producer emits Iniciando, stub page 1/2, Wrote, DONE).
+    assert "Iniciando ingestão wikidata" in full_body
     assert "stub page 1" in full_body
     assert "stub page 2" in full_body
     assert "DONE" in full_body

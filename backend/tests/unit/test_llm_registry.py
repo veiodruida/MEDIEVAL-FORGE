@@ -9,9 +9,9 @@ from medieval_forge.services.llm import LLMProvider
 from medieval_forge.services.llm.registry import PROVIDERS
 
 
-def test_providers_dict_has_four_entries():
-    assert len(PROVIDERS) == 4
-    assert set(PROVIDERS.keys()) == {"claude", "openai", "gemini", "ollama"}
+def test_providers_dict_has_all_registered_entries():
+    assert len(PROVIDERS) == 5
+    assert set(PROVIDERS.keys()) == {"claude", "openai", "gemini", "ollama", "manual"}
 
 
 def test_each_provider_implements_protocol():

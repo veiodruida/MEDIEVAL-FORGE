@@ -12,7 +12,7 @@ from medieval_forge.services.llm.schemas import (
 
 _MINIMAL_VALID = {
     "kingdoms": {"k1": "Kingdom One"},
-    "duchies": {"d1": ["k1", "Duchy One"]},
+    "duchies": {"d1": {"kingdom_id": "k1", "name": "Duchy One"}},
     "condados_assignment": [
         {"condado_id": "c1", "kingdom_id": "k1", "duchy_id": "d1"}
     ],

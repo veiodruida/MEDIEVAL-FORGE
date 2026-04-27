@@ -37,7 +37,8 @@ async def test_post_credentials_stores_in_memory(auth_client):
 
     stored = app.state.credentials.get("openai", {})
     assert stored.get("key") == "sk-test-123"
-    assert stored.get("source") == "session"
+    # Credentials persist to DB for survival across restarts; source is 'disk'.
+    assert stored.get("source") == "disk"
 
 
 async def test_post_credentials_response_does_not_echo_key(auth_client):

@@ -169,7 +169,7 @@ describe("ResearchDialog", () => {
   });
 
   it("disables 'Iniciar pesquisa' button while streaming", async () => {
-    vi.spyOn(globalThis, "fetch").mockImplementation((url: RequestInfo | URL) => {
+    vi.spyOn(globalThis, "fetch").mockImplementation((url: RequestInfo | URL, init?: RequestInit) => {
       const urlStr = String(url);
       if (urlStr.includes("/api/llm/providers")) {
         return Promise.resolve({
@@ -189,6 +189,14 @@ describe("ResearchDialog", () => {
       if (urlStr.includes("/research")) {
         // Return a stream that never resolves to simulate streaming state
         return new Promise<Response>(() => {});
+      }
+      // ResearchDialog calls PATCH /api/projects/{id} via persistFormToProject before stream.start
+      if (init?.method === "PATCH" && urlStr.includes("/api/projects/")) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({ id: "proj-3", name: "test" }),
+        } as Response);
       }
       return Promise.resolve({ ok: false, status: 404 } as Response);
     });
@@ -285,7 +293,7 @@ describe("ResearchDialog", () => {
     ];
     let chunkIndex = 0;
 
-    vi.spyOn(globalThis, "fetch").mockImplementation((url: RequestInfo | URL) => {
+    vi.spyOn(globalThis, "fetch").mockImplementation((url: RequestInfo | URL, init?: RequestInit) => {
       const urlStr = String(url);
       if (urlStr.includes("/api/llm/providers")) {
         return Promise.resolve({
@@ -301,6 +309,14 @@ describe("ResearchDialog", () => {
       }
       if (urlStr.includes("/research/cached")) {
         return Promise.resolve({ status: 404, ok: false } as Response);
+      }
+      // PATCH /api/projects/{id} from persistFormToProject — must come BEFORE the /research catch-all
+      if (init?.method === "PATCH" && urlStr.includes("/api/projects/")) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({ id: "proj-5", name: "test" }),
+        } as Response);
       }
       if (urlStr.includes("/research")) {
         chunkIndex = 0;

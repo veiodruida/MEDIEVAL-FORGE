@@ -76,8 +76,8 @@ async def project_with_territories(async_session_factory, tmp_path, monkeypatch)
         ))
         await session.commit()
 
-    # Write a minimal territories.geojson
-    out_dir = fake_root / pid / "out"
+    # Write a minimal territories.geojson into the generated/ subdir (matches research_runner.load_condados)
+    out_dir = fake_root / pid / "generated"
     out_dir.mkdir(parents=True, exist_ok=True)
     territories = {
         "type": "FeatureCollection",
@@ -116,7 +116,7 @@ async def test_sse_endpoint_streams_progress(monkeypatch, async_client, project_
 
     valid_result = ResearchResult(
         kingdoms={"k1": "Leon"},
-        duchies={"d1": ("k1", "Duchy of Leon")},
+        duchies={"d1": {"kingdom_id": "k1", "name": "Duchy of Leon"}},
         condados_assignment=[
             CondadoAssignment(condado_id="c1", kingdom_id="k1", duchy_id="d1"),
             CondadoAssignment(condado_id="c2", kingdom_id="k1", duchy_id="d1"),
@@ -231,7 +231,7 @@ async def test_sse_endpoint_force_refresh_bypasses_cache(monkeypatch, async_clie
 
     valid_result = ResearchResult(
         kingdoms={"k1": "Leon"},
-        duchies={"d1": ("k1", "Duchy of Leon")},
+        duchies={"d1": {"kingdom_id": "k1", "name": "Duchy of Leon"}},
         condados_assignment=[
             CondadoAssignment(condado_id="c1", kingdom_id="k1", duchy_id="d1"),
             CondadoAssignment(condado_id="c2", kingdom_id="k1", duchy_id="d1"),

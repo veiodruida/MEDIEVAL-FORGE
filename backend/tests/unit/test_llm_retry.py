@@ -13,7 +13,7 @@ from medieval_forge.services.llm.schemas import ResearchResult
 _VALID_RESULT = ResearchResult.model_validate(
     {
         "kingdoms": {"k1": "Kingdom"},
-        "duchies": {"d1": ["k1", "Duchy"]},
+        "duchies": {"d1": {"kingdom_id": "k1", "name": "Duchy"}},
         "condados_assignment": [
             {"condado_id": "c1", "kingdom_id": "k1", "duchy_id": "d1"}
         ],
