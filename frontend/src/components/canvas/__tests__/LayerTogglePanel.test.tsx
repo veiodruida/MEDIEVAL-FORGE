@@ -21,9 +21,11 @@ vi.mock('@radix-ui/themes', () => ({
 }))
 
 // Quick-task 260420-hkr: vocabulary + defaults updated.
+// Phase 05: 'terrain' layer added (default OFF).
 const DEFAULT_VISIBILITY = {
   condados: true,
   baronies: false,
+  terrain: false,
   borders: true,
   capitals: true,
   labels: false,
@@ -39,31 +41,39 @@ describe('LayerTogglePanel', () => {
     })
   })
 
-  it('renders 5 layer rows in the correct order', () => {
+  it('renders 6 layer rows in the correct order (Phase 05: terrain added)', () => {
     render(<LayerTogglePanel />)
     expect(screen.getByText('Condados')).toBeTruthy()
     expect(screen.getByText('Baronias')).toBeTruthy()
+    expect(screen.getByText('Terreno')).toBeTruthy()
     expect(screen.getByText('Fronteiras')).toBeTruthy()
     expect(screen.getByText('Capitais')).toBeTruthy()
     expect(screen.getByText('Nomes')).toBeTruthy()
-    expect(screen.getAllByRole('checkbox').length).toBe(5)
+    expect(screen.getAllByRole('checkbox').length).toBe(6)
   })
 
-  it('default state: condados/borders/capitals ON, baronies/labels OFF', () => {
+  it('default state: condados/borders/capitals ON, baronies/terrain/labels OFF', () => {
     render(<LayerTogglePanel />)
     const boxes = screen.getAllByRole('checkbox') as HTMLInputElement[]
     expect(boxes[0].checked).toBe(true)  // condados
     expect(boxes[1].checked).toBe(false) // baronies
-    expect(boxes[2].checked).toBe(true)  // borders
-    expect(boxes[3].checked).toBe(true)  // capitals
-    expect(boxes[4].checked).toBe(false) // labels
+    expect(boxes[2].checked).toBe(false) // terrain (Phase 05 — default OFF)
+    expect(boxes[3].checked).toBe(true)  // borders
+    expect(boxes[4].checked).toBe(true)  // capitals
+    expect(boxes[5].checked).toBe(false) // labels
   })
 
   it('clicking Nomes (labels) checkbox toggles store', () => {
     render(<LayerTogglePanel />)
     const boxes = screen.getAllByRole('checkbox') as HTMLInputElement[]
-    act(() => { fireEvent.click(boxes[4]) })
+    act(() => { fireEvent.click(boxes[5]) }) // index 5 after terrain insertion
     expect(useUIStore.getState().layerVisibility.labels).toBe(true)
+  })
+
+  it('Terreno toggle is present and defaults to OFF', () => {
+    render(<LayerTogglePanel />)
+    expect(screen.getByText('Terreno')).toBeTruthy()
+    expect(useUIStore.getState().layerVisibility.terrain).toBe(false)
   })
 
   it('Card has variant="surface" at absolute position top:12 left:12 z-index:10', () => {

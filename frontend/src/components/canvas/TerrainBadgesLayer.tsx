@@ -20,7 +20,7 @@ interface Props {
  * - Always rendered regardless of the 'terrain' layer visibility toggle
  *   (badges are informational overlays, not part of the color mode).
  */
-export function TerrainBadgesLayer({ condados, projection }: Props): JSX.Element {
+export function TerrainBadgesLayer({ condados, projection }: Props) {
   const terrainTypes = useProjectStore((s) => s.terrain_types)
 
   return (

@@ -1,10 +1,11 @@
 import { useSyncExternalStore } from 'react'
-import { Flex, Button, Tooltip, Separator, SegmentedControl } from '@radix-ui/themes'
+import { Flex, Button, Tooltip, Separator, SegmentedControl, Text, Slider } from '@radix-ui/themes'
 import { CounterClockwiseClockIcon } from '@radix-ui/react-icons'
 import * as Icons from '@radix-ui/react-icons'
 import { useEditorStore } from '../../stores/useEditorStore'
 import { useProjectStore } from '../../stores/useProjectStore'
 import { useUIStore } from '../../stores/uiStore'
+import { TERRAIN_TYPES, TERRAIN_EMOJI, TERRAIN_LABELS_PT, type TerrainType } from '../../types/editing'
 
 // Redo icon: try candidates in order; fall back to text arrow if none match.
 // ReloadIcon confirmed present in installed @radix-ui/react-icons version.
@@ -99,7 +100,14 @@ export function EditToolbar() {
   const setSplitSubMode = useEditorStore((s) => s.setSplitSubMode)
   const selectedId = useUIStore((s) => s.selectedTerritoryId)
 
+  // Phase 05: paint tool state
+  const activeTerrain = useEditorStore((s) => s.activeTerrain)
+  const brushRadius = useEditorStore((s) => s.brushRadius)
+  const setActiveTerrain = useEditorStore((s) => s.setActiveTerrain)
+  const setBrushRadius = useEditorStore((s) => s.setBrushRadius)
+
   const splitActive = activeTool === 'split'
+  const paintActive = activeTool === 'paint'
 
   return (
     <Flex
@@ -154,6 +162,54 @@ export function EditToolbar() {
           <SegmentedControl.Item value="polyline">Polilinha</SegmentedControl.Item>
           <SegmentedControl.Item value="freehand">Livre</SegmentedControl.Item>
         </SegmentedControl.Root>
+      )}
+      {/* Phase 05: paint terrain tool button */}
+      {editMode && (
+        <Tooltip content={!editMode ? 'Ative o modo de edição primeiro' : 'Ferramenta de pintura ativa (P)'}>
+          <Button
+            size="2"
+            variant={paintActive ? 'solid' : 'soft'}
+            color={paintActive ? 'iris' : 'gray'}
+            disabled={!editMode}
+            title={!editMode ? 'Ative o modo de edição primeiro' : 'Ferramenta de pintura ativa (P)'}
+            onClick={() => {
+              if (paintActive) {
+                setActiveTool('none')
+              } else {
+                setActiveTool('paint')
+                if (activeTerrain === null) setActiveTerrain('mountain')
+              }
+            }}
+          >
+            Pintar Terreno
+          </Button>
+        </Tooltip>
+      )}
+      {/* Phase 05: paint controls (terrain picker + radius slider) — shown only when paint tool is active */}
+      {editMode && paintActive && (
+        <Flex gap="2" align="center">
+          <SegmentedControl.Root
+            size="1"
+            value={activeTerrain ?? 'mountain'}
+            onValueChange={(v) => setActiveTerrain(v as TerrainType)}
+          >
+            {TERRAIN_TYPES.map((t) => (
+              <SegmentedControl.Item key={t} value={t}>
+                {TERRAIN_EMOJI[t]} {TERRAIN_LABELS_PT[t]}
+              </SegmentedControl.Item>
+            ))}
+          </SegmentedControl.Root>
+          <Text size="1">Raio: {brushRadius}px</Text>
+          <Slider
+            size="1"
+            min={10}
+            max={80}
+            step={5}
+            value={[brushRadius]}
+            onValueChange={(v) => setBrushRadius(v[0])}
+            style={{ width: 120 }}
+          />
+        </Flex>
       )}
       <Separator orientation="vertical" size="1" />
       <UndoRedoButtons />

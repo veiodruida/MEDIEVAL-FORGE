@@ -3,6 +3,8 @@ import { Layer } from 'react-konva'
 import { TerritoryPolygon } from './TerritoryPolygon'
 import { useUIStore } from '../../stores/uiStore'
 import { useEditorStore } from '../../stores/useEditorStore'
+import { useProjectStore } from '../../stores/useProjectStore'
+import { TERRAIN_HEX, TERRAIN_UNPAINTED_HEX } from '../../types/editing'
 import type { TerritoryRender } from '../../hooks/useCanvasArtifacts'
 
 const FALLBACK_FILL = '#666666'
@@ -29,6 +31,9 @@ export function TerritoryLayer({
   showBorders,
 }: TerritoryLayerProps) {
   const selectedTerritoryId = useUIStore((s) => s.selectedTerritoryId)
+  // Phase 05: terrain color mode — when 'terrain' layer is ON, fill uses terrain hex
+  const terrainLayerOn = useUIStore((s) => s.layerVisibility.terrain)
+  const terrainTypes = useProjectStore((s) => s.terrain_types)
 
   // Stable across shift-click mutations: handleClick has NO state deps.
   // Reading via getState() inside the body sees fresh values on each call but
@@ -61,16 +66,23 @@ export function TerritoryLayer({
 
   return (
     <Layer visible={visible}>
-      {territories.map((t, i) => (
-        <TerritoryPolygon
-          key={`${t.id}-${i}`}
-          territory={t}
-          fill={condadoColors[t.id] ?? FALLBACK_FILL}
-          isSelected={selectedTerritoryId === t.id}
-          showBorders={showBorders}
-          onClick={handleClick}
-        />
-      ))}
+      {territories.map((t, i) => {
+        // Phase 05: when terrain layer is ON, fill uses terrain hex (or unpainted hex);
+        // when terrain layer is OFF, use kingdom color (existing behavior).
+        const fill = terrainLayerOn
+          ? (terrainTypes[t.id] ? TERRAIN_HEX[terrainTypes[t.id]] : TERRAIN_UNPAINTED_HEX)
+          : (condadoColors[t.id] ?? FALLBACK_FILL)
+        return (
+          <TerritoryPolygon
+            key={`${t.id}-${i}`}
+            territory={t}
+            fill={fill}
+            isSelected={selectedTerritoryId === t.id}
+            showBorders={showBorders}
+            onClick={handleClick}
+          />
+        )
+      })}
     </Layer>
   )
 }
