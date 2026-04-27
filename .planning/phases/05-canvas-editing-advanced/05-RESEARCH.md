@@ -409,9 +409,11 @@ class PaintTerrainResponse(BaseModel):
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-### 1. Where does per-territory terrain data persist?
+### 1. Where does per-territory terrain data persist? [RESOLVED: Option B]
+
+**Resolution:** Per Plan 5.1 `<persistence_decision>`: terrain data stored as `properties.terrain_type` per feature in `territories.geojson` (Option B — GeoJSON feature property). Aligns with Phase 4 D-07 save strategy; no SQLite migration required.
 
 **What we know:** CONTEXT.md D-01 says "SQLite update" and "Backend validates land mask... SQLite update." No SQLite column for terrain currently exists. The generator's `terrain_types.json` is the RGB palette (not per-territory data).
 
@@ -420,12 +422,14 @@ class PaintTerrainResponse(BaseModel):
 - **Option B — Per-feature property in territories.geojson:** Add `"terrain_type"` to each GeoJSON feature's `properties` dict. Aligns with existing D-07 save strategy (persist flag, `saveSnapshot()` flush). No migration. Pro: geometry and terrain travel together. Con: terrain data is in a file, not DB; won't survive a full pipeline regeneration unless migration code is written.
 - **Option C — Separate terrain_assignments.json sidecar:** New file per project in `generated/`. Simplest to implement. No migration. Co-located with geometry artifacts. Con: another file to manage.
 
-**Recommendation:** Option B (GeoJSON feature property) is most consistent with the Phase 4 D-07 save strategy and does not require a migration. The `saveSnapshot()` explicit-save endpoint would need to accept `terrain_types` in its payload. **The planner must decide and document the choice before writing Plan 5.1.**
+**Original recommendation:** Option B (GeoJSON feature property) is most consistent with the Phase 4 D-07 save strategy and does not require a migration.
 
-### 2. Does `use-image` need to be added as a dependency?
+### 2. Does `use-image` need to be added as a dependency? [RESOLVED: already installed]
+
+**Resolution:** Per Plan 5.3 interfaces block: `use-image ^1.1.4` is VERIFIED installed in `frontend/package.json`. No new npm dependency required.
 
 **What we know:** `use-image` is a common react-konva companion for loading images from URLs. Its installation status in the current project is not confirmed in the files read.
-**Recommendation:** The planner must run `npm list use-image` in `frontend/` and either use it if present or implement a minimal `useImage` hook inline (< 20 lines, standard React pattern with HTMLImageElement + onload). Do not add a new npm dep without checking.
+**Original recommendation:** The planner must run `npm list use-image` in `frontend/` and either use it if present or implement a minimal `useImage` hook inline (< 20 lines, standard React pattern with HTMLImageElement + onload). Do not add a new npm dep without checking.
 
 ---
 
