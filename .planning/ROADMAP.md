@@ -139,9 +139,12 @@ Six phases take Medieval Forge from zero to a fully validated, Unity-ready map p
 1. User can select the terrain paint brush, choose a terrain type (mountain, river, forest, plains, arid), paint strokes on the canvas, and see the terrain type change reflected immediately; ocean cells cannot be painted.
 2. User can upload a reference image (SRTM/custom) and an opacity slider appears; adjusting the slider blends the overlay behind the territory polygons in real time.
 
+**Plans:** 3 plans
+
 ### Plans
-- **5.1** Terrain paint brush — brush tool Konva interaction, terrain type selector UI, `POST /api/edit/paint-terrain` with land mask guard, canvas re-render on terrain change (EDIT-05)
-- **5.2** Reference overlay — file upload input, overlay Konva layer with opacity control, `useUIStore` opacity state (not undo-tracked), `clearCache()` on geometry change (EDIT-06)
+- [ ] `05-01-PLAN.md` — Foundation: TerrainType contract + useProjectStore terrain_types undo slice + uiStore overlay/terrain layer + useEditorStore brush state + paintTerrain API client + backend POST /api/edit/paint-terrain with land mask guard + GeoJSON terrain_type persistence + Wave 0 RED tests (EDIT-05, EDIT-06)
+- [ ] `05-02-PLAN.md` — Terrain paint UI: TerrainBadgesLayer, EditToolbar paint controls (button + SegmentedControl + brush slider), CanvasViewer paint handlers + brush cursor + P shortcut + hydrate, LayerTogglePanel Terreno entry, TerritoryLayer terrain color mode (EDIT-05)
+- [ ] `05-03-PLAN.md` — Reference overlay: TerrainOverlayLayer Konva Image, ReferenceOverlayPanel Card with file input + opacity slider + Remover, CanvasViewer mount between BackgroundLayer and TerritoryLayer (EDIT-06)
 
 ---
 
@@ -179,7 +182,7 @@ Six phases take Medieval Forge from zero to a fully validated, Unity-ready map p
 | 2. Read-Only Canvas Viewer | 4/5 | Gap closure planning (02-05) | - |
 | 3. LLM Research Integration | 0/4 | Not started | - |
 | 4. Canvas Editing — Basic | 10/12 | Gap closure planning (04-11, 04-12) | - |
-| 5. Canvas Editing — Advanced | 0/2 | Not started | - |
+| 5. Canvas Editing — Advanced | 0/3 | Plans drafted | - |
 | 6. Validation Gate + Export Polish | 0/3 | Not started | - |
 
 ---
