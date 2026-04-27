@@ -51,9 +51,49 @@ export interface GeoJSONMultiPolygon {
 export interface ProjectGeometryState {
   territories: Record<string, GeoJSONPolygon | GeoJSONMultiPolygon>
   capitals: Record<string, Position>  // condado_id -> [lon, lat]
+  terrain_types?: Record<string, TerrainType>  // Phase 5 addition — optional for backward compat with existing callers
 }
 
-export type ToolMode = 'none' | 'select' | 'capital' | 'vertex' | 'split'
+export type TerrainType = 'mountain' | 'forest' | 'plains' | 'river' | 'arid'
+export const TERRAIN_TYPES = ['mountain', 'forest', 'plains', 'river', 'arid'] as const
+
+export interface PaintTerrainRequest {
+  territory_ids: string[]
+  terrain_type: TerrainType
+}
+
+export interface PaintTerrainResponse {
+  painted_ids: string[]
+  skipped_ids: string[]
+}
+
+export const TERRAIN_LABELS_PT: Record<TerrainType, string> = {
+  mountain: 'Montanha',
+  forest: 'Floresta',
+  plains: 'Planície',
+  river: 'Rio',
+  arid: 'Árido',
+}
+
+export const TERRAIN_EMOJI: Record<TerrainType, string> = {
+  mountain: '⛰️',
+  forest: '🌲',
+  plains: '🌾',
+  river: '🌊',
+  arid: '🏜️',
+}
+
+export const TERRAIN_HEX: Record<TerrainType, string> = {
+  mountain: '#9e9e9e',
+  forest: '#2d6a2d',
+  plains: '#c8b870',
+  river: '#5b8db8',
+  arid: '#c27b3a',
+}
+
+export const TERRAIN_UNPAINTED_HEX = '#d4d4d4'
+
+export type ToolMode = 'none' | 'select' | 'capital' | 'vertex' | 'split' | 'paint'
 export type SplitSubMode = 'snap' | 'polyline' | 'freehand'
 
 export interface EditorState {

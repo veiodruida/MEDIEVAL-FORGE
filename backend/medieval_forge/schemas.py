@@ -181,3 +181,18 @@ class VertexHandle(BaseModel):
 
 class VertexHandlesResponse(BaseModel):
     handles: list[VertexHandle]
+
+
+# ==================== Phase 5: Terrain Paint schemas ====================
+
+TerrainType = Literal['mountain', 'forest', 'plains', 'river', 'arid']
+
+
+class PaintTerrainRequest(BaseModel):
+    territory_ids: list[str]
+    terrain_type: TerrainType
+
+
+class PaintTerrainResponse(BaseModel):
+    painted_ids: list[str]
+    skipped_ids: list[str]
