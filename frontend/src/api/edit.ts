@@ -9,6 +9,8 @@ import type {
   GeoJSONPolygon,
   GeoJSONMultiPolygon,
   Position,
+  PaintTerrainRequest,
+  PaintTerrainResponse,
 } from '../types/editing'
 
 const API_BASE = '/api'
@@ -139,3 +141,17 @@ export const saveSnapshot = (
   req: SaveSnapshotRequest,
 ): Promise<{ ok: true }> =>
   postJson(`/projects/${projectId}/geometry/save`, req)
+
+// --- Phase 5: Terrain paint (EDIT-05) ---
+
+/**
+ * Assign terrain_type to a set of territories.
+ * Backend validates land mask per centroid (ocean cells land in skipped_ids).
+ * Persistence is server-side and unconditional — paint strokes always write through.
+ * Backend endpoint: POST /api/projects/{id}/edit/paint-terrain
+ */
+export const paintTerrain = (
+  projectId: string,
+  req: PaintTerrainRequest,
+): Promise<PaintTerrainResponse> =>
+  postJson(`/projects/${projectId}/edit/paint-terrain`, req)

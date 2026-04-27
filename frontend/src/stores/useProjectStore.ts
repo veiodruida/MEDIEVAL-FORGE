@@ -5,27 +5,37 @@ import type {
   GeoJSONPolygon,
   GeoJSONMultiPolygon,
   Position,
+  TerrainType,
 } from '../types/editing'
 
 // Explicit geometry slice type used by the diff function and partialize.
 // Avoids the `ReturnType<typeof partialize>` self-reference issue in TS.
-type GeometrySlice = Pick<ProjectStore, 'territories' | 'capitals'>
+type GeometrySlice = Pick<ProjectStore, 'territories' | 'capitals' | 'terrain_types'>
 
 interface ProjectStore extends ProjectGeometryState {
   // --- geometry-only state (INCLUDED in partialize) ---
   territories: Record<string, GeoJSONPolygon | GeoJSONMultiPolygon>
   capitals: Record<string, Position>
+  terrain_types: Record<string, TerrainType>
 
   // --- transient state (EXCLUDED by partialize — must never enter undo history) ---
   projectId: string | null       // hydrated on project open, not an undoable change
   loading: boolean               // transient flag during fetch
 
   // --- actions ---
-  hydrate: (projectId: string, territories: ProjectStore['territories'], capitals: ProjectStore['capitals']) => void
+  hydrate: (
+    projectId: string,
+    territories: ProjectStore['territories'],
+    capitals: ProjectStore['capitals'],
+    terrain_types?: Record<string, TerrainType>,
+  ) => void
   setCapital: (condadoId: string, position: Position) => void
   setTerritory: (condadoId: string, geometry: GeoJSONPolygon | GeoJSONMultiPolygon) => void
   applyBatchUpdate: (territories: Partial<ProjectStore['territories']>, capitals: Partial<ProjectStore['capitals']>) => void
   removeTerritories: (ids: string[]) => void
+  setTerrainType: (condadoId: string, terrain: TerrainType) => void
+  clearTerrainType: (condadoId: string) => void
+  restoreTerrainTypes: (snapshot: Record<string, TerrainType>) => void
 }
 
 // partialize: ONLY geometry enters undo history. projectId + loading are transient.
@@ -33,6 +43,7 @@ function partialize(state: ProjectStore): GeometrySlice {
   return {
     territories: state.territories,
     capitals: state.capitals,
+    terrain_types: state.terrain_types,
   }
 }
 
@@ -41,11 +52,19 @@ export const useProjectStore = create<ProjectStore>()(
     (set) => ({
       territories: {},
       capitals: {},
+      terrain_types: {},
       projectId: null,
       loading: false,
 
-      hydrate: (projectId, territories, capitals) =>
-        set({ projectId, territories, capitals, loading: false }),
+      hydrate: (projectId, territories, capitals, terrain_types) => {
+        // Pause temporal tracking during hydration so initial load does not
+        // pollute the undo history (mirrors the advisor note on test_hydrate_initializes_terrain_types).
+        useProjectStore.temporal.getState().pause()
+        set({ projectId, territories, capitals, terrain_types: terrain_types ?? {}, loading: false })
+        useProjectStore.temporal.getState().resume()
+        // Clear any entry the resume may have produced (hydrate is not undoable)
+        useProjectStore.temporal.getState().clear()
+      },
 
       setCapital: (condadoId, position) =>
         set((s) => ({ capitals: { ...s.capitals, [condadoId]: position } })),
@@ -69,6 +88,18 @@ export const useProjectStore = create<ProjectStore>()(
           }
           return { territories: nextT, capitals: nextC }
         }),
+
+      setTerrainType: (condadoId, terrain) =>
+        set((s) => ({ terrain_types: { ...s.terrain_types, [condadoId]: terrain } })),
+
+      clearTerrainType: (condadoId) =>
+        set((s) => {
+          const next = { ...s.terrain_types }
+          delete next[condadoId]
+          return { terrain_types: next }
+        }),
+
+      restoreTerrainTypes: (snapshot) => set({ terrain_types: { ...snapshot } }),
     }),
     {
       partialize,
@@ -131,6 +162,28 @@ export const useProjectStore = create<ProjectStore>()(
           }
         }
 
+        // Compare terrain_types (same pattern as capitals)
+        if (pastState.terrain_types !== currentState.terrain_types) {
+          const ttDelta: Record<string, TerrainType> = {} as Record<string, TerrainType>
+          const past = pastState.terrain_types ?? {}
+          const curr = currentState.terrain_types ?? {}
+          for (const id of Object.keys(curr)) {
+            if (past[id] !== curr[id]) {
+              ttDelta[id] = past[id] as TerrainType
+              changed = true
+            }
+          }
+          for (const id of Object.keys(past)) {
+            if (!(id in curr)) {
+              ttDelta[id] = past[id]
+              changed = true
+            }
+          }
+          if (Object.keys(ttDelta).length > 0) {
+            ;(result as Partial<GeometrySlice>).terrain_types = ttDelta
+          }
+        }
+
         return changed ? result : null
       },
 
@@ -174,7 +227,8 @@ export const useProjectStore = create<ProjectStore>()(
         const currentState = partialize(useProjectStore.getState())
         const hasChanged =
           prePauseSnapshot.territories !== currentState.territories ||
-          prePauseSnapshot.capitals !== currentState.capitals
+          prePauseSnapshot.capitals !== currentState.capitals ||
+          prePauseSnapshot.terrain_types !== currentState.terrain_types
         if (hasChanged) {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const s = temporalStore.getState() as any

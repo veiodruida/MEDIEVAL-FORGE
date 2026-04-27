@@ -1,6 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { useUIStore } from '../uiStore'
 
+// jsdom does not define URL.revokeObjectURL — define a no-op so vi.spyOn can patch it.
+if (typeof URL.revokeObjectURL === 'undefined') {
+  URL.revokeObjectURL = () => undefined
+}
+
 beforeEach(() => {
   // Reset store state before each test
   useUIStore.setState({

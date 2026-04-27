@@ -1,7 +1,11 @@
 import { create } from 'zustand'
-import type { EditorState, ToolMode, SplitSubMode, UndoLabel } from '../types/editing'
+import type { EditorState, ToolMode, SplitSubMode, UndoLabel, TerrainType } from '../types/editing'
 
 interface EditorStore extends EditorState {
+  // --- Phase 5: terrain paint brush state (transient — NOT undo-tracked) ---
+  activeTerrain: TerrainType | null
+  brushRadius: number  // pixels, range 10–80, default 30
+
   // --- actions ---
   toggleEditMode: () => void
   setEditMode: (on: boolean) => void
@@ -10,6 +14,8 @@ interface EditorStore extends EditorState {
   setVertexEditCondadoId: (id: string | null) => void
   setRubberBandSelectionIds: (ids: string[]) => void
   clearRubberBandSelection: () => void
+  setActiveTerrain: (terrain: TerrainType | null) => void
+  setBrushRadius: (radius: number) => void
 
   // --- Named undo/redo label stack (Pitfall 7) ---
   // zundo does NOT store metadata. We maintain a parallel array synchronized
@@ -37,6 +43,8 @@ export const useEditorStore = create<EditorStore>()((set) => ({
   rubberBandSelectionIds: [],
   undoLabels: [],
   redoLabels: [],
+  activeTerrain: null,
+  brushRadius: 30,
 
   toggleEditMode: () => set((s) => ({ editMode: !s.editMode })),
   setEditMode: (on) => set({ editMode: on }),
@@ -77,4 +85,7 @@ export const useEditorStore = create<EditorStore>()((set) => ({
   },
 
   clearLabels: () => set({ undoLabels: [], redoLabels: [] }),
+
+  setActiveTerrain: (terrain) => set({ activeTerrain: terrain }),
+  setBrushRadius: (radius) => set({ brushRadius: Math.min(80, Math.max(10, radius)) }),
 }))

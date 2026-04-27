@@ -99,17 +99,19 @@ describe('useProjectStore — terrain_types slice', () => {
     expect(state.terrain_types).toEqual({})
   })
 
-  it('test_setTerrainType_records_diff_entry: pause → setTerrainType → resume records one entry with terrain_types delta', () => {
+  it('test_setTerrainType_records_diff_entry: pause → setTerrainType → resume records one history entry', () => {
     useProjectStore.temporal.getState().pause()
     useProjectStore.getState().setTerrainType('c1', 'forest')
     useProjectStore.temporal.getState().resume()
     const { pastStates } = useProjectStore.temporal.getState()
+    // One history entry must have been recorded for the paused batch
     expect(pastStates.length).toBeGreaterThanOrEqual(1)
     const lastEntry = pastStates[pastStates.length - 1]
-    // The diff stores the PAST value (undefined / absent) for changed keys
+    // The stored entry contains the terrain_types slice (pre-change snapshot)
+    // _handleSet stores prePauseSnapshot verbatim; diff is applied on undo()
     expect(lastEntry).toHaveProperty('terrain_types')
-    expect('c1' in (lastEntry as { terrain_types?: Record<string, TerrainType> }).terrain_types!).toBe(true)
-    expect((lastEntry as { terrain_types?: Record<string, TerrainType> }).terrain_types!['c1']).toBeUndefined()
+    // Pre-pause snapshot had terrain_types = {} (empty, before setTerrainType)
+    expect((lastEntry as { terrain_types?: Record<string, TerrainType> }).terrain_types).toEqual({})
   })
 
   it('test_diff_returns_null_when_terrain_types_unchanged: no-op set produces no new temporal entry', () => {
