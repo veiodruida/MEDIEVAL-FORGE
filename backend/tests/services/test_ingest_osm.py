@@ -192,19 +192,23 @@ async def test_sse_generator_sets_stop_event_on_client_disconnect():
     """When client disconnects (aclose), _sse_generator finally calls stop_event.set()."""
     from medieval_forge.api.ingest import _sse_generator
 
-    # We need a run_ingest that blocks until stop_event is set.
-    # Patch it to put one message then wait on stop_event.
-    stop_was_set: asyncio.Event = asyncio.Event()
+    # Capture the stop_event passed to run_ingest so we can check it was set.
+    captured_stop_event: list[asyncio.Event] = []
 
     async def _fake_run_ingest(
         project_id, source, country, queue, session_factory=None,
         bbox=None, clip_iso_codes=None, stop_event=None
     ):
-        await queue.put("data: test message\n\n")
-        # Wait until external stop_event is set (simulating infinite retry)
+        # Capture the stop_event so the test can inspect it after aclose
         if stop_event is not None:
-            await stop_event.wait()
-            stop_was_set.set()
+            captured_stop_event.append(stop_event)
+        await queue.put("data: test message\n\n")
+        # Block until stop_event is set — simulates infinite retry loop
+        if stop_event is not None:
+            try:
+                await stop_event.wait()
+            except asyncio.CancelledError:
+                pass
         await queue.put(None)  # sentinel
 
     import medieval_forge.api.ingest as ingest_module
@@ -227,9 +231,11 @@ async def test_sse_generator_sets_stop_event_on_client_disconnect():
         # Simulate client disconnect — aclose() triggers finally block
         await gen.aclose()
 
-        # Give the event loop a moment to process
+        # Give the event loop a moment to process the finally block
         await asyncio.sleep(0.05)
 
-        assert stop_was_set.is_set(), "stop_event.set() was not called in finally block"
+        # The finally block in _sse_generator must have called stop_event.set()
+        assert len(captured_stop_event) == 1, "stop_event was not passed to run_ingest"
+        assert captured_stop_event[0].is_set(), "stop_event.set() was not called in finally block"
     finally:
         ingest_module.run_ingest = original_run_ingest  # type: ignore[assignment]

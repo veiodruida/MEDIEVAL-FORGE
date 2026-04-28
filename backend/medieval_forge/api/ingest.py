@@ -36,10 +36,12 @@ async def _sse_generator(
     clip_iso_codes: list[str] | None = None,
 ):
     queue: asyncio.Queue[str | None] = asyncio.Queue()
+    stop_event = asyncio.Event()
     task = asyncio.create_task(
         run_ingest(
             project_id, source, country, queue, session_factory,
             bbox=bbox, clip_iso_codes=clip_iso_codes,
+            stop_event=stop_event,
         )
     )
     try:
@@ -49,7 +51,9 @@ async def _sse_generator(
                 break
             yield msg
     finally:
-        # Ensure the producer task is awaited so exceptions propagate to logs.
+        # Signal the producer loop to stop gracefully first (preferred),
+        # then cancel the task as a fallback if it ignored the event.
+        stop_event.set()
         if not task.done():
             task.cancel()
             try:

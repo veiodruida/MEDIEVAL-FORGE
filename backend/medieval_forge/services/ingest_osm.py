@@ -30,11 +30,15 @@ from . import country_boundaries
 
 log = logging.getLogger(__name__)
 
-# Endpoints públicos do Overpass API em ordem de preferência
+# Endpoints públicos do Overpass API em ordem de preferência.
+# Verificados live em 2026-04-28:
+#   - overpass-api.de: instância oficial principal
+#   - overpass.private.coffee: mirror europeu independente
+#   - overpass.kumi.systems: mirror alemão confiável
 OVERPASS_ENDPOINTS: list[str] = [
     "https://overpass-api.de/api/interpreter",
+    "https://overpass.private.coffee/api/interpreter",
     "https://overpass.kumi.systems/api/interpreter",
-    "https://overpass.openstreetmap.ru/api/interpreter",
 ]
 
 ISO_RE: re.Pattern[str] = re.compile(r"^[A-Z]{2}$")
@@ -247,44 +251,77 @@ async def _post_query(
     query: str,
     queue: asyncio.Queue[str | None],
     client_factory: Callable[[], httpx.AsyncClient] | None,
+    *,
+    stop_event: asyncio.Event | None = None,
 ) -> dict[str, Any]:
-    """Tenta cada endpoint Overpass em sequência até um responder sem erro 5xx."""
+    """Loop infinito pelos endpoints Overpass até um responder com sucesso ou stop_event ser setado.
+
+    Cicla OVERPASS_ENDPOINTS indefinidamente (attempt % len). Emite mensagens
+    SSE [Tentativa N] para cada tentativa. Quando stop_event é setado, levanta
+    asyncio.CancelledError para sinalizar cancelamento pelo usuário.
+
+    Backoff: min(30, 5 * attempt) segundos após respostas 5xx. Erros de rede
+    (timeout/connect) passam imediatamente para o próximo endpoint sem espera.
+    """
+    if stop_event is None:
+        stop_event = asyncio.Event()
+
     def _factory() -> httpx.AsyncClient:
         if client_factory is not None:
             return client_factory()
         return httpx.AsyncClient(timeout=_TIMEOUT_S)
 
-    last_exc: Exception | None = None
-    for endpoint in OVERPASS_ENDPOINTS:
-        await queue.put(f"data: Tentando endpoint: {endpoint}...\n\n")
+    retryable = {406, 408, 429, 502, 503, 504}
+    attempt = 0
+
+    while not stop_event.is_set():
+        endpoint = OVERPASS_ENDPOINTS[attempt % len(OVERPASS_ENDPOINTS)]
+        attempt += 1
+        await queue.put(f"data: [Tentativa {attempt}] {endpoint} — aguardando resposta...\n\n")
         try:
             async with _factory() as client:
-                resp = await client.post(
-                    endpoint,
-                    data={"data": query},
-                    headers={"Accept": "application/json"},
+                resp = await asyncio.wait_for(
+                    client.post(
+                        endpoint,
+                        data={"data": query},
+                        headers={"Accept": "application/json"},
+                    ),
+                    timeout=_TIMEOUT_S,
                 )
-                # Overpass mirrors commonly respond with 429 (rate-limited),
-                # 504 (gateway timeout), or 406 (overloaded / query rejected).
-                # All of those should fall through to the next mirror instead
-                # of aborting the whole ingest.
-                retryable = {406, 408, 429, 502, 503, 504}
+
                 if resp.status_code >= 500 or resp.status_code in retryable:
+                    wait_s = min(30, 5 * attempt)
                     await queue.put(
-                        f"data: Endpoint retornou {resp.status_code}, tentando próximo...\n\n"
+                        f"data: [Tentativa {attempt}] {endpoint} retornou {resp.status_code}. "
+                        f"Aguardando {wait_s}s...\n\n"
                     )
-                    last_exc = httpx.HTTPStatusError(
-                        f"HTTP {resp.status_code}", request=resp.request, response=resp
-                    )
+                    try:
+                        await asyncio.wait_for(stop_event.wait(), timeout=wait_s)
+                    except (asyncio.TimeoutError, TimeoutError):
+                        pass  # backoff elapsed, continue loop
                     continue
+
                 resp.raise_for_status()
-                return resp.json()
+                payload = resp.json()
+                elem_count = len(payload.get("elements", []))
+                await queue.put(
+                    f"data: [Tentativa {attempt}] {endpoint} — sucesso ({elem_count} elementos).\n\n"
+                )
+                return payload
+
+        except (asyncio.TimeoutError, TimeoutError):
+            await queue.put(
+                f"data: [Tentativa {attempt}] Timeout em {endpoint}. Tentando próximo...\n\n"
+            )
+            continue
         except (httpx.TimeoutException, httpx.ConnectError) as exc:
-            await queue.put(f"data: Endpoint falhou ({exc.__class__.__name__}), tentando próximo...\n\n")
-            last_exc = exc
+            await queue.put(
+                f"data: [Tentativa {attempt}] Falha de rede ({exc.__class__.__name__}) "
+                f"em {endpoint}. Tentando próximo...\n\n"
+            )
             continue
 
-    raise last_exc or RuntimeError("Todos os endpoints Overpass falharam")
+    raise asyncio.CancelledError("ingest stopped by user")
 
 
 async def fetch_municipalities(
@@ -294,6 +331,7 @@ async def fetch_municipalities(
     bbox: tuple[float, float, float, float] | None = None,
     clip_iso_codes: list[str] | None = None,
     client_factory: Callable[[], httpx.AsyncClient] | None = None,
+    stop_event: asyncio.Event | None = None,
 ) -> dict[str, Any]:
     """Busca municípios OSM e retorna GeoJSON FeatureCollection.
 
@@ -324,7 +362,7 @@ async def fetch_municipalities(
         )
         query = _build_country_query(country_iso)
 
-    payload = await _post_query(query, queue, client_factory)
+    payload = await _post_query(query, queue, client_factory, stop_event=stop_event)
 
     features: list[dict[str, Any]] = []
     for el in payload.get("elements", []):

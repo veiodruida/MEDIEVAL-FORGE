@@ -43,6 +43,7 @@ async def run_ingest(
     db_session_factory: async_sessionmaker | None = None,
     bbox: tuple[float, float, float, float] | None = None,
     clip_iso_codes: list[str] | None = None,
+    stop_event: asyncio.Event | None = None,
 ) -> None:
     """Producer task. ALWAYS puts None sentinel before returning.
 
@@ -63,7 +64,8 @@ async def run_ingest(
             payload = await ingest_wikidata.fetch_municipalities(country, queue)
         elif source == "osm":
             payload = await ingest_osm.fetch_municipalities(
-                country, queue, bbox=bbox, clip_iso_codes=clip_iso_codes
+                country, queue, bbox=bbox, clip_iso_codes=clip_iso_codes,
+                stop_event=stop_event,
             )
         else:
             raise ValueError(f"unknown source: {source!r}")
@@ -74,6 +76,13 @@ async def run_ingest(
         )
         await _set_status(project_id, "ingested", factory)
         await queue.put("data: DONE\n\n")
+    except asyncio.CancelledError:
+        logger.info("ingest cancelled by user for project %s", project_id)
+        await queue.put("data: Cancelado pelo usuário.\n\n")
+        try:
+            await _set_status(project_id, "error_ingesting", factory)
+        except Exception:  # noqa: BLE001
+            logger.exception("failed to update status after cancellation")
     except Exception as exc:  # noqa: BLE001 — runner is top-of-task
         logger.exception("ingest failed")
         await queue.put(f"data: ERROR: {exc}\n\n")
