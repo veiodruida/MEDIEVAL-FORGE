@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-04-16)
 Phase: 05 (canvas-editing-advanced) — EXECUTING
 Plan: 1 of 3
 Status: Executing Phase 05
-Last activity: 2026-04-28 - Completed quick task 260428-elq: Etapa 2 (Baronies Builder)
+Last activity: 2026-04-28 - Completed quick task 260428-ewx: Etapa 3 (Schemas split — MapResearchResult)
 
 Progress: [█████░░░░░] 50% (3 of 6 phases plan-complete; verification pending)
 
@@ -123,9 +123,10 @@ None yet.
 | 260426-qlo | Fix orphan bug: recalc_neighbors does not clip Voronoi cells to land mask after capital move | 2026-04-26 | 6e252ba | [260426-qlo-fix-orphan-bug-recalc-neighbors-does-not](./quick/260426-qlo-fix-orphan-bug-recalc-neighbors-does-not/) |
 | 260426-qvu | Fix orphan bug: project.updated_at not bumped on edit endpoints | 2026-04-26 | 30aee4d | [260426-qvu-fix-orphan-bug-project-updated-at-not-bu](./quick/260426-qvu-fix-orphan-bug-project-updated-at-not-bu/) |
 | 260428-elq | Etapa 2: Baronies Builder + endpoint /baronies + slider UI | 2026-04-28 | e807714 | [260428-elq-etapa-2-baronies-builder-endpoint-baroni](./quick/260428-elq-etapa-2-baronies-builder-endpoint-baroni/) |
+| 260428-ewx | Etapa 3: schemas split — MapResearchResult + barony_assignments + cross-ref validator | 2026-04-28 | 3c914b8 | [260428-ewx-etapa-3-schemas-split-mapresearchresult-](./quick/260428-ewx-etapa-3-schemas-split-mapresearchresult-/) |
 
 ## Session Continuity
 
 Last session: 2026-04-28
-Stopped at: Etapa 2 (Baronies Builder) complete — 209 tests passing
-Resume file: C:\Users\veio_\.claude\plans\hazy-hatching-abelson.md (Etapa 3)
+Stopped at: Etapa 3 (Schemas split) complete — 216 tests passing
+Resume file: C:\Users\veio_\.claude\plans\hazy-hatching-abelson.md (Etapa 4 — Model routing)
