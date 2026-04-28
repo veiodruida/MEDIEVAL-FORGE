@@ -6,7 +6,10 @@ T-DOS:  reject if project already generating.
 from __future__ import annotations
 
 import logging
+import math
+import traceback
 from pathlib import Path
+from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -27,6 +30,62 @@ router = APIRouter(prefix="/projects", tags=["generate"])
 _MEDIA_TYPES = {".png": "image/png", ".json": "application/json; charset=utf-8"}
 
 
+def _validate_territory_data_for_generation(td: Any) -> None:
+    """Pre-flight check for territory_data shape before scheduling generation.
+
+    Catches the empty/degenerate cases that previously surfaced as cryptic
+    "erro 0" messages from deep inside the rasterizer (e.g. KeyError(0) when
+    `lookup[0]` is hit on an empty dict, or IndexError on `condados[0]`).
+
+    Raises HTTPException(422) with a Portuguese, user-actionable message.
+    """
+    if not isinstance(td, dict):
+        raise HTTPException(
+            status_code=422,
+            detail="territory_data inválido: esperado dict com kingdoms/duchies/condados.",
+        )
+    condados = td.get("condados")
+    if not isinstance(condados, list) or len(condados) == 0:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Pesquisa histórica produziu zero condados. "
+                "Rode a pesquisa novamente (provider/effort diferente) "
+                "ou edite as atribuições antes de gerar o mapa."
+            ),
+        )
+    # Each condado is a tuple/list (id, name, lon, lat, duchy_id, baronies).
+    # We only validate the shape + coordinate sanity that would surface as
+    # cryptic errors deep in the rasterizer. Empty barony lists are tolerated
+    # — the generator handles that path on its own.
+    bad: list[str] = []
+    for entry in condados:
+        if not isinstance(entry, (list, tuple)) or len(entry) < 6:
+            bad.append(f"shape inválido: {entry!r}")
+            continue
+        cid, _name, lon, lat = entry[0], entry[1], entry[2], entry[3]
+        try:
+            lon_f, lat_f = float(lon), float(lat)
+        except (TypeError, ValueError):
+            bad.append(f"{cid!r}: lon/lat não numérico")
+            continue
+        if math.isnan(lon_f) or math.isnan(lat_f):
+            bad.append(f"{cid!r}: lon/lat NaN")
+        elif lon_f == 0.0 and lat_f == 0.0:
+            bad.append(f"{cid!r}: coordenadas (0,0) — provavelmente o LLM falhou")
+    if bad:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Coordenadas inválidas em "
+                f"{len(bad)} de {len(condados)} condados: "
+                + "; ".join(bad[:5])
+                + (" …" if len(bad) > 5 else "")
+                + ". Rode a pesquisa novamente ou corrija as atribuições."
+            ),
+        )
+
+
 async def _run_and_update_status(project_id: str, config: dict) -> None:
     """Background task body: runs generation; updates project.status atomically."""
     last_error: str | None = None
@@ -37,7 +96,11 @@ async def _run_and_update_status(project_id: str, config: dict) -> None:
     except Exception as exc:  # noqa: BLE001 — top of background task
         logger.exception("generation failed for %s", project_id)
         new_status = "error_generating"
-        last_error = str(exc)
+        # Capture exception type + message + last frames of traceback so the
+        # frontend never sees an opaque "erro 0" from a bare `str(KeyError(0))`.
+        tb_tail = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))[-1500:]
+        exc_msg = str(exc) or "(sem mensagem)"
+        last_error = f"{type(exc).__name__}: {exc_msg}\n\n{tb_tail}"
 
     # Open a fresh session — we are no longer inside the request scope.
     async with AsyncSessionLocal() as session:
@@ -90,6 +153,10 @@ async def trigger_generate(
 
     force_body = bool(merged.pop("force_body_territory_data", False))
     if not force_body:
+        # Body territory_data is ignored when cache is authoritative — prevents
+        # the frontend's DEFAULT_TERRITORY template (4 condados) from leaking
+        # through as a fallback when there is no ResearchCache row yet.
+        merged.pop("territory_data", None)
         cached_td = await build_territory_data_from_cache(
             db, project, project_dir(project_id)
         )
@@ -113,6 +180,10 @@ async def trigger_generate(
                 '"force_body_territory_data": true.'
             ),
         )
+
+    # Pre-flight validation: catches empty/degenerate territory_data BEFORE
+    # the background task swallows the failure as a cryptic "erro 0".
+    _validate_territory_data_for_generation(merged["territory_data"])
 
     project.status = "generating"
     await db.commit()

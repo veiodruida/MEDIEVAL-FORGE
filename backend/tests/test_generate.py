@@ -58,7 +58,12 @@ async def test_trigger_generation(client):
     with patch("medieval_forge.api.generate.run_generation", side_effect=fake_run):
         resp = await client.post(
             f"/api/projects/{pid}/generate",
-            json={"territory_data": {"kingdoms": {}, "duchies": {}, "condados": []}},
+            json={"territory_data": {
+                      "kingdoms": {"k1": "K"},
+                      "duchies": {"d1": ("k1", "D")},
+                      "condados": [["c1", "C", -3.0, 40.0, "d1", [("B", -3.0, 40.0)]]],
+                  },
+                  "force_body_territory_data": True},
         )
         assert resp.status_code == 202, resp.text
         assert resp.json() == {"project_id": pid, "status": "generating"}
@@ -226,17 +231,20 @@ def _make_test_config(geojson_path: str) -> dict:
 
 
 @pytest.mark.slow
-async def test_png_outputs(client, tmp_path):
+async def test_png_outputs(client):
     """GEN-02: real generator produces the headline PNG outputs."""
     from medieval_forge.services import paths as paths_mod
     from medieval_forge.services.generator import run_generation
+    from medieval_forge.services.paths import ensure_project_dirs
 
     # Reuse the autouse _isolated_projects_root fake_root.
     fake_root = paths_mod.PROJECTS_ROOT
     created = await _create_project(client)
     pid = created["id"]
 
-    geojson_path = _write_minimal_geojson(tmp_path / "test_region.geojson")
+    dirs = ensure_project_dirs(pid)
+    raw_geojson = dirs["raw"] / "municipalities.geojson"
+    geojson_path = _write_minimal_geojson(raw_geojson)
     config = _make_test_config(geojson_path)
     manifest = await run_generation(pid, config)
 
@@ -259,15 +267,18 @@ async def test_png_outputs(client, tmp_path):
 
 
 @pytest.mark.slow
-async def test_generation_time(client, tmp_path):
+async def test_generation_time(client):
     """GEN-04: generation completes in <60s for the minimal example."""
     import time
     from medieval_forge.services.generator import run_generation
+    from medieval_forge.services.paths import ensure_project_dirs
 
     created = await _create_project(client)
     pid = created["id"]
 
-    geojson_path = _write_minimal_geojson(tmp_path / "test_region.geojson")
+    dirs = ensure_project_dirs(pid)
+    raw_geojson = dirs["raw"] / "municipalities.geojson"
+    geojson_path = _write_minimal_geojson(raw_geojson)
     config = _make_test_config(geojson_path)
 
     t0 = time.monotonic()
