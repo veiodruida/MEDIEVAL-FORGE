@@ -49,16 +49,16 @@ async def async_client(async_session_factory):
 # ---------------------------------------------------------------------------
 
 async def test_get_providers_returns_all_registered(async_client):
-    """GET /api/llm/providers returns all 5 registered entries with required fields."""
+    """GET /api/llm/providers returns all 6 registered entries with required fields."""
     resp = await async_client.get("/api/llm/providers")
     assert resp.status_code == 200
 
     data = resp.json()
     assert isinstance(data, list)
-    assert len(data) == 5
+    assert len(data) == 6
 
     provider_ids = {p["provider_id"] for p in data}
-    assert provider_ids == {"claude", "openai", "gemini", "ollama", "manual"}
+    assert provider_ids == {"claude", "openai", "gemini", "ollama", "llamacpp", "manual"}
 
     for entry in data:
         assert "display_name" in entry
@@ -108,15 +108,15 @@ async def test_get_providers_marks_unconfigured_when_no_credentials(monkeypatch,
 
 
 async def test_get_health_returns_per_provider_status(async_client):
-    """GET /api/llm/health returns a dict with 5 providers, each having healthy+message."""
+    """GET /api/llm/health returns a dict with 6 providers, each having healthy+message."""
     resp = await async_client.get("/api/llm/health")
     assert resp.status_code == 200
 
     data = resp.json()
     assert isinstance(data, dict)
-    assert len(data) == 5
+    assert len(data) == 6
 
-    for pid in ["claude", "openai", "gemini", "ollama", "manual"]:
+    for pid in ["claude", "openai", "gemini", "ollama", "llamacpp", "manual"]:
         assert pid in data
         assert "healthy" in data[pid]
         assert "message" in data[pid]
@@ -125,7 +125,7 @@ async def test_get_health_returns_per_provider_status(async_client):
 
 
 async def test_new_provider_in_registry_appears_in_endpoint(monkeypatch, async_client):
-    """Monkeypatching PROVIDERS to add a 6th stub → /api/llm/providers returns 6 entries.
+    """Monkeypatching PROVIDERS to add a 7th stub → /api/llm/providers returns 7 entries.
 
     Proves RESEARCH-09: plugin auto-discovery via registry.
     """
@@ -151,6 +151,6 @@ async def test_new_provider_in_registry_appears_in_endpoint(monkeypatch, async_c
     assert resp.status_code == 200
 
     data = resp.json()
-    assert len(data) == 6
+    assert len(data) == 7
     provider_ids = {p["provider_id"] for p in data}
     assert "stub" in provider_ids

@@ -10,8 +10,8 @@ from medieval_forge.services.llm.registry import PROVIDERS
 
 
 def test_providers_dict_has_all_registered_entries():
-    assert len(PROVIDERS) == 5
-    assert set(PROVIDERS.keys()) == {"claude", "openai", "gemini", "ollama", "manual"}
+    assert len(PROVIDERS) == 6
+    assert set(PROVIDERS.keys()) == {"claude", "openai", "gemini", "ollama", "llamacpp", "manual"}
 
 
 def test_each_provider_implements_protocol():
