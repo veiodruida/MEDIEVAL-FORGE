@@ -77,12 +77,15 @@ def test_build_map_research_prompt_instructs_llm_to_emit_barony_assignments_dict
     assert "duchies" in prompt
     assert "condados" in prompt
 
-    # Legacy 'baronies' top-level key must NOT appear as an instruction/rule key
-    # (the word may appear inside examples but must not be listed as a required key)
-    # We check that the prompt does not instruct the LLM to emit a 'baronies' block
-    # as a top-level output field.
-    # Negative check: the old rule "TOP-LEVEL KEYS ALLOWED: ... baronies" must be absent
-    assert '"baronies"' not in prompt
+    # Legacy 'baronies' top-level key must NOT appear as an ALLOWED output key.
+    # The old schema had "TOP-LEVEL KEYS ALLOWED: ... baronies" — the new schema replaces
+    # it with barony_assignments. The prompt may mention "baronies" as a forbidden example
+    # (e.g. "DO NOT emit keys like 'baronies'"), but must not list it under ALLOWED keys.
+    # Negative check: the allowed-keys rule must not name "baronies" as permitted.
+    assert "baronies" not in [
+        k.strip().strip('"')
+        for k in prompt.split("TOP-LEVEL KEYS ALLOWED:")[-1].split("\n")[0].split(",")
+    ]
 
 
 def test_build_map_research_prompt_uses_period_start_year_and_optional_bbox_when_supplied():

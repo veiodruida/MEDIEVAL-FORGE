@@ -125,3 +125,41 @@ class MapResearchResult(BaseModel):
                 f"known condado ids: {sorted(condado_ids)}"
             )
         return self
+
+
+def validate_barony_assignments(
+    result: "MapResearchResult",
+    input_baronies: list[dict],
+) -> None:
+    """Strict cross-check between LLM assignments and the input barony list.
+
+    Complements MapResearchResult's built-in validator (which only checks
+    condado refs). This function checks the OTHER side: keys must match
+    input baronies exactly. Strict mode — raises so run_with_retry re-prompts.
+
+    Args:
+        result: Validated MapResearchResult from the LLM.
+        input_baronies: List of barony dicts passed to build_map_research_prompt.
+                        Each has at minimum {"id": str}.
+
+    Raises:
+        ValueError: If any assignment key is not in input_baronies, or if any
+                    input barony is left unassigned.
+    """
+    input_ids = {b["id"] for b in input_baronies}
+    assigned_ids = set(result.barony_assignments.keys())
+
+    unknown_keys = assigned_ids - input_ids
+    if unknown_keys:
+        raise ValueError(
+            f"barony_assignments contain unknown barony id(s) not in the "
+            f"input list: {sorted(unknown_keys)}; "
+            f"valid input ids: {sorted(input_ids)}"
+        )
+
+    unassigned = input_ids - assigned_ids
+    if unassigned:
+        raise ValueError(
+            f"barony_assignments are incomplete — the following input "
+            f"baronies were left unassigned: {sorted(unassigned)}"
+        )
