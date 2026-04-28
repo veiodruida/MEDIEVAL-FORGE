@@ -127,6 +127,96 @@ class MapResearchResult(BaseModel):
         return self
 
 
+# ---------------------------------------------------------------------------
+# Etapa 9: Codex schema — 12-category medieval narrative payload.
+# ---------------------------------------------------------------------------
+
+class CodexEntity(BaseModel):
+    """A single Codex entry (dynasty, currency, event, …) with markdown body.
+
+    Description is free-form markdown — the LLM is allowed to use **bold**,
+    _italics_, lists, and short prose. id + name + description are mandatory.
+    """
+    model_config = ConfigDict(extra="forbid")
+    id: str
+    name: str
+    description: str  # markdown
+
+
+class CodexCategory(BaseModel):
+    """One of the 12 narrative categories — has a summary + a list of entries."""
+    model_config = ConfigDict(extra="forbid")
+    summary: str = ""
+    entries: list[CodexEntity] = []
+
+
+# Distinct subclasses (instead of plain aliases) so the example output and
+# Pydantic error messages can reference the precise category by name.
+class CodexCurrency(CodexCategory):
+    pass
+
+
+class CodexAttributes(CodexCategory):
+    pass
+
+
+class CodexHealth(CodexCategory):
+    pass
+
+
+class CodexTraits(CodexCategory):
+    pass
+
+
+class CodexFeudal(CodexCategory):
+    pass
+
+
+class CodexPolitics(CodexCategory):
+    pass
+
+
+class CodexDynasty(CodexCategory):
+    pass
+
+
+class CodexReligion(CodexCategory):
+    pass
+
+
+class CodexCulture(CodexCategory):
+    pass
+
+
+class CodexEconomy(CodexCategory):
+    pass
+
+
+class CodexMilitary(CodexCategory):
+    pass
+
+
+class CodexEvents(CodexCategory):
+    pass
+
+
+class CodexResult(BaseModel):
+    """Full Codex payload — exactly 12 top-level categories, no extras."""
+    model_config = ConfigDict(extra="forbid")
+    currency: CodexCurrency = CodexCurrency()
+    attributes: CodexAttributes = CodexAttributes()
+    health: CodexHealth = CodexHealth()
+    traits: CodexTraits = CodexTraits()
+    feudal: CodexFeudal = CodexFeudal()
+    politics: CodexPolitics = CodexPolitics()
+    dynasty: CodexDynasty = CodexDynasty()
+    religion: CodexReligion = CodexReligion()
+    culture: CodexCulture = CodexCulture()
+    economy: CodexEconomy = CodexEconomy()
+    military: CodexMilitary = CodexMilitary()
+    events: CodexEvents = CodexEvents()
+
+
 def validate_barony_assignments(
     result: "MapResearchResult",
     input_baronies: list[dict],

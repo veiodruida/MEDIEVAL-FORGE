@@ -78,3 +78,23 @@ class ResearchCache(Base):
     period_start: Mapped[int] = mapped_column(nullable=False)
     period_end: Mapped[int] = mapped_column(nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, nullable=False)
+
+
+class CodexCache(Base):
+    """Per-codex cache (Etapa 9). Key: SHA-256 of
+    (country_qid:period_start:period_end:provider:model:codex:focus_csv).
+
+    Holds the 12-category narrative payload produced by codex_runner.run_codex.
+    `focus_sections` stores the comma-separated focus list ("" or NULL = full).
+    """
+    __tablename__ = "codex_cache"
+
+    cache_key_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    payload: Mapped[dict] = mapped_column(JSON, nullable=False)
+    provider: Mapped[str] = mapped_column(String(50), nullable=False)
+    model: Mapped[str] = mapped_column(String(100), nullable=False)
+    country_qid: Mapped[str] = mapped_column(String(200), nullable=False)
+    period_start: Mapped[int] = mapped_column(nullable=False)
+    period_end: Mapped[int] = mapped_column(nullable=False)
+    focus_sections: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, nullable=False)

@@ -235,3 +235,183 @@ def build_map_research_prompt(
         f"Output the JSON object following the example shape. "
         f"Do not include any other top-level keys."
     )
+
+
+# ---------------------------------------------------------------------------
+# Etapa 9: Codex prompt — 12-category medieval narrative
+# ---------------------------------------------------------------------------
+
+SYSTEM_INSTRUCTIONS_CODEX = (
+    "You output ONLY valid JSON matching the EXACT CodexResult schema provided. "
+    "You do NOT invent new top-level keys beyond the 12 listed. "
+    "You DO write rich markdown prose inside each entry's `description` field — "
+    "**bold**, _italics_, lists, and short historical narrative are welcome. "
+    "Generate historically-grounded medieval lore: dynasties, currencies, traits, "
+    "religions, cultural traditions, military doctrines, key events."
+)
+
+# Concrete minimal example for the 12 Codex categories. Small local models
+# anchor on the example shape; keep one sample entry per category.
+EXAMPLE_OUTPUT_CODEX = """{
+  "currency": {
+    "summary": "Mostly silver dirham + Christian solidi.",
+    "entries": [
+      { "id": "CUR_DIRHAM", "name": "Dirham de prata",
+        "description": "**Cunhada** em Córdoba; padrão monetário do al-Andalus." }
+    ]
+  },
+  "attributes": {
+    "summary": "Atributos típicos das casas reais.",
+    "entries": [
+      { "id": "ATTR_PIETY", "name": "Piedade",
+        "description": "_Virtude_ central nos reinos cristãos." }
+    ]
+  },
+  "health": {
+    "summary": "Pestes recorrentes na Reconquista.",
+    "entries": [
+      { "id": "HLT_PLAGUE", "name": "Peste",
+        "description": "Surtos esporádicos em **cidades portuárias**." }
+    ]
+  },
+  "traits": {
+    "summary": "Traços marcantes dos nobres.",
+    "entries": [
+      { "id": "TRT_BRAVE", "name": "Bravo",
+        "description": "Líder destemido em batalha." }
+    ]
+  },
+  "feudal": {
+    "summary": "Vassalagem hereditária consolidada.",
+    "entries": [
+      { "id": "FEU_HOMAGE", "name": "Homenagem",
+        "description": "Cerimônia _ritual_ de juramento ao senhor." }
+    ]
+  },
+  "politics": {
+    "summary": "Disputas dinásticas pelo trono leonês.",
+    "entries": [
+      { "id": "POL_CORTES", "name": "Cortes de Leão",
+        "description": "**Assembleia** de nobres e clero." }
+    ]
+  },
+  "dynasty": {
+    "summary": "Casa de Leão dominante.",
+    "entries": [
+      { "id": "DYN_LEON", "name": "Casa de Leão",
+        "description": "**Fundada** por Garcia I em 910." }
+    ]
+  },
+  "religion": {
+    "summary": "Cristianismo + islã + judaísmo coexistem.",
+    "entries": [
+      { "id": "REL_CATH", "name": "Catolicismo Romano",
+        "description": "_Fé_ dominante nos reinos do norte." }
+    ]
+  },
+  "culture": {
+    "summary": "Mosaico ibérico medieval.",
+    "entries": [
+      { "id": "CUL_MOZARAB", "name": "Cultura moçárabe",
+        "description": "**Sincretismo** cristão-andalusi." }
+    ]
+  },
+  "economy": {
+    "summary": "Economia agrária + rotas de seda.",
+    "entries": [
+      { "id": "ECO_WOOL", "name": "Lã",
+        "description": "Comércio de _lã_ castelhana." }
+    ]
+  },
+  "military": {
+    "summary": "Cavalaria pesada + mesnadas.",
+    "entries": [
+      { "id": "MIL_MESNADA", "name": "Mesnada",
+        "description": "**Hoste** privada do nobre." }
+    ]
+  },
+  "events": {
+    "summary": "Eventos pontuais do período.",
+    "entries": [
+      { "id": "EVT_910", "name": "Coroação de Garcia I",
+        "description": "Início da dinastia leonesa em **910 AD**." }
+    ]
+  }
+}"""
+
+_CODEX_CATEGORIES = (
+    "currency", "attributes", "health", "traits",
+    "feudal", "politics", "dynasty", "religion",
+    "culture", "economy", "military", "events",
+)
+
+RULES_CODEX = """CRITICAL RULES — any violation fails validation:
+1. TOP-LEVEL KEYS ALLOWED: exactly these 12 — currency, attributes, health,
+   traits, feudal, politics, dynasty, religion, culture, economy, military,
+   events. NOTHING ELSE. DO NOT add keys like "weather", "geography", "notes".
+2. Each category MUST be an object with EXACTLY two keys: "summary" (string)
+   and "entries" (array). No other keys are allowed.
+3. Each entry in "entries" MUST be an object with EXACTLY three keys: "id"
+   (uppercase slug, e.g. "DYN_LEON"), "name" (display name in period
+   vernacular), "description" (free markdown prose).
+4. Use historical names in the regional vernacular of the period
+   (português, castelhano, galego, leonês, árabe andalusí, …) — never English.
+5. Inside `description`, free markdown is welcome: **bold**, _italics_, lists.
+   Do NOT embed raw HTML or ```json fences.
+6. Output a SINGLE JSON object. No prose before or after."""
+
+
+def build_codex_prompt(
+    country_name: str,
+    period_start: int,
+    period_end: int,
+    map_summary: str,
+    focus_sections: list[str] | None = None,
+) -> str:
+    """Build the full Codex prompt string for LLM submission.
+
+    Args:
+        country_name: Human-readable region/country name.
+        period_start: Start year of the historical period (AD).
+        period_end: End year of the historical period (AD).
+        map_summary: Short string describing the generated map (e.g. how many
+                     kingdoms / condados / baronies). Anchors the LLM to the
+                     scale of the world it is annotating.
+        focus_sections: Optional subset of the 12 category names. When given,
+                        the prompt adds a `FOCUS:` line listing them so the LLM
+                        prioritises depth in those categories — but the JSON
+                        output STILL contains all 12 keys.
+
+    Structure (order matters for small local models):
+      1. System role instruction
+      2. Example output (concrete CodexResult shape)
+      3. Hard rules
+      4. Optional FOCUS line
+      5. Task parameters (country + period + map summary)
+      6. Final "go" instruction
+    """
+    focus_line = ""
+    if focus_sections:
+        # List ONLY the requested sections on the FOCUS line.
+        focus_line = f"FOCUS: prioritize depth in: {', '.join(focus_sections)}\n"
+
+    # Always render the explicit list of all 12 categories so the schema
+    # contract is unambiguous regardless of focus_sections.
+    full_schema_line = "FULL SCHEMA (always emit all 12 keys): " + \
+        ", ".join(_CODEX_CATEGORIES) + "\n"
+
+    return (
+        f"{SYSTEM_INSTRUCTIONS_CODEX}\n\n"
+        f"EXAMPLE OUTPUT (follow this EXACT shape):\n{EXAMPLE_OUTPUT_CODEX}\n\n"
+        f"{RULES_CODEX}\n\n"
+        f"{full_schema_line}"
+        f"{focus_line}"
+        f"\nTASK:\n"
+        f"Region/Country: {country_name}\n"
+        f"Historical period: {period_start} AD to {period_end} AD\n"
+        f"Map summary: {map_summary}\n"
+        f"\nGenerate the complete medieval Codex for {country_name} in the "
+        f"{period_start}–{period_end} AD period. Emit ALL 12 categories. "
+        f"Output the JSON object following the example shape. "
+        f"Do not include any other top-level keys."
+    )
