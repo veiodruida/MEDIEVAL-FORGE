@@ -1,12 +1,14 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Badge, Button, Dialog, Flex, Heading, Spinner, Text, TextArea, TextField } from "@radix-ui/themes";
 import { useCachedResultQuery, type ResearchResult } from "../../api/research";
+import { type MapResearchResult } from "../../api/edit";
 import { useUpdateProject, useProject } from "../../api/client";
 import { useResearchStream } from "../../hooks/useResearchStream";
 import { useResearchStore } from "../../stores/useResearchStore";
 import { ManualResearchPanel } from "./ManualResearchPanel";
 import { ProviderSelector } from "./ProviderSelector";
 import { AuthSetupSheet } from "./AuthSetupSheet";
+import { AssignmentEditor } from "./AssignmentEditor";
 
 interface ResearchDialogProps {
   projectId: string;
@@ -38,6 +40,9 @@ export function ResearchDialog({ projectId }: ResearchDialogProps) {
   const manualJson = useResearchStore((s) => s.manualJson);
   const setManualJson = useResearchStore((s) => s.setManualJson);
   const setManualResult = useResearchStore((s) => s.setManualResult);
+  const manualResult = useResearchStore((s) => s.manualResult);
+
+  const [editorOpen, setEditorOpen] = useState(false);
 
   const stream = useResearchStream(projectId);
 
@@ -178,6 +183,9 @@ export function ResearchDialog({ projectId }: ResearchDialogProps) {
               {Object.keys(r.baronies).length} baronias
             </Text>
           )}
+          <Button variant="soft" onClick={() => setEditorOpen(true)}>
+            Editar assignments
+          </Button>
           <Button variant="soft" onClick={() => setDialogOpen(false)}>
             Fechar
           </Button>
@@ -200,6 +208,9 @@ export function ResearchDialog({ projectId }: ResearchDialogProps) {
               {Object.keys(r.baronies).length} baronias
             </Text>
           )}
+          <Button variant="soft" onClick={() => setEditorOpen(true)}>
+            Editar assignments
+          </Button>
           <Button
             variant="soft"
             disabled={updateProject.isPending}
@@ -425,6 +436,22 @@ export function ResearchDialog({ projectId }: ResearchDialogProps) {
 
       {/* AuthSetupSheet is mounted outside the Dialog to avoid z-index conflicts */}
       <AuthSetupSheet />
+
+      {/* AssignmentEditor is mounted outside the Dialog to avoid nested Dialog z-index issues.
+          Only mount when result has the new MapResearchResult shape (has `condados` array).
+          Old ResearchResult shape (pre-Etapa-3) has `condados_assignment` instead — skip it. */}
+      {(() => {
+        const r = stream.result ?? cachedQuery.data ?? manualResult;
+        const hasNewShape = r && Array.isArray((r as unknown as MapResearchResult).condados);
+        return hasNewShape ? (
+          <AssignmentEditor
+            open={editorOpen}
+            onOpenChange={setEditorOpen}
+            projectId={projectId}
+            researchResult={r as unknown as MapResearchResult}
+          />
+        ) : null;
+      })()}
     </>
   );
 }

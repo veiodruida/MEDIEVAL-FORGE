@@ -103,27 +103,18 @@ describe("AssignmentEditor", () => {
       </Wrapper>,
     );
 
-    // Change B_2 select from C_LEON to C_BURGOS using the hidden select input
-    // Radix Select renders a hidden native select for form compat — find it by testid on the trigger
-    // then find the associated hidden select
+    // Click the B_2 Select trigger to open the dropdown.
+    // scrollIntoView is stubbed in test-setup.ts to avoid jsdom "not a function" error.
     const b2Trigger = screen.getByTestId("barony-row-B_2");
-    // The hidden native select sibling — interact via fireEvent.change on the hidden select
-    // We locate the hidden select closest to the trigger
-    const hiddenSelect = b2Trigger.closest("[data-barony-id='B_2']")
-      ?.querySelector("select") as HTMLSelectElement | null;
+    fireEvent.click(b2Trigger);
 
-    if (hiddenSelect) {
-      fireEvent.change(hiddenSelect, { target: { value: "C_BURGOS" } });
-    } else {
-      // Fallback: directly dispatch value change through the onValueChange handler
-      // by finding the button (Radix trigger) and using a custom event
-      // Since Radix Select requires portal interactions, we test via direct store/prop manipulation
-      // Use the data-testid attribute to find the trigger button and simulate value change
-      fireEvent.click(b2Trigger);
-    }
+    // Radix Select renders items with role="option" in the viewport after trigger click.
+    // Use findByRole to get the C_BURGOS option unambiguously.
+    const burgosOption = await screen.findByRole("option", {
+      name: /Condado de Burgos \(C_BURGOS\)/,
+    });
+    fireEvent.click(burgosOption);
 
-    // Wait for Salvar to become enabled (indicates a change was registered)
-    // If Radix Select cannot be interacted with via fireEvent, the test will fail RED as expected
     const saveButton = screen.getByTestId("save-button");
 
     await waitFor(() => {

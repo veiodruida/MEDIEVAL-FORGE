@@ -12,3 +12,10 @@ if (typeof globalThis.ResizeObserver === 'undefined') {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ;(globalThis as any).ResizeObserver = ResizeObserverStub
 }
+
+// jsdom does not implement scrollIntoView (used by Radix Select when opening
+// the dropdown to scroll the selected item into view). Stub it so Radix Select
+// interactions in tests don't throw "candidate?.scrollIntoView is not a function".
+if (typeof Element.prototype.scrollIntoView === 'undefined') {
+  Element.prototype.scrollIntoView = function () {}
+}
