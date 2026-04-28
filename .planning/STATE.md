@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-04-16)
 Phase: 05 (canvas-editing-advanced) — EXECUTING
 Plan: 1 of 3
 Status: Executing Phase 05
-Last activity: 2026-04-28 - Completed quick task 260428-mci: Etapa 12 (Wikidata rebaixamento — OSM promoted to primary CTA, Wikidata moved to Avançado disclosure)
+Last activity: 2026-04-28 - Completed quick task 260428-nwl: Etapa 13 (OSM retry infinito — mirrors actualizados, loop infinito com stop_event, botão Parar ingestão)
 
 Progress: [█████░░░░░] 50% (3 of 6 phases plan-complete; verification pending)
 
@@ -135,9 +135,10 @@ None yet.
 | 260428-lka | Etapa 10: Codex viewer frontend — CodexViewer (12 Radix Tabs + react-markdown) + useCodexStream SSE hook + api/codex.ts (9 tests, 191→200) | 2026-04-28 | dd0992d | [260428-lka-etapa-10-codex-viewer-frontend-codexview](./quick/260428-lka-etapa-10-codex-viewer-frontend-codexview/) |
 | 260428-lyh | Etapa 11: Pipeline UI completa — Stepper + StepCard + ProviderEffortPicker + usePipelineStore + ProjectDetail refactor (22 tests, 200→222) | 2026-04-28 | 23078f6 | [260428-lyh-etapa-11-pipeline-ui-completa-stepper-st](./quick/260428-lyh-etapa-11-pipeline-ui-completa-stepper-st/) |
 | 260428-mci | Etapa 12: Wikidata rebaixamento — OSM promoted to primary CTA, Wikidata moved to Avançado disclosure, ingest_wikidata.py marked deprecated | 2026-04-28 | 1b60eee | [260428-mci-etapa-12-wikidata-rebaixamento-change-de](./quick/260428-mci-etapa-12-wikidata-rebaixamento-change-de/) |
+| 260428-nwl | Etapa 13: OSM retry infinito — 3 mirrors verificados (private.coffee), loop infinito com stop_event, botão "Parar ingestão" via AbortController (9 new tests, 272+226) | 2026-04-28 | 6978f84 | [260428-nwl-etapa-13-osm-retry-infinito-urls-actuali](./quick/260428-nwl-etapa-13-osm-retry-infinito-urls-actuali/) |
 
 ## Session Continuity
 
 Last session: 2026-04-28
-Stopped at: Etapa 11 (Pipeline UI completa) complete — 222 frontend tests passing
+Stopped at: Etapa 13 (OSM retry infinito + Parar ingestão) complete — 272 backend / 226 frontend tests passing
 Resume file: C:\Users\veio_\.claude\plans\hazy-hatching-abelson.md (Etapa 12 — Wikidata rebaixamento: default OSM, esconder botão Wikidata em "Avançado")
