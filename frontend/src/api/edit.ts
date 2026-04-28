@@ -155,3 +155,35 @@ export const paintTerrain = (
   req: PaintTerrainRequest,
 ): Promise<PaintTerrainResponse> =>
   postJson(`/projects/${projectId}/edit/paint-terrain`, req)
+
+// --- Etapa 8b: Research assignments editor (quick-260428-jug) ---
+
+export type MapResearchResult = {
+  kingdoms: Record<string, string>
+  duchies: Record<string, { kingdom_id: string; name: string }>
+  condados: Array<{ id: string; name: string; kingdom_id: string; duchy_id: string }>
+  barony_assignments: Record<string, string>
+}
+
+export type CondadoRename = { name?: string; duchy_id?: string }
+
+export interface PatchAssignmentsRequest {
+  barony_assignments?: Record<string, string>
+  condado_renames?: Record<string, CondadoRename>
+}
+
+/**
+ * PATCH /api/projects/{id}/research/assignments — Etapa 8 (quick-260428-h1t).
+ * Sends a delta (only changed barony assignments and/or condado renames).
+ * Returns the updated MapResearchResult (server unwraps `{ result: ... }`).
+ */
+export async function patchResearchAssignments(
+  projectId: string,
+  body: PatchAssignmentsRequest,
+): Promise<MapResearchResult> {
+  const res = await patchJson<PatchAssignmentsRequest, { result: MapResearchResult }>(
+    `/projects/${projectId}/research/assignments`,
+    body,
+  )
+  return res.result
+}
