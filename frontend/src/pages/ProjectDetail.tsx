@@ -175,11 +175,8 @@ export function ProjectDetail() {
             description="Descarrega polígonos geográficos reais via OpenStreetMap. Necessário antes de gerar o mapa medieval."
             footer={
               <>
-                <Button variant="soft" onClick={() => ingest.start('wikidata')} disabled={ingest.isStreaming}>
-                  {ingest.isStreaming ? 'Ingerindo…' : '1a. Wikidata (só pontos)'}
-                </Button>
                 <Button onClick={() => ingest.start('osm')} disabled={ingest.isStreaming}>
-                  {ingest.isStreaming ? 'Ingerindo…' : '1b. OSM com polígonos (recomendado)'}
+                  {ingest.isStreaming ? 'Ingerindo…' : '1. OSM com polígonos (recomendado)'}
                 </Button>
                 <Button
                   variant="soft"
@@ -196,8 +193,23 @@ export function ProjectDetail() {
                       : 'Renderiza o mapa moderno (validação visual dos dados)'
                   }
                 >
-                  {renderModern.isPending ? 'Renderizando…' : '1c. Mapa moderno (validar dados)'}
+                  {renderModern.isPending ? 'Renderizando…' : '2. Mapa moderno (validar dados)'}
                 </Button>
+                <Box mt="2">
+                  <details>
+                    <summary style={{ cursor: 'pointer', userSelect: 'none', fontSize: '0.875rem', color: 'var(--gray-11)' }}>
+                      Avançado
+                    </summary>
+                    <Box mt="2">
+                      <Button variant="soft" onClick={() => ingest.start('wikidata')} disabled={ingest.isStreaming}>
+                        {ingest.isStreaming ? 'Ingerindo…' : 'Wikidata (só pontos — legado)'}
+                      </Button>
+                      <Text size="1" color="gray" as="p" mt="1">
+                        Apenas pontos. Não gera polígonos. Use só se OSM falhar para a região.
+                      </Text>
+                    </Box>
+                  </details>
+                </Box>
               </>
             }
           >
