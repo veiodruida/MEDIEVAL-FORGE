@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-04-16)
 Phase: 05 (canvas-editing-advanced) — EXECUTING
 Plan: 1 of 3
 Status: Executing Phase 05
-Last activity: 2026-04-28 - Completed quick task 260428-fjc: Etapa 5 (Llama.cpp provider local)
+Last activity: 2026-04-28 - Completed quick task 260428-fuy: Etapa 6 (Adapt research pipeline)
 
 Progress: [█████░░░░░] 50% (3 of 6 phases plan-complete; verification pending)
 
@@ -126,9 +126,10 @@ None yet.
 | 260428-ewx | Etapa 3: schemas split — MapResearchResult + barony_assignments + cross-ref validator | 2026-04-28 | 3c914b8 | [260428-ewx-etapa-3-schemas-split-mapresearchresult-](./quick/260428-ewx-etapa-3-schemas-split-mapresearchresult-/) |
 | 260428-f9x | Etapa 4: model routing — TASK_MODEL_TIERS / TASK_DEFAULT_EFFORT / resolve_model + research_runner integration | 2026-04-28 | 883f5eb | [260428-f9x-etapa-4-model-routing-multi-modelo-model](./quick/260428-f9x-etapa-4-model-routing-multi-modelo-model/) |
 | 260428-fjc | Etapa 5: Llama.cpp provider local — LlamaCppProvider + registry + AuthSetupSheet panel | 2026-04-28 | b5c7130 | [260428-fjc-etapa-5-llama-cpp-provider-local-llamacp](./quick/260428-fjc-etapa-5-llama-cpp-provider-local-llamacp/) |
+| 260428-fuy | Etapa 6: Adapt research pipeline — build_map_research_prompt(baronies) + validate_barony_assignments self-consistency | 2026-04-28 | 07733a2 | [260428-fuy-etapa-6-adapt-research-pipeline-build-ma](./quick/260428-fuy-etapa-6-adapt-research-pipeline-build-ma/) |
 
 ## Session Continuity
 
 Last session: 2026-04-28
-Stopped at: Etapa 5 (Llama.cpp provider) complete — 224 tests passing
-Resume file: C:\Users\veio_\.claude\plans\hazy-hatching-abelson.md (Etapa 6 — Adapt research pipeline: build_map_research_prompt(baronies) + assignments self-consistency)
+Stopped at: Etapa 6 (Adapt research pipeline) complete — 230 tests passing
+Resume file: C:\Users\veio_\.claude\plans\hazy-hatching-abelson.md (Etapa 7 — Territory builder reconstruído: gerar tuplas CONDADOS corretas a partir de assignments)
