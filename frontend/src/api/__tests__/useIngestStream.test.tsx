@@ -152,11 +152,9 @@ describe('useIngestStream — AbortController', () => {
     await waitFor(() => expect(result.current.isStreaming).toBe(false), { timeout: 2000 })
   })
 
-  // Test 4: start() after stop() creates a NEW AbortController
-  it('start() after stop() creates a new AbortController (no stale signal reused)', async () => {
+  // Test 4: start() after stop() creates a NEW AbortController (verified via distinct signals)
+  it('start() after stop() passes a fresh signal to fetch (distinct signal instances)', async () => {
     const Wrapper = makeWrapper()
-
-    const abortControllerSpy = vi.spyOn(globalThis, 'AbortController')
 
     const signals: AbortSignal[] = []
     globalThis.fetch = vi.fn().mockImplementation((_url: string, init?: RequestInit) => {
@@ -174,18 +172,17 @@ describe('useIngestStream — AbortController', () => {
     act(() => { result.current.stop() })
     await waitFor(() => expect(result.current.isStreaming).toBe(false), { timeout: 2000 })
 
-    const countAfterFirst = abortControllerSpy.mock.calls.length
-
     // Second start
     act(() => { result.current.start('osm') })
     await act(async () => { await new Promise((r) => setTimeout(r, 20)) })
 
-    // A new AbortController must have been constructed for the second start
-    expect(abortControllerSpy.mock.calls.length).toBeGreaterThan(countAfterFirst)
-
-    // The two fetch calls must have received DIFFERENT signal instances
+    // fetch must have been called twice with DIFFERENT signal instances
     expect(signals.length).toBeGreaterThanOrEqual(2)
+    // The second signal must be a new object (new AbortController() was called)
     expect(signals[0]).not.toBe(signals[1])
+    // The first signal must have been aborted; the second must still be active
+    expect(signals[0].aborted).toBe(true)
+    expect(signals[1].aborted).toBe(false)
 
     // Cleanup
     act(() => { result.current.stop() })

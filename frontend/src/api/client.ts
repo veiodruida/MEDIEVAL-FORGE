@@ -192,11 +192,12 @@ export function useGenerate(projectId: string | undefined) {
 
 // ---------- INGEST-04: SSE streaming hook (D-09) ----------
 
-import { useCallback, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 
 export interface IngestStreamHandle {
   lines: string[]
   start: (source: 'wikidata' | 'osm') => Promise<void>
+  stop: () => void
   isStreaming: boolean
   error: Error | null
 }
@@ -206,17 +207,24 @@ export function useIngestStream(projectId: string | undefined): IngestStreamHand
   const [lines, setLines] = useState<string[]>([])
   const [isStreaming, setStreaming] = useState(false)
   const [error, setError] = useState<Error | null>(null)
+  const abortRef = useRef<AbortController | null>(null)
+
+  const stop = useCallback(() => {
+    abortRef.current?.abort()
+  }, [])
 
   const start = useCallback(
     async (source: 'wikidata' | 'osm') => {
       if (!projectId) return
+      const controller = new AbortController()
+      abortRef.current = controller
       setLines([])
       setError(null)
       setStreaming(true)
       try {
         const res = await fetch(
           `/api/projects/${projectId}/ingest?source=${source}`,
-          { method: 'POST' },
+          { method: 'POST', signal: controller.signal },
         )
         if (!res.ok || !res.body) {
           throw new Error(`HTTP ${res.status}`)
@@ -242,8 +250,13 @@ export function useIngestStream(projectId: string | undefined): IngestStreamHand
           }
         }
       } catch (e) {
-        setError(e as Error)
+        // Filter AbortError — user-initiated stop is not an error condition.
+        const err = e as Error
+        if (err.name !== 'AbortError') {
+          setError(err)
+        }
       } finally {
+        abortRef.current = null
         setStreaming(false)
         qc.invalidateQueries({ queryKey: ['projects', projectId] })
         qc.invalidateQueries({ queryKey: ['projects'] })
@@ -252,7 +265,7 @@ export function useIngestStream(projectId: string | undefined): IngestStreamHand
     [projectId, qc],
   )
 
-  return { lines, start, isStreaming, error }
+  return { lines, start, stop, isStreaming, error }
 }
 
 // ---------- EXPORT-01/02: ZIP export hook ----------

@@ -178,6 +178,11 @@ export function ProjectDetail() {
                 <Button onClick={() => ingest.start('osm')} disabled={ingest.isStreaming}>
                   {ingest.isStreaming ? 'Ingerindo…' : '1. OSM com polígonos (recomendado)'}
                 </Button>
+                {ingest.isStreaming && (
+                  <Button color="red" variant="soft" onClick={() => ingest.stop()}>
+                    Parar ingestão
+                  </Button>
+                )}
                 <Button
                   variant="soft"
                   color="blue"
