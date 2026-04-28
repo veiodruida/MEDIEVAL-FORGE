@@ -6,14 +6,15 @@ frontend posted a stale template that the server blindly accepted.
 
 The fix: api/generate.py prefers the latest ResearchCache row over the body.
 The body is a power-user override gated by `force_body_territory_data: true`.
+
+New architecture: research payload carries condados with coordinates directly —
+no geojson centroid file is needed.
 """
 from __future__ import annotations
 
-import json
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
-import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -63,63 +64,37 @@ async def async_client(session_factory):
         del app.state._test_session_factory
 
 
-def _build_centroids_91() -> list[dict]:
-    return [
-        {"id": f"c_{i:03d}", "name": f"Condado {i:03d}",
-         "lon": -8.0 + 0.1 * i, "lat": 40.0}
+def _build_research_payload_91() -> dict:
+    """91-condado research payload using the new condados list format."""
+    duchy_ids = ["d_alpha", "d_beta", "d_gamma", "d_delta"]
+    condados = [
+        {
+            "id": f"c_{i:03d}",
+            "name": f"Condado {i:03d}",
+            "lon": -8.0 + 0.1 * i,
+            "lat": 40.0,
+            "kingdom_id": "k_north",
+            "duchy_id": duchy_ids[i % 4],
+        }
         for i in range(1, 92)
     ]
-
-
-def _build_research_payload_91() -> dict:
-    centroids = _build_centroids_91()
     return {
         "kingdoms": {"k_north": "Reino Norte"},
-        "duchies": {"d_alpha": {"kingdom_id": "k_north", "name": "Ducado Alfa"}},
-        "condados_assignment": [
-            {"condado_id": c["id"], "kingdom_id": "k_north", "duchy_id": "d_alpha"}
-            for c in centroids
-        ],
-        "baronies": {c["id"]: [] for c in centroids},
+        "duchies": {"d_alpha": {"kingdom_id": "k_north", "name": "Ducado Alfa"},
+                    "d_beta":  {"kingdom_id": "k_north", "name": "Ducado Beta"},
+                    "d_gamma": {"kingdom_id": "k_north", "name": "Ducado Gama"},
+                    "d_delta": {"kingdom_id": "k_north", "name": "Ducado Delta"}},
+        "condados": condados,
+        "baronies": {c["id"]: [] for c in condados},
     }
 
 
-def _write_91_geojson(project_path):
-    centroids = _build_centroids_91()
-    gen_dir = project_path / "generated"
-    gen_dir.mkdir(parents=True, exist_ok=True)
-    features = [
-        {
-            "type": "Feature",
-            "properties": {"id": c["id"], "name": c["name"], "centroid": [c["lon"], c["lat"]]},
-            "geometry": {
-                "type": "Polygon",
-                "coordinates": [[
-                    [c["lon"], c["lat"]],
-                    [c["lon"] + 0.01, c["lat"]],
-                    [c["lon"] + 0.01, c["lat"] + 0.01],
-                    [c["lon"], c["lat"] + 0.01],
-                    [c["lon"], c["lat"]],
-                ]],
-            },
-        }
-        for c in centroids
-    ]
-    (gen_dir / "territories.geojson").write_text(
-        json.dumps({"type": "FeatureCollection", "features": features}), encoding="utf-8"
-    )
-
-
 @pytest_asyncio.fixture
-async def project_with_cache_and_geojson(session_factory, tmp_path, monkeypatch):
-    """Project + 91-condado cache row + 91-feature territories.geojson."""
+async def project_with_cache(session_factory, tmp_path, monkeypatch):
+    """Project + 91-condado cache row. No geojson needed."""
     import medieval_forge.services.paths as paths_mod
     fake_root = tmp_path / "projects"
     monkeypatch.setattr(paths_mod, "PROJECTS_ROOT", fake_root)
-
-    project_path = fake_root / PROJECT_ID
-    project_path.mkdir(parents=True, exist_ok=True)
-    _write_91_geojson(project_path)
 
     payload = _build_research_payload_91()
 
@@ -153,14 +128,10 @@ async def project_with_cache_and_geojson(session_factory, tmp_path, monkeypatch)
 
 @pytest_asyncio.fixture
 async def project_no_cache(session_factory, tmp_path, monkeypatch):
-    """Project + territories.geojson but NO cache row."""
+    """Project with NO cache row."""
     import medieval_forge.services.paths as paths_mod
     fake_root = tmp_path / "projects"
     monkeypatch.setattr(paths_mod, "PROJECTS_ROOT", fake_root)
-
-    project_path = fake_root / PROJECT_ID
-    project_path.mkdir(parents=True, exist_ok=True)
-    _write_91_geojson(project_path)
 
     async with session_factory() as session:
         session.add(Project(
@@ -196,10 +167,10 @@ STALE_BODY_4 = {
 # ---------------------------------------------------------------------------
 
 async def test_generate_with_empty_body_uses_91_condado_cache(
-    async_client, project_with_cache_and_geojson, session_factory
+    async_client, project_with_cache
 ):
     """The bug: cached 91-condado research must populate territory_data, not be ignored."""
-    pid = project_with_cache_and_geojson
+    pid = project_with_cache
 
     captured: dict = {}
 
@@ -221,10 +192,10 @@ async def test_generate_with_empty_body_uses_91_condado_cache(
 # ---------------------------------------------------------------------------
 
 async def test_generate_cache_wins_over_stale_body(
-    async_client, project_with_cache_and_geojson
+    async_client, project_with_cache
 ):
     """Even if body posts 4-condado template, cache row supersedes it."""
-    pid = project_with_cache_and_geojson
+    pid = project_with_cache
 
     captured: dict = {}
 
@@ -239,7 +210,7 @@ async def test_generate_cache_wins_over_stale_body(
 
 
 # ---------------------------------------------------------------------------
-# Test 3: empty body + no cache → 422 with "research" in detail; status unchanged
+# Test 3: empty body + no cache → 422 with "research" in detail
 # ---------------------------------------------------------------------------
 
 async def test_generate_no_cache_no_body_returns_422(
@@ -260,7 +231,6 @@ async def test_generate_no_cache_no_body_returns_422(
     detail = resp.json()["detail"]
     assert "research" in detail.lower()
 
-    # Background task NOT scheduled, status remains "created" (not "generating").
     assert "config" not in captured
     async with session_factory() as session:
         proj = await session.get(Project, pid)
@@ -272,10 +242,10 @@ async def test_generate_no_cache_no_body_returns_422(
 # ---------------------------------------------------------------------------
 
 async def test_generate_force_body_override_uses_body(
-    async_client, project_with_cache_and_geojson
+    async_client, project_with_cache
 ):
     """Power-user escape hatch: force_body_territory_data=true → body wins."""
-    pid = project_with_cache_and_geojson
+    pid = project_with_cache
 
     captured: dict = {}
 
@@ -289,5 +259,4 @@ async def test_generate_force_body_override_uses_body(
     assert resp.status_code == 202, resp.text
     td = captured["config"]["territory_data"]
     assert len(td["condados"]) == 4
-    # Override flag is stripped before being passed to the pipeline.
     assert "force_body_territory_data" not in captured["config"]

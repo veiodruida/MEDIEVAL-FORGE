@@ -13,10 +13,11 @@ from medieval_forge.services.llm.schemas import ResearchResult
 _VALID_PAYLOAD = {
     "kingdoms": {"asturias": "Reino de Asturias"},
     "duchies": {"galicia": {"kingdom_id": "asturias", "name": "Ducado de Galicia"}},
-    "condados_assignment": [
-        {"condado_id": "c1", "kingdom_id": "asturias", "duchy_id": "galicia"}
+    "condados": [
+        {"id": "C_BRAGA", "name": "Condado de Braga", "lon": -8.43, "lat": 41.55,
+         "kingdom_id": "asturias", "duchy_id": "galicia"},
     ],
-    "baronies": {"c1": [{"name": "B", "lon": -8.5, "lat": 42.3}]},
+    "baronies": {"C_BRAGA": [{"name": "Baronia de Braga", "lon": -8.43, "lat": 41.55}]},
 }
 _VALID_JSON = json.dumps(_VALID_PAYLOAD)
 

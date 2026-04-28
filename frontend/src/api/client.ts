@@ -47,7 +47,12 @@ async function jsonFetch<T>(path: string, init?: RequestInit): Promise<T> {
   })
   if (!res.ok) {
     const text = await res.text()
-    throw new Error(`${res.status} ${res.statusText}: ${text}`)
+    let message = `${res.status} ${res.statusText}: ${text}`
+    try {
+      const json = JSON.parse(text)
+      if (typeof json.detail === 'string') message = json.detail
+    } catch { /* not JSON, keep original */ }
+    throw new Error(message)
   }
   if (res.status === 204) return undefined as T
   return res.json() as Promise<T>

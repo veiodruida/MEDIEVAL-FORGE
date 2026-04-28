@@ -122,10 +122,14 @@ async def trigger_ingest(
     if country:
         effective_country = country
     elif source == "osm":
-        # OSM precisa de código ISO alpha-2; converte QID do projeto
+        # OSM precisa de código ISO alpha-2; converte QID do projeto.
+        # Presets multi-país (ex: "Q29,Q45" para Ibéria) usam o primeiro QID —
+        # quando bbox está definida, a query OSM usa bbox e não o ISO diretamente;
+        # o clipping real fica por conta de clip_iso_codes.
         from ..services.countries import qid_to_iso
         try:
-            effective_country = qid_to_iso(project.country_qid)
+            first_qid = project.country_qid.split(",")[0].strip()
+            effective_country = qid_to_iso(first_qid)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
     else:

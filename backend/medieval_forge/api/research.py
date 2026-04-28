@@ -24,13 +24,12 @@ from ..models import Project
 from ..services.llm import PROVIDERS
 from ..services.llm.parse import ResearchParseError, parse_research_json
 from ..services.llm.prompt import build_research_prompt
-from ..services.paths import is_valid_uuid, project_dir
+from ..services.paths import is_valid_uuid
 from ..services.research_cache import compute_cache_key, get_cached, set_cached
 from ..services.research_runner import (
     PROVIDER_DEFAULT_MODEL,
-    load_condados,
     run_research,
-    validate_assignment_against_condados,
+    validate_condados_self_consistency,
 )
 
 logger = logging.getLogger(__name__)
@@ -149,12 +148,15 @@ async def get_research_prompt(
     project = await db.get(Project, project_id)
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
-    try:
-        condados = load_condados(project_dir(project_id))
-    except FileNotFoundError as e:
-        raise HTTPException(status_code=409, detail=str(e))
+    bbox = None
+    if all(v is not None for v in (
+        project.bbox_lon_min, project.bbox_lat_min,
+        project.bbox_lon_max, project.bbox_lat_max,
+    )):
+        bbox = (project.bbox_lon_min, project.bbox_lat_min,
+                project.bbox_lon_max, project.bbox_lat_max)
     prompt = build_research_prompt(
-        project.name, project.period_start, project.period_end, condados
+        project.name, project.period_start, project.period_end, bbox
     )
     return JSONResponse(content={"prompt": prompt})
 
@@ -191,13 +193,7 @@ async def submit_manual_research(
         raise HTTPException(status_code=400, detail=str(e))
 
     try:
-        condados = load_condados(project_dir(project_id))
-    except FileNotFoundError as e:
-        raise HTTPException(status_code=409, detail=str(e))
-
-    known_ids = {c["id"] for c in condados}
-    try:
-        validate_assignment_against_condados(result, known_ids)
+        validate_condados_self_consistency(result)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 

@@ -50,7 +50,12 @@ where = ["backend"]
 include = ["medieval_forge*"]
 
 [tool.setuptools.package-data]
-medieval_forge = ["static/**/*", "static/index.html", "lib/*.py"]
+medieval_forge = [
+    "static/**/*",
+    "static/index.html",
+    "lib/*.py",
+    "data/*.geojson",
+]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

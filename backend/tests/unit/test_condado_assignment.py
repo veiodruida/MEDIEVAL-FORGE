@@ -1,60 +1,103 @@
-"""Tests for condado assignment validation (D-09, RESEARCH-07).
+"""Tests for validate_condados_self_consistency (replaces old condado_assignment validator).
 
-Wave 0 test scaffolding — tests define the contract; implementation comes in Task 2.
+The LLM now generates condados freely. Validation checks internal referential
+integrity: duchy/condado kingdom_id refs, condado duchy_id refs, barony keys.
 """
 from __future__ import annotations
 
 import pytest
 
+from medieval_forge.services.research_runner import validate_condados_self_consistency
+from medieval_forge.services.llm.schemas import ResearchResult, Condado, Duchy
 
-def test_unknown_condado_id_raises_validation_error():
-    """validate_assignment_against_condados raises ValueError when LLM returns unknown id."""
-    from medieval_forge.services.research_runner import validate_assignment_against_condados
-    from medieval_forge.services.llm.schemas import ResearchResult, CondadoAssignment
 
+def _make_valid_result(**overrides) -> ResearchResult:
+    data = {
+        "kingdoms": {"k1": "Leon"},
+        "duchies": {"d1": {"kingdom_id": "k1", "name": "Duchy of Leon"}},
+        "condados": [
+            {"id": "C_ONE", "name": "Condado One", "lon": -5.5, "lat": 42.6,
+             "kingdom_id": "k1", "duchy_id": "d1"},
+        ],
+        "baronies": {"C_ONE": []},
+    }
+    data.update(overrides)
+    return ResearchResult.model_validate(data)
+
+
+def test_valid_result_passes():
+    validate_condados_self_consistency(_make_valid_result())
+
+
+def test_duchy_references_unknown_kingdom_raises():
     result = ResearchResult(
         kingdoms={"k1": "Leon"},
-        duchies={"d1": {"kingdom_id": "k1", "name": "Duchy of Leon"}},
-        condados_assignment=[
-            CondadoAssignment(condado_id="not-in-project", kingdom_id="k1", duchy_id="d1")
+        duchies={"d1": Duchy(kingdom_id="K_GHOST", name="Bad Duchy")},
+        condados=[
+            Condado(id="C_ONE", name="One", lon=-5.5, lat=42.6,
+                    kingdom_id="k1", duchy_id="d1"),
         ],
         baronies={},
     )
-    with pytest.raises(ValueError):
-        validate_assignment_against_condados(result, known_ids={"c1", "c2"})
+    with pytest.raises(ValueError, match="kingdom_id"):
+        validate_condados_self_consistency(result)
 
 
-def test_all_known_condado_ids_passes():
-    """validate_assignment_against_condados does not raise when all ids are known."""
-    from medieval_forge.services.research_runner import validate_assignment_against_condados
-    from medieval_forge.services.llm.schemas import ResearchResult, CondadoAssignment
-
+def test_condado_references_unknown_kingdom_raises():
     result = ResearchResult(
         kingdoms={"k1": "Leon"},
-        duchies={"d1": {"kingdom_id": "k1", "name": "Duchy of Leon"}},
-        condados_assignment=[
-            CondadoAssignment(condado_id="c1", kingdom_id="k1", duchy_id="d1"),
-            CondadoAssignment(condado_id="c2", kingdom_id="k1", duchy_id="d1"),
+        duchies={"d1": Duchy(kingdom_id="k1", name="Duchy of Leon")},
+        condados=[
+            Condado(id="C_ONE", name="One", lon=-5.5, lat=42.6,
+                    kingdom_id="K_GHOST", duchy_id="d1"),
         ],
         baronies={},
     )
-    # Should not raise
-    validate_assignment_against_condados(result, known_ids={"c1", "c2"})
+    with pytest.raises(ValueError, match="kingdom_id"):
+        validate_condados_self_consistency(result)
 
 
-def test_partial_assignment_allowed():
-    """Not every known id needs to appear in the assignment — only referenced ids must be valid."""
-    from medieval_forge.services.research_runner import validate_assignment_against_condados
-    from medieval_forge.services.llm.schemas import ResearchResult, CondadoAssignment
-
-    # LLM only assigned c1, but c2 and c3 also exist in the project (legitimate omission).
+def test_condado_references_unknown_duchy_raises():
     result = ResearchResult(
         kingdoms={"k1": "Leon"},
-        duchies={"d1": {"kingdom_id": "k1", "name": "Duchy of Leon"}},
-        condados_assignment=[
-            CondadoAssignment(condado_id="c1", kingdom_id="k1", duchy_id="d1"),
+        duchies={"d1": Duchy(kingdom_id="k1", name="Duchy of Leon")},
+        condados=[
+            Condado(id="C_ONE", name="One", lon=-5.5, lat=42.6,
+                    kingdom_id="k1", duchy_id="D_GHOST"),
         ],
         baronies={},
     )
-    # Should not raise — partial assignment is fine as long as referenced ids exist
-    validate_assignment_against_condados(result, known_ids={"c1", "c2", "c3"})
+    with pytest.raises(ValueError, match="duchy_id"):
+        validate_condados_self_consistency(result)
+
+
+def test_barony_key_not_matching_condado_raises():
+    result = ResearchResult(
+        kingdoms={"k1": "Leon"},
+        duchies={"d1": Duchy(kingdom_id="k1", name="Duchy of Leon")},
+        condados=[
+            Condado(id="C_ONE", name="One", lon=-5.5, lat=42.6,
+                    kingdom_id="k1", duchy_id="d1"),
+        ],
+        baronies={"C_GHOST": []},
+    )
+    with pytest.raises(ValueError, match="baronies key"):
+        validate_condados_self_consistency(result)
+
+
+def test_multiple_condados_all_valid_passes():
+    result = ResearchResult(
+        kingdoms={"k1": "Leon", "k2": "Portugal"},
+        duchies={
+            "d1": Duchy(kingdom_id="k1", name="Duchy Leon"),
+            "d2": Duchy(kingdom_id="k2", name="Duchy Minho"),
+        },
+        condados=[
+            Condado(id="C_ONE", name="One", lon=-5.5, lat=42.6,
+                    kingdom_id="k1", duchy_id="d1"),
+            Condado(id="C_TWO", name="Two", lon=-8.4, lat=41.5,
+                    kingdom_id="k2", duchy_id="d2"),
+        ],
+        baronies={"C_ONE": [], "C_TWO": []},
+    )
+    validate_condados_self_consistency(result)

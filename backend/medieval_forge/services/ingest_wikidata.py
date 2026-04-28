@@ -28,12 +28,28 @@ def validate_qid(value: str) -> str:
     return value
 
 
-def _build_query(country_qid: str, limit: int, offset: int) -> str:
-    # Note: country_qid is interpolated only AFTER validate_qid has run.
+def _parse_qid_list(country_qid: str) -> list[str]:
+    """Parse a comma-separated QID string into a validated list.
+
+    Supports both single QIDs ("Q45") and multi-country presets ("Q29,Q45").
+    """
+    qids = [q.strip() for q in country_qid.split(",") if q.strip()]
+    if not qids:
+        raise ValueError(f"empty QID list: {country_qid!r}")
+    for q in qids:
+        validate_qid(q)
+    return qids
+
+
+def _build_query(country_qids: list[str], limit: int, offset: int) -> str:
+    # VALUES clause supports both single and multi-country queries safely.
+    # Each QID has already been validated by _parse_qid_list.
+    values = " ".join(f"wd:{q}" for q in country_qids)
     return f"""
     SELECT ?item ?itemLabel ?lat ?lon WHERE {{
+      VALUES ?country {{ {values} }}
       ?item wdt:P31/wdt:P279* wd:Q15284 .
-      ?item wdt:P17 wd:{country_qid} .
+      ?item wdt:P17 ?country .
       ?item wdt:P625 ?coords .
       BIND(geof:latitude(?coords) AS ?lat)
       BIND(geof:longitude(?coords) AS ?lon)
@@ -66,9 +82,10 @@ async def fetch_municipalities(
 ) -> dict[str, Any]:
     """Paginate SPARQL; return GeoJSON FeatureCollection.
 
-    T-SSRF: country_qid validated before query composition.
+    T-SSRF: every QID in country_qid is validated before query composition.
+    Supports comma-separated multi-country presets (e.g. "Q29,Q45" for Iberia).
     """
-    validate_qid(country_qid)
+    qids = _parse_qid_list(country_qid)
     if page_size < 1 or page_size > 1000:
         raise ValueError("page_size must be between 1 and 1000")
 
@@ -86,7 +103,7 @@ async def fetch_municipalities(
                 f"data: Fetching Wikidata page offset={offset} "
                 f"(running total={len(features)})...\n\n"
             )
-            query = _build_query(country_qid, page_size, offset)
+            query = _build_query(qids, page_size, offset)
             resp = await client.get(
                 WIKIDATA_ENDPOINT,
                 params={"query": query, "format": "json"},

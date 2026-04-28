@@ -9,7 +9,7 @@ from .base import (
     NoAuth,
 )
 from .manual import ManualProvider
-from .schemas import ResearchResult, CondadoAssignment, Barony
+from .schemas import ResearchResult, Condado, Barony
 from .registry import PROVIDERS
 from .retry import run_with_retry, ResearchValidationError
 
@@ -23,7 +23,7 @@ __all__ = [
     "NoAuth",
     "ManualProvider",
     "ResearchResult",
-    "CondadoAssignment",
+    "Condado",
     "Barony",
     "PROVIDERS",
     "run_with_retry",

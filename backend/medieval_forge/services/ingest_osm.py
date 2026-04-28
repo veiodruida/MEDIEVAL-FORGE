@@ -4,11 +4,15 @@ Estratégia de query:
 - Se bbox fornecida: query por bounding box (muito mais rápido, evita timeout 504)
 - Se só ISO fornecido: query por área de país (fallback, pode ser lento para países grandes)
 
-Country clipping (Bug A fix):
-- Quando clip_iso_codes fornecido, faz query extra por admin_level=2 para cada ISO
-- União dos polígonos de país → filtra municípios cujo representative_point está dentro
+Country clipping:
+- Quando clip_iso_codes fornecido, carrega o polígono soberano de cada ISO via
+  Natural Earth Admin 0 (1:50m, vendored em data/ne_50m_admin_0_countries.geojson).
+- União dos polígonos → filtra municípios cujo representative_point está dentro.
+- Substitui a query Overpass admin_level=2 anterior, que sofria com 406/504/timeouts
+  e exigia hardcode de fallbacks por país (não escalava).
 
-Retry: tenta até 3 endpoints públicos do Overpass em sequência.
+Retry: tenta até 3 endpoints públicos do Overpass em sequência (apenas para a
+fetch de admin_level=6, que precisa de dados live).
 T-SSRF: validate_iso_country enforces 2-letter uppercase ISO 3166-1 code.
 """
 from __future__ import annotations
@@ -21,6 +25,8 @@ from typing import Any, Callable
 import httpx
 from shapely.geometry import LineString, MultiPolygon, Polygon, mapping
 from shapely.ops import linemerge, polygonize, unary_union
+
+from . import country_boundaries
 
 log = logging.getLogger(__name__)
 
@@ -76,85 +82,40 @@ def _build_country_query(country_iso: str, admin_level: int = 6) -> str:
     )
 
 
-def _build_country_boundary_query(country_iso: str) -> str:
-    """Query para obter o polígono de fronteira do país (admin_level=2).
-
-    Retorna a relação de fronteira soberana do país identificado pelo ISO 3166-1.
-    Usado para clipping de municípios fora do país alvo.
-    """
-    validate_iso_country(country_iso)
-    return (
-        f'[out:json][timeout:60];\n'
-        f'(\n'
-        f'  relation["admin_level"="2"]["boundary"="administrative"]'
-        f'["ISO3166-1"="{country_iso}"];\n'
-        f');\n'
-        f"out geom;\n"
-    )
-
-
-def _relation_to_polygon(rel: dict[str, Any]) -> Polygon | MultiPolygon | None:
-    """Converte relação OSM para Shapely Polygon/MultiPolygon.
-
-    Variante simplificada de _relation_to_geojson_feature usada para obter
-    o polígono de fronteira de país para clipping.
-    """
-    members = rel.get("members", [])
-    outer_lines: list[LineString] = []
-
-    for m in members:
-        geom = m.get("geometry") or []
-        pts = [(pt["lon"], pt["lat"]) for pt in geom if "lon" in pt and "lat" in pt]
-        if len(pts) < 2:
-            continue
-        if m.get("role", "") == "outer":
-            outer_lines.append(LineString(pts))
-
-    if not outer_lines:
-        return None
-
-    merged = linemerge(outer_lines)
-    polys = list(polygonize(merged))
-    if not polys:
-        return None
-    if len(polys) == 1:
-        return polys[0]
-    return MultiPolygon(polys)
-
-
 async def _fetch_country_polygon(
     country_iso: str,
     queue: asyncio.Queue[str | None],
-    client_factory: Callable[[], httpx.AsyncClient] | None,
+    client_factory: Callable[[], httpx.AsyncClient] | None = None,  # noqa: ARG001 — kept for API compat
 ) -> Polygon | MultiPolygon | None:
-    """Busca o polígono de fronteira soberana de um país via Overpass.
+    """Carrega o polígono soberano de um país via Natural Earth Admin 0 (vendored).
 
-    Retorna None se não encontrar ou se a geometria for malformada.
-    Emite mensagem SSE de progresso.
+    Substitui a query Overpass admin_level=2 anterior — NE é offline,
+    determinístico, ~1km de precisão, e cobre 234 países sem hardcoding.
+    Mantém assinatura `async` (+ `client_factory` ignorado) para compatibilidade
+    com chamadores que esperam coroutine.
     """
-    await queue.put(
-        f"data: Buscando polígono de fronteira para {country_iso} (clipping)...\n\n"
-    )
-    query = _build_country_boundary_query(country_iso)
-    try:
-        payload = await _post_query(query, queue, client_factory)
-    except Exception as exc:
-        log.warning(
-            "country boundary fetch failed for %s: %s — clipping skipped for this country",
-            country_iso, exc,
+    poly = country_boundaries.get_country_polygon(country_iso)
+    if poly is None:
+        await queue.put(
+            f"data: AVISO: Sem polígono Natural Earth para {country_iso} — este país não será clipado.\n\n"
         )
+        log.warning("country boundary: %r not in Natural Earth dataset", country_iso)
         return None
 
-    for el in payload.get("elements", []):
-        if el.get("type") != "relation":
-            continue
-        poly = _relation_to_polygon(el)
-        if poly is not None:
-            log.info("country polygon fetched for %s: %s", country_iso, poly.geom_type)
-            return poly
+    await queue.put(
+        f"data: Polígono Natural Earth carregado para {country_iso} ({poly.geom_type}).\n\n"
+    )
+    log.info("country boundary loaded from NE for %s: %s", country_iso, poly.geom_type)
+    return poly
 
-    log.warning("no country polygon found for %s — clipping skipped for this country", country_iso)
-    return None
+
+# Buffer applied to the country union before clipping. NE 1:50m has a coastline
+# precision around 1–2 km; coastal municipalities (Lisboa, Funchal, Ponta Delgada)
+# fall ~400 m–2 km outside the polygon and would be wrongly dropped without it.
+# 0.025 deg ≈ 2.7 km — large enough to absorb NE's coastal error, small enough
+# that it doesn't bleed across real borders (Strait of Gibraltar is 14 km wide;
+# the Pyrenees crest is dozens of km from any major French commune).
+_COUNTRY_BUFFER_DEG: float = 0.025
 
 
 def _clip_features_to_countries(
@@ -162,7 +123,7 @@ def _clip_features_to_countries(
     country_polys: list[Polygon | MultiPolygon],
 ) -> list[dict[str, Any]]:
     """Filtra features mantendo apenas aquelas cujo representative_point está
-    dentro da união dos polígonos de país.
+    dentro da união dos polígonos de país (com buffer costeiro).
 
     Um feature sem geometria polygon (ex: Point) é sempre mantido — não há
     como testá-lo espacialmente sem coordenadas de área.
@@ -170,7 +131,7 @@ def _clip_features_to_countries(
     if not country_polys:
         return features
 
-    country_union = unary_union(country_polys)
+    country_union = unary_union(country_polys).buffer(_COUNTRY_BUFFER_DEG)
     kept: list[dict[str, Any]] = []
     removed = 0
 
@@ -380,17 +341,22 @@ async def fetch_municipalities(
         await queue.put(
             f"data: Clipping geográfico para países: {', '.join(clip_iso_codes)}...\n\n"
         )
-        country_polys: list[Polygon | MultiPolygon] = []
+        valid_isos: list[str] = []
         for iso in clip_iso_codes:
             try:
                 validate_iso_country(iso)
+                valid_isos.append(iso)
             except ValueError as exc:
                 log.warning("clip_iso_codes: invalid ISO %r skipped: %s", iso, exc)
-                continue
+
+        country_polys: list[Polygon | MultiPolygon] = []
+        for iso in valid_isos:
             poly = await _fetch_country_polygon(iso, queue, client_factory)
             if poly is not None:
                 country_polys.append(poly)
 
+        # _fetch_country_polygon reads from the bundled Natural Earth dataset,
+        # so country_polys is fully resolved without any network dependency.
         if country_polys:
             before = len(features)
             features = _clip_features_to_countries(features, country_polys)

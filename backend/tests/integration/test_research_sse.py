@@ -1,12 +1,6 @@
-"""Integration tests for POST /api/projects/{id}/research SSE endpoint.
-
-Wave 0 test scaffolding. These tests define the contract for Task 3 implementation.
-"""
+"""Integration tests for POST /api/projects/{id}/research SSE endpoint."""
 from __future__ import annotations
 
-import asyncio
-import json
-import pytest
 import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
@@ -37,17 +31,12 @@ async def async_session_factory(async_engine):
 
 @pytest_asyncio.fixture
 async def async_client(async_session_factory):
-    """AsyncClient wired to in-memory DB.
-
-    Also sets app.state._test_session_factory so run_research uses the
-    same in-memory engine (not the global AsyncSessionLocal).
-    """
+    """AsyncClient wired to in-memory DB."""
     async def _override():
         async with async_session_factory() as session:
             yield session
 
     app.dependency_overrides[get_db] = _override
-    # Wire the runner to use the same in-memory factory
     app.state._test_session_factory = async_session_factory
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         yield c
@@ -57,13 +46,8 @@ async def async_client(async_session_factory):
 
 
 @pytest_asyncio.fixture
-async def project_with_territories(async_session_factory, tmp_path, monkeypatch):
-    """Create a Project row + a minimal territories.geojson on disk."""
-    import medieval_forge.services.paths as paths_mod
-
-    fake_root = tmp_path / "projects"
-    monkeypatch.setattr(paths_mod, "PROJECTS_ROOT", fake_root)
-
+async def project_row(async_session_factory):
+    """Create a Project row (no geojson needed — LLM generates condados freely)."""
     pid = "aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa"
     async with async_session_factory() as session:
         session.add(Project(
@@ -75,33 +59,6 @@ async def project_with_territories(async_session_factory, tmp_path, monkeypatch)
             status="generated",
         ))
         await session.commit()
-
-    # Write a minimal territories.geojson into the generated/ subdir (matches research_runner.load_condados)
-    out_dir = fake_root / pid / "generated"
-    out_dir.mkdir(parents=True, exist_ok=True)
-    territories = {
-        "type": "FeatureCollection",
-        "features": [
-            {
-                "type": "Feature",
-                "properties": {"id": "c1", "name": "Condado A"},
-                "geometry": {
-                    "type": "Polygon",
-                    "coordinates": [[[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]],
-                },
-            },
-            {
-                "type": "Feature",
-                "properties": {"id": "c2", "name": "Condado B"},
-                "geometry": {
-                    "type": "Polygon",
-                    "coordinates": [[[1, 0], [2, 0], [2, 1], [1, 1], [1, 0]]],
-                },
-            },
-        ],
-    }
-    (out_dir / "territories.geojson").write_text(json.dumps(territories), encoding="utf-8")
-
     return pid
 
 
@@ -109,19 +66,21 @@ async def project_with_territories(async_session_factory, tmp_path, monkeypatch)
 # Tests
 # ---------------------------------------------------------------------------
 
-async def test_sse_endpoint_streams_progress(monkeypatch, async_client, project_with_territories):
+async def test_sse_endpoint_streams_progress(monkeypatch, async_client, project_row):
     """Monkeypatched provider emits 3 progress msgs + RESULT + DONE."""
     from medieval_forge.services.llm import PROVIDERS
-    from medieval_forge.services.llm.schemas import ResearchResult, CondadoAssignment
+    from medieval_forge.services.llm.schemas import ResearchResult, Condado, Duchy
 
     valid_result = ResearchResult(
         kingdoms={"k1": "Leon"},
-        duchies={"d1": {"kingdom_id": "k1", "name": "Duchy of Leon"}},
-        condados_assignment=[
-            CondadoAssignment(condado_id="c1", kingdom_id="k1", duchy_id="d1"),
-            CondadoAssignment(condado_id="c2", kingdom_id="k1", duchy_id="d1"),
+        duchies={"d1": Duchy(kingdom_id="k1", name="Duchy of Leon")},
+        condados=[
+            Condado(id="C_ONE", name="Condado One", lon=-5.5, lat=42.6,
+                    kingdom_id="k1", duchy_id="d1"),
+            Condado(id="C_TWO", name="Condado Two", lon=-5.8, lat=43.1,
+                    kingdom_id="k1", duchy_id="d1"),
         ],
-        baronies={"c1": [], "c2": []},
+        baronies={"C_ONE": [], "C_TWO": []},
     )
 
     original_provider = PROVIDERS["claude"]
@@ -144,7 +103,7 @@ async def test_sse_endpoint_streams_progress(monkeypatch, async_client, project_
 
     monkeypatch.setitem(PROVIDERS, "claude", _FakeProvider())
 
-    pid = project_with_territories
+    pid = project_row
     body_chunks = []
     async with async_client.stream("POST", f"/api/projects/{pid}/research?provider=claude") as resp:
         assert resp.status_code == 200
@@ -159,19 +118,19 @@ async def test_sse_endpoint_streams_progress(monkeypatch, async_client, project_
     assert "DONE" in body
 
 
-async def test_sse_endpoint_returns_cached_result(monkeypatch, async_client, project_with_territories, async_session_factory, tmp_path):
+async def test_sse_endpoint_returns_cached_result(monkeypatch, async_client, project_row, async_session_factory):
     """Pre-populated cache → provider.research NOT called; stream emits cached + DONE."""
     from medieval_forge.services.llm import PROVIDERS
     from medieval_forge.services.research_cache import compute_cache_key, set_cached
     from medieval_forge.services.research_runner import PROVIDER_DEFAULT_MODEL
 
-    # Pre-populate cache
     key = compute_cache_key("Q29", 868, 900, "claude", PROVIDER_DEFAULT_MODEL["claude"])
     payload = {
         "kingdoms": {"k1": "Leon"},
-        "duchies": {"d1": ["k1", "Duchy of Leon"]},
-        "condados_assignment": [
-            {"condado_id": "c1", "kingdom_id": "k1", "duchy_id": "d1"},
+        "duchies": {"d1": {"kingdom_id": "k1", "name": "Duchy of Leon"}},
+        "condados": [
+            {"id": "C_ONE", "name": "One", "lon": -5.5, "lat": 42.6,
+             "kingdom_id": "k1", "duchy_id": "d1"},
         ],
         "baronies": {},
     }
@@ -180,7 +139,6 @@ async def test_sse_endpoint_returns_cached_result(monkeypatch, async_client, pro
                          "Q29", 868, 900)
 
     research_called = []
-
     original_provider = PROVIDERS["claude"]
 
     class _FakeProvider:
@@ -198,7 +156,7 @@ async def test_sse_endpoint_returns_cached_result(monkeypatch, async_client, pro
 
     monkeypatch.setitem(PROVIDERS, "claude", _FakeProvider())
 
-    pid = project_with_territories
+    pid = project_row
     body_chunks = []
     async with async_client.stream("POST", f"/api/projects/{pid}/research?provider=claude") as resp:
         assert resp.status_code == 200
@@ -211,30 +169,28 @@ async def test_sse_endpoint_returns_cached_result(monkeypatch, async_client, pro
     assert not research_called
 
 
-async def test_sse_endpoint_force_refresh_bypasses_cache(monkeypatch, async_client, project_with_territories, async_session_factory, tmp_path):
+async def test_sse_endpoint_force_refresh_bypasses_cache(monkeypatch, async_client, project_row, async_session_factory):
     """Pre-populated cache + force_refresh=true → provider.research IS called."""
     from medieval_forge.services.llm import PROVIDERS
     from medieval_forge.services.research_cache import compute_cache_key, set_cached
     from medieval_forge.services.research_runner import PROVIDER_DEFAULT_MODEL
-    from medieval_forge.services.llm.schemas import ResearchResult, CondadoAssignment
+    from medieval_forge.services.llm.schemas import ResearchResult, Condado, Duchy
 
-    # Pre-populate cache
     key = compute_cache_key("Q29", 868, 900, "claude", PROVIDER_DEFAULT_MODEL["claude"])
-    payload = {"kingdoms": {}, "duchies": {}, "condados_assignment": [], "baronies": {}}
+    stale_payload = {"kingdoms": {}, "duchies": {}, "condados": [], "baronies": {}}
     async with async_session_factory() as session:
-        await set_cached(session, key, payload, "claude", PROVIDER_DEFAULT_MODEL["claude"],
+        await set_cached(session, key, stale_payload, "claude", PROVIDER_DEFAULT_MODEL["claude"],
                          "Q29", 868, 900)
 
     research_called = []
-
     original_provider = PROVIDERS["claude"]
 
     valid_result = ResearchResult(
         kingdoms={"k1": "Leon"},
-        duchies={"d1": {"kingdom_id": "k1", "name": "Duchy of Leon"}},
-        condados_assignment=[
-            CondadoAssignment(condado_id="c1", kingdom_id="k1", duchy_id="d1"),
-            CondadoAssignment(condado_id="c2", kingdom_id="k1", duchy_id="d1"),
+        duchies={"d1": Duchy(kingdom_id="k1", name="Duchy of Leon")},
+        condados=[
+            Condado(id="C_ONE", name="One", lon=-5.5, lat=42.6,
+                    kingdom_id="k1", duchy_id="d1"),
         ],
         baronies={},
     )
@@ -254,7 +210,7 @@ async def test_sse_endpoint_force_refresh_bypasses_cache(monkeypatch, async_clie
 
     monkeypatch.setitem(PROVIDERS, "claude", _FakeProvider())
 
-    pid = project_with_territories
+    pid = project_row
     body_chunks = []
     async with async_client.stream(
         "POST", f"/api/projects/{pid}/research?provider=claude&force_refresh=true"
@@ -266,9 +222,9 @@ async def test_sse_endpoint_force_refresh_bypasses_cache(monkeypatch, async_clie
     assert research_called, "provider.research should have been called with force_refresh=true"
 
 
-async def test_sse_endpoint_404_unknown_provider(async_client, project_with_territories):
+async def test_sse_endpoint_404_unknown_provider(async_client, project_row):
     """Unknown provider returns 404 immediately (before streaming)."""
-    pid = project_with_territories
+    pid = project_row
     resp = await async_client.post(f"/api/projects/{pid}/research?provider=mistral")
     assert resp.status_code == 404
 

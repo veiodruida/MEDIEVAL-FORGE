@@ -220,7 +220,7 @@ PRESETS: list[dict] = [
         "label": "Península Ibérica (Portugal + Espanha)",
         "country": "Espanha+Portugal",
         "country_qid": "Q29,Q45",
-        "bbox": {"lon_min": -13.2, "lat_min": 35.4, "lon_max": 8.2, "lat_max": 44.6},
+        "bbox": {"lon_min": -9.5, "lat_min": 36.0, "lon_max": 4.3, "lat_max": 44.0},
         "period_example": (711, 1492),
         # Iberia spans two sovereign countries — clip to union of ES + PT polygons so that
         # French départements (Dordogne, Landes, etc.) are excluded from the ingest result.

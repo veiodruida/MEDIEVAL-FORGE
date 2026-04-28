@@ -1,9 +1,13 @@
 """Research orchestration runner (RESEARCH-04, RESEARCH-05, D-05..D-09, D-20, D-22..D-26).
 
 run_research: producer task that orchestrates the full pipeline:
-  load condados → build prompt → cache lookup → run_with_retry → validate ids → cache result
+  load project → build prompt → cache lookup → run_with_retry → validate → cache result
 
 Emits SSE-format strings to asyncio.Queue[str | None]. Terminates with None sentinel.
+
+Architecture note: the LLM GENERATES condados (counties) freely from scratch at the
+START of the historical period. No pre-supplied OSM condado list is needed for research.
+OSM ingest is only used for the modern_map.png preview layer.
 """
 from __future__ import annotations
 
@@ -20,7 +24,6 @@ from ..models import Project
 from .llm import PROVIDERS, ResearchResult, run_with_retry, ResearchValidationError
 from .llm.auth import resolve_credentials
 from .llm.prompt import build_research_prompt
-from .paths import project_dir
 from .research_cache import compute_cache_key, get_cached, set_cached
 
 logger = logging.getLogger(__name__)
@@ -35,47 +38,125 @@ PROVIDER_DEFAULT_MODEL: dict[str, str] = {
 
 
 def load_condados(project_path: Path) -> list[dict]:
-    """Load condados from territories.geojson in the project's generated/ directory.
+    """Load condados from the project's geographic data.
 
-    Returns a list of dicts with id/name/lon/lat suitable for the prompt builder.
+    Source priority:
+      1. ``raw/municipalities.geojson`` — OSM ingest output.
+         Each polygon becomes one condado, ID = ``C_{osm_id}``.
+      2. ``generated/territories.geojson`` — fallback for legacy projects.
+
+    Note: this utility is kept for debugging/tooling but is NO LONGER called
+    by the main research pipeline. The LLM now generates condados freely.
+    It is still used by territory_builder as a last-resort fallback.
+
+    Returns a list of dicts with id/name/lon/lat.
+    Raises FileNotFoundError if neither geojson source is available.
     """
-    gj_path = project_path / "generated" / "territories.geojson"
-    if not gj_path.exists():
-        raise FileNotFoundError(f"territories.geojson not found at {gj_path}")
-    data = json.loads(gj_path.read_text(encoding="utf-8"))
+    raw_path = project_path / "raw" / "municipalities.geojson"
+    territories_path = project_path / "generated" / "territories.geojson"
+
+    if raw_path.exists():
+        return _condados_from_municipalities(raw_path)
+    if territories_path.exists():
+        return _condados_from_territories(territories_path)
+    raise FileNotFoundError(
+        f"Neither {raw_path} nor {territories_path} exists — run OSM ingest first."
+    )
+
+
+def _polygon_centroid(geom: dict) -> tuple[float, float]:
+    """Compute centroid (lon, lat) of a Polygon or MultiPolygon GeoJSON geometry."""
+    gtype = geom.get("type")
+    coords = geom.get("coordinates") or []
+    if gtype == "Polygon" and coords:
+        ring = coords[0]
+        if ring:
+            return (
+                sum(p[0] for p in ring) / len(ring),
+                sum(p[1] for p in ring) / len(ring),
+            )
+    elif gtype == "MultiPolygon" and coords:
+        biggest = max(coords, key=lambda poly: len(poly[0]) if poly and poly[0] else 0)
+        ring = biggest[0] if biggest else []
+        if ring:
+            return (
+                sum(p[0] for p in ring) / len(ring),
+                sum(p[1] for p in ring) / len(ring),
+            )
+    return 0.0, 0.0
+
+
+def _condados_from_municipalities(path: Path) -> list[dict]:
+    """Convert raw OSM municipalities into condados (one per polygon feature)."""
+    data = json.loads(path.read_text(encoding="utf-8"))
+    condados: list[dict] = []
+    for feat in data.get("features", []):
+        geom = feat.get("geometry") or {}
+        if geom.get("type") not in ("Polygon", "MultiPolygon"):
+            continue
+        props = feat.get("properties", {}) or {}
+        osm_id = props.get("osm_id")
+        name = props.get("name") or f"OSM {osm_id}"
+        cid = f"C_{osm_id}" if osm_id is not None else f"C_{len(condados)}"
+        cx, cy = _polygon_centroid(geom)
+        condados.append({"id": cid, "name": name, "lon": cx, "lat": cy})
+    return condados
+
+
+def _condados_from_territories(path: Path) -> list[dict]:
+    """Fallback: read condados from generator output (post-Voronoi territories.geojson)."""
+    data = json.loads(path.read_text(encoding="utf-8"))
     condados: list[dict] = []
     for feat in data.get("features", []):
         props = feat.get("properties", {})
         cid = props.get("id") or props.get("osm_id")
         name = props.get("name", "")
-        # Centroid: prefer explicit centroid prop; fall back to ring average.
         geom = feat.get("geometry", {})
         cx, cy = 0.0, 0.0
         if props.get("centroid"):
             cx, cy = props["centroid"]
-        elif geom.get("type") == "Polygon" and geom.get("coordinates"):
-            ring = geom["coordinates"][0]
-            if ring:
-                cx = sum(p[0] for p in ring) / len(ring)
-                cy = sum(p[1] for p in ring) / len(ring)
+        else:
+            cx, cy = _polygon_centroid(geom)
         condados.append({"id": str(cid), "name": name, "lon": cx, "lat": cy})
     return condados
 
 
-def validate_assignment_against_condados(
-    result: ResearchResult,
-    known_ids: set[str],
-) -> None:
-    """Raise ValueError if any condado_id in result is not in known_ids.
+def validate_condados_self_consistency(result: ResearchResult) -> None:
+    """Check internal referential integrity of the LLM-generated result.
 
-    D-09: Unknown condado_id from LLM is treated as validation error → retry loop re-prompts.
-    Only validates referenced ids — partial assignment (LLM skips some condados) is allowed.
+    Validates:
+    - Every duchy's kingdom_id references a key in result.kingdoms.
+    - Every condado's kingdom_id references a key in result.kingdoms.
+    - Every condado's duchy_id references a key in result.duchies.
+    - Every barony key references a condado id in result.condados.
+
+    Raises:
+        ValueError: describing the first inconsistency found.
     """
-    for assignment in result.condados_assignment:
-        if assignment.condado_id not in known_ids:
+    kingdom_ids = set(result.kingdoms.keys())
+    duchy_ids = set(result.duchies.keys())
+    condado_ids = {c.id for c in result.condados}
+
+    for did, duchy in result.duchies.items():
+        if duchy.kingdom_id not in kingdom_ids:
             raise ValueError(
-                f"LLM returned unknown condado_id: {assignment.condado_id!r} "
-                f"(not in project's territory list)"
+                f"Duchy {did!r} references unknown kingdom_id: {duchy.kingdom_id!r}"
+            )
+
+    for condado in result.condados:
+        if condado.kingdom_id not in kingdom_ids:
+            raise ValueError(
+                f"Condado {condado.id!r} references unknown kingdom_id: {condado.kingdom_id!r}"
+            )
+        if condado.duchy_id not in duchy_ids:
+            raise ValueError(
+                f"Condado {condado.id!r} references unknown duchy_id: {condado.duchy_id!r}"
+            )
+
+    for barony_key in result.baronies:
+        if barony_key not in condado_ids:
+            raise ValueError(
+                f"baronies key {barony_key!r} does not match any condado id"
             )
 
 
@@ -93,9 +174,9 @@ async def run_research(
       1. Validate provider
       2. Load project metadata from DB
       3. Compute cache key; check cache (unless force_refresh)
-      4. Load condados from territories.geojson
-      5. Resolve credentials
-      6. Build prompt + run_with_retry + validate condado ids
+      4. Resolve credentials
+      5. Build prompt (no condados list — LLM generates freely)
+      6. run_with_retry + validate self-consistency
       7. Cache result
       8. Emit RESULT + DONE to queue
     """
@@ -123,6 +204,22 @@ async def run_research(
             period_start = project.period_start
             period_end = project.period_end
             country_name = project.name
+            bbox: tuple[float, float, float, float] | None = None
+            if all(
+                v is not None
+                for v in (
+                    project.bbox_lon_min,
+                    project.bbox_lat_min,
+                    project.bbox_lon_max,
+                    project.bbox_lat_max,
+                )
+            ):
+                bbox = (
+                    project.bbox_lon_min,
+                    project.bbox_lat_min,
+                    project.bbox_lon_max,
+                    project.bbox_lat_max,
+                )
 
         # Cache lookup
         cache_key = compute_cache_key(country_qid, period_start, period_end, provider_id, model)
@@ -136,11 +233,8 @@ async def run_research(
                 await queue.put("data: DONE\n\n")
                 return
 
-        # Load condados from disk
-        project_path = project_dir(project_id)
-        condados = load_condados(project_path)
-        known_ids = {c["id"] for c in condados}
-        prompt = build_research_prompt(country_name, period_start, period_end, condados)
+        # Build prompt — LLM generates condados freely, no pre-supplied list
+        prompt = build_research_prompt(country_name, period_start, period_end, bbox)
 
         # Resolve credentials
         credentials = resolve_credentials(provider_id, app_state)
@@ -150,10 +244,10 @@ async def run_research(
 
         await queue.put(f"data: starting {provider_id} ({model})\n\n")
 
-        # Wrap provider.research with condado-id validation so retry loop re-prompts
-        # on unknown ids (D-09, T-3-08).
+        # Wrap provider.research with self-consistency validation so retry loop
+        # re-prompts when the LLM produces internally inconsistent ids.
         class _ValidatingWrapper:
-            """Thin wrapper that adds condado-id validation after each research call."""
+            """Thin wrapper that adds self-consistency validation after each research call."""
             provider_id = provider.provider_id
             display_name = provider.display_name
             auth_methods = provider.auth_methods
@@ -165,7 +259,7 @@ async def run_research(
                 self, p: str, s: type, c: dict | None, q: asyncio.Queue | None
             ) -> ResearchResult:
                 result = await provider.research(p, s, c, q)
-                validate_assignment_against_condados(result, known_ids)
+                validate_condados_self_consistency(result)
                 return result
 
         try:
@@ -173,8 +267,6 @@ async def run_research(
                 _ValidatingWrapper(), prompt, ResearchResult, credentials, queue, max_retries=3
             )
         except ResearchValidationError as e:
-            # Keep error long enough to diagnose schema mismatches (common with Gemini).
-            # Credentials never leak here — last_error is Pydantic/JSON validation text only.
             msg = e.last_error[:600].replace("\n", " ")
             await queue.put(f"data: ERROR: validação falhou após 3 tentativas — {msg}\n\n")
             return
@@ -192,7 +284,6 @@ async def run_research(
 
     except Exception as e:
         logger.exception("run_research failed")
-        # T-3-12: truncate to 200 chars; credential fragments never leaked via SSE.
         await queue.put(f"data: ERROR: {type(e).__name__}: {str(e)[:200]}\n\n")
     finally:
         # Pitfall 6: sentinel ALWAYS emitted so SSE consumer exits cleanly.

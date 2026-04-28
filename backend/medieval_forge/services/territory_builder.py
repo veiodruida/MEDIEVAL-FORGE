@@ -1,15 +1,15 @@
-"""territory_builder: assemble generator input from DB cache + territories.geojson.
+"""territory_builder: assemble generator input from DB cache.
 
 This is the single source of truth for building the `territory_data` dict
 consumed by `services.generator.run_generation`. It replaces the previous
-flow where the frontend posted a hardcoded template to /generate (which
-caused orphan bug #4: a 4-condado template overrode the 91-condado cached
-research).
+flow where the frontend posted a hardcoded template to /generate.
 
 Precedence (per QUICK-260426-q3v):
   1. Latest ResearchCache row matching (project.country_qid, period_start, period_end)
      — picked across ALL providers/models, newest `created_at` wins.
-  2. Centroids/names from generated/territories.geojson (via research_runner.load_condados).
+
+The research payload now carries condados with their own coordinates (the LLM
+generates them freely). No geojson centroid file is needed to assemble territory_data.
 
 If no cache row exists, the public entry point returns None and the caller
 (api/generate.py) decides how to surface the 422 to the user.
@@ -24,7 +24,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..models import Project, ResearchCache
-from .research_runner import load_condados
 
 logger = logging.getLogger(__name__)
 
@@ -38,9 +37,7 @@ async def select_latest_cache_row(
     """Return the most-recently-created ResearchCache row for the given tuple.
 
     Across multiple providers/models for the same (country_qid, period_start,
-    period_end), the row with the latest `created_at` wins. This is
-    deterministic and observable: the user can see which provider was used
-    via the returned row's `provider`/`model` fields.
+    period_end), the row with the latest `created_at` wins.
     """
     stmt = (
         select(ResearchCache)
@@ -56,11 +53,8 @@ async def select_latest_cache_row(
     return result.scalar_one_or_none()
 
 
-def assemble_territory_data(
-    research_payload: dict[str, Any],
-    condados_centroids: list[dict[str, Any]],
-) -> dict[str, Any]:
-    """Build the generator-ready territory_data dict from a cached payload + centroids.
+def assemble_territory_data(research_payload: dict[str, Any]) -> dict[str, Any]:
+    """Build the generator-ready territory_data dict from a cached research payload.
 
     Output shape (consumed by services.generator._inject_territory_module):
         {
@@ -70,42 +64,15 @@ def assemble_territory_data(
         }
     where each barony entry is `(name, lon, lat)`.
 
-    Centroids without an assignment are still emitted with `duchy_id=None`
-    and an empty barony list — the generator only requires the tuple shape,
-    so unassigned territories render as un-attributed condados rather than
-    silently disappearing.
-
-    Raises:
-        ValueError: if any condado_id appearing in
-            research_payload["condados_assignment"] is not present in
-            condados_centroids (defensive — mirrors
-            research_runner.validate_assignment_against_condados).
+    Condado coordinates come from the research payload itself — the LLM generates
+    condados with their centroids. No external geojson centroid source is needed.
     """
-    centroids_by_id: dict[str, dict[str, Any]] = {c["id"]: c for c in condados_centroids}
-    known_ids = set(centroids_by_id.keys())
-
-    # Build assignment lookup: condado_id -> duchy_id
-    assignment_by_id: dict[str, str] = {}
-    unknown_ids: list[str] = []
-    for assignment in research_payload.get("condados_assignment", []):
-        cid = assignment["condado_id"]
-        if cid not in known_ids:
-            unknown_ids.append(cid)
-        else:
-            assignment_by_id[cid] = assignment["duchy_id"]
-
-    if unknown_ids:
-        raise ValueError(
-            f"Research payload references condado_id(s) absent from territories.geojson: "
-            f"{sorted(unknown_ids)!r}"
-        )
-
+    condados_raw: list[dict[str, Any]] = research_payload.get("condados", [])
     baronies_by_id: dict[str, list[dict[str, Any]]] = research_payload.get("baronies", {}) or {}
 
     condados: list[tuple] = []
-    for centroid in condados_centroids:
-        cid = centroid["id"]
-        duchy_id = assignment_by_id.get(cid)  # None if unassigned
+    for c in condados_raw:
+        cid = c["id"]
         baronies_raw = baronies_by_id.get(cid, []) or []
         baronies: list[tuple] = [
             (b["name"], float(b["lon"]), float(b["lat"]))
@@ -113,10 +80,10 @@ def assemble_territory_data(
         ]
         condados.append((
             cid,
-            centroid["name"],
-            float(centroid["lon"]),
-            float(centroid["lat"]),
-            duchy_id,
+            c["name"],
+            float(c["lon"]),
+            float(c["lat"]),
+            c.get("duchy_id"),
             baronies,
         ))
 
@@ -130,7 +97,7 @@ def assemble_territory_data(
 async def build_territory_data_from_cache(
     session: AsyncSession,
     project: Project,
-    project_path: Path,
+    project_path: Path | None = None,  # kept for API compat; no longer used
 ) -> dict[str, Any] | None:
     """Public entry point: return a generator-ready territory_data dict, or None on cache miss.
 
@@ -140,8 +107,7 @@ async def build_territory_data_from_cache(
 
     Returns:
         Assembled territory_data dict on cache hit; None if no
-        ResearchCache row exists for the project's tuple. The caller
-        decides how to surface a cache miss (typically a 422).
+        ResearchCache row exists for the project's tuple.
     """
     row = await select_latest_cache_row(
         session,
@@ -152,15 +118,13 @@ async def build_territory_data_from_cache(
     if row is None:
         return None
 
-    centroids = load_condados(project_path)
-    territory_data = assemble_territory_data(row.payload, centroids)
+    territory_data = assemble_territory_data(row.payload)
     logger.info(
         "territory_builder: assembled territory_data from cache "
-        "(provider=%s model=%s, %d condados, %d centroids) for project=%s",
+        "(provider=%s model=%s, %d condados) for project=%s",
         row.provider,
         row.model,
         len(territory_data["condados"]),
-        len(centroids),
         project.id,
     )
     return territory_data

@@ -14,10 +14,11 @@ _VALID_RESULT = ResearchResult.model_validate(
     {
         "kingdoms": {"k1": "Kingdom"},
         "duchies": {"d1": {"kingdom_id": "k1", "name": "Duchy"}},
-        "condados_assignment": [
-            {"condado_id": "c1", "kingdom_id": "k1", "duchy_id": "d1"}
+        "condados": [
+            {"id": "C_ONE", "name": "One", "lon": -5.5, "lat": 42.6,
+             "kingdom_id": "k1", "duchy_id": "d1"},
         ],
-        "baronies": {"c1": [{"name": "B", "lon": 1.0, "lat": 2.0}]},
+        "baronies": {"C_ONE": [{"name": "B", "lon": 1.0, "lat": 2.0}]},
     }
 )
 

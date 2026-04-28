@@ -279,7 +279,7 @@ export function ProjectDetail() {
           <Tabs.Content value="pipeline">
             <Box pt="3">
               <Text size="2" color="gray" as="p" mb="3">
-                Execute em ordem: <strong>1. Ingerir OSM</strong> → <strong>2. Gerar mapa</strong> → <strong>3. Exportar ZIP</strong>.
+                Execute em ordem: <strong>1. Ingerir OSM</strong> → <strong>2. Pesquisa histórica</strong> → <strong>3. Gerar mapa</strong> → <strong>4. Exportar ZIP</strong>.
               </Text>
 
               {/* Status dos dados guardados */}
@@ -356,6 +356,17 @@ export function ProjectDetail() {
                   {renderModern.isPending ? 'Renderizando…' : '1c. Mapa moderno (validar dados)'}
                 </Button>
                 <Button
+                  color="blue"
+                  onClick={() => project && openResearchDialog({
+                    country: project.country_qid,
+                    periodStart: project.period_start,
+                    periodEnd: project.period_end,
+                  })}
+                  title="Pesquisa histórica com LLM — necessária antes de gerar o mapa"
+                >
+                  2. Pesquisa histórica
+                </Button>
+                <Button
                   onClick={() => generate.mutate(territory as unknown as Record<string, unknown>)}
                   disabled={
                     project.status === 'generating' ||
@@ -369,31 +380,29 @@ export function ProjectDetail() {
                       : 'Gerar mapa com a estrutura de territórios definida'
                   }
                 >
-                  {project.status === 'generating' ? 'Gerando…' : '2. Gerar mapa'}
+                  {project.status === 'generating' ? 'Gerando…' : '3. Gerar mapa'}
                 </Button>
                 {!isGenerated && (
-                  <Button variant="soft" color="green" disabled>3. Exportar ZIP</Button>
+                  <Button variant="soft" color="green" disabled>4. Exportar ZIP</Button>
                 )}
-                <Button
-                  color="blue"
-                  disabled={!isGenerated}
-                  onClick={() => project && openResearchDialog({
-                    country: project.country_qid,
-                    periodStart: project.period_start,
-                    periodEnd: project.period_end,
-                  })}
-                  title={
-                    !isGenerated
-                      ? 'Requer mapa gerado — execute "2. Gerar mapa" primeiro'
-                      : 'Iniciar pesquisa histórica com LLM'
-                  }
-                >
-                  Pesquisa histórica
-                </Button>
               </Flex>
 
               {ingest.error && <Text color="red" size="2" mb="2">Erro: {ingest.error.message}</Text>}
-              {generate.error && <Text color="red" size="2" mb="2">Erro: {(generate.error as Error).message}</Text>}
+              {generate.error && (() => {
+                const msg = (generate.error as Error).message
+                const isResearchMissing = msg.includes('No cached research found')
+                if (isResearchMissing) {
+                  return (
+                    <Callout.Root color="amber" size="2" mb="2">
+                      <Callout.Text>
+                        <strong>Pesquisa histórica em falta.</strong>{' '}
+                        Execute <strong>"2. Pesquisa histórica"</strong> antes de gerar o mapa.
+                      </Callout.Text>
+                    </Callout.Root>
+                  )
+                }
+                return <Text color="red" size="2" mb="2">Erro: {msg}</Text>
+              })()}
               {renderModern.error && (
                 <Text color="red" size="2" mb="2">
                   Erro ao renderizar mapa moderno: {(renderModern.error as Error).message}
