@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Phase 5 context gathered
-last_updated: "2026-04-27T09:18:00.382Z"
-last_activity: 2026-04-24 -- Phase 04 execution started
+stopped_at: Phase 5 UI-SPEC approved
+last_updated: "2026-04-27T11:44:19.755Z"
+last_activity: 2026-04-27 -- Phase 05 execution started
 progress:
   total_phases: 7
   completed_phases: 4
-  total_plans: 26
+  total_plans: 29
   completed_plans: 27
-  percent: 100
+  percent: 93
 ---
 
 # Project State
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-16)
 
 **Core value:** A Game Designer can go from "country + historical period" to a validated, Unity-ready map package without manual pixel editing or blind iteration.
-**Current focus:** Phase 04 — canvas-editing-basic
+**Current focus:** Phase 05 — canvas-editing-advanced
 
 ## Current Position
 
-Phase: 04 (canvas-editing-basic) — EXECUTING
-Plan: 1 of 10
-Status: Executing Phase 04
-Last activity: 2026-04-24 -- Phase 04 execution started
+Phase: 05 (canvas-editing-advanced) — EXECUTING
+Plan: 1 of 3
+Status: Executing Phase 05
+Last activity: 2026-04-28 - Completed quick task 260428-elq: Etapa 2 (Baronies Builder)
 
 Progress: [█████░░░░░] 50% (3 of 6 phases plan-complete; verification pending)
 
@@ -122,9 +122,10 @@ None yet.
 | 260426-qc0 | Fix orphan bug: vertex-handles endpoint ignores target parameter — decimate_polygon is no-op | 2026-04-26 | e1228fc | [260426-qc0-fix-orphan-bug-vertex-handles-endpoint-i](./quick/260426-qc0-fix-orphan-bug-vertex-handles-endpoint-i/) |
 | 260426-qlo | Fix orphan bug: recalc_neighbors does not clip Voronoi cells to land mask after capital move | 2026-04-26 | 6e252ba | [260426-qlo-fix-orphan-bug-recalc-neighbors-does-not](./quick/260426-qlo-fix-orphan-bug-recalc-neighbors-does-not/) |
 | 260426-qvu | Fix orphan bug: project.updated_at not bumped on edit endpoints | 2026-04-26 | 30aee4d | [260426-qvu-fix-orphan-bug-project-updated-at-not-bu](./quick/260426-qvu-fix-orphan-bug-project-updated-at-not-bu/) |
+| 260428-elq | Etapa 2: Baronies Builder + endpoint /baronies + slider UI | 2026-04-28 | e807714 | [260428-elq-etapa-2-baronies-builder-endpoint-baroni](./quick/260428-elq-etapa-2-baronies-builder-endpoint-baroni/) |
 
 ## Session Continuity
 
-Last session: 2026-04-27T09:18:00.379Z
-Stopped at: Phase 5 context gathered
-Resume file: .planning/phases/05-canvas-editing-advanced/05-CONTEXT.md
+Last session: 2026-04-28
+Stopped at: Etapa 2 (Baronies Builder) complete — 209 tests passing
+Resume file: C:\Users\veio_\.claude\plans\hazy-hatching-abelson.md (Etapa 3)
