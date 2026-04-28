@@ -23,6 +23,7 @@ from ..database import AsyncSessionLocal
 from ..models import Project
 from .llm import PROVIDERS, ResearchResult, run_with_retry, ResearchValidationError
 from .llm.auth import resolve_credentials
+from .llm.model_routing import resolve_model
 from .llm.prompt import build_research_prompt
 from .research_cache import compute_cache_key, get_cached, set_cached
 
@@ -167,6 +168,8 @@ async def run_research(
     force_refresh: bool = False,
     db_session_factory: async_sessionmaker | None = None,
     app_state: Any = None,
+    task_type: str | None = None,
+    effort_override: str | None = None,
 ) -> None:
     """Producer task. ALWAYS puts None sentinel before returning (Pitfall 6).
 
@@ -179,6 +182,16 @@ async def run_research(
       6. run_with_retry + validate self-consistency
       7. Cache result
       8. Emit RESULT + DONE to queue
+
+    Optional model-routing params (Etapa 4 — quick-260428-f9x):
+      task_type:        When provided, the model is resolved via
+                        ``model_routing.resolve_model(provider_id, task_type,
+                        effort_override)`` instead of the legacy
+                        PROVIDER_DEFAULT_MODEL lookup. Backward compatible:
+                        when None, behavior is unchanged.
+      effort_override:  Optional "low"|"medium"|"high"; when set, overrides
+                        the per-task default effort tier. Only used when
+                        ``task_type`` is also provided.
     """
     factory = db_session_factory or AsyncSessionLocal
     try:
@@ -193,6 +206,18 @@ async def run_research(
             session_ollama = (getattr(app_state, "credentials", {}) or {}).get("ollama") or {}
             if session_ollama.get("model"):
                 model = session_ollama["model"]
+
+        # When a task_type is provided, route via model_routing (Etapa 4 — quick-260428-f9x).
+        # Otherwise keep legacy PROVIDER_DEFAULT_MODEL behavior for backward compat
+        # (all 216 prior tests call run_research without task_type).
+        if task_type is not None:
+            try:
+                model = resolve_model(provider_id, task_type, effort_override)
+            except ValueError as e:
+                await queue.put(f"data: ERROR: {e}\n\n")
+                return
+            # Note: llamacpp returns the sentinel "(server-default)" — the
+            # llamacpp provider adapter is responsible for handling it.
 
         # Load project from DB
         async with factory() as session:
