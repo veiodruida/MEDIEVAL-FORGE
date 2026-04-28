@@ -24,7 +24,9 @@ from ..models import Project
 from .llm import PROVIDERS, ResearchResult, run_with_retry, ResearchValidationError
 from .llm.auth import resolve_credentials
 from .llm.model_routing import resolve_model
-from .llm.prompt import build_research_prompt
+from .llm.prompt import build_map_research_prompt, build_research_prompt
+from .llm.schemas import MapResearchResult, validate_barony_assignments
+from .paths import project_dir
 from .research_cache import compute_cache_key, get_cached, set_cached
 
 logger = logging.getLogger(__name__)
@@ -258,8 +260,33 @@ async def run_research(
                 await queue.put("data: DONE\n\n")
                 return
 
-        # Build prompt — LLM generates condados freely, no pre-supplied list
-        prompt = build_research_prompt(country_name, period_start, period_end, bbox)
+        # Etapa 7b: detect raw/baronies.geojson; if present, switch to the
+        # MapResearchResult path (build_map_research_prompt + assignments
+        # validation). Otherwise keep the legacy ResearchResult flow.
+        baronies_path = project_dir(project_id) / "raw" / "baronies.geojson"
+        use_map_path = baronies_path.exists()
+        input_baronies: list[dict] = []
+        if use_map_path:
+            geojson = json.loads(baronies_path.read_text(encoding="utf-8"))
+            for feat in geojson.get("features", []) or []:
+                props = feat.get("properties", {}) or {}
+                centroid = props.get("centroid") or [0.0, 0.0]
+                input_baronies.append({
+                    "id": props.get("id"),
+                    "name": props.get("name"),
+                    "lon": float(centroid[0]),
+                    "lat": float(centroid[1]),
+                })
+
+        if use_map_path:
+            prompt = build_map_research_prompt(
+                country_name, period_start, input_baronies,
+                period_end=period_end, bbox=bbox,
+            )
+            schema_cls: type = MapResearchResult
+        else:
+            prompt = build_research_prompt(country_name, period_start, period_end, bbox)
+            schema_cls = ResearchResult
 
         # Resolve credentials
         credentials = resolve_credentials(provider_id, app_state)
@@ -270,7 +297,12 @@ async def run_research(
         await queue.put(f"data: starting {provider_id} ({model})\n\n")
 
         # Wrap provider.research with self-consistency validation so retry loop
-        # re-prompts when the LLM produces internally inconsistent ids.
+        # re-prompts when the LLM produces internally inconsistent ids. The
+        # wrapper dispatches by schema: legacy ResearchResult uses
+        # validate_condados_self_consistency; MapResearchResult uses
+        # validate_barony_assignments (Etapa 7b).
+        _input_baronies = input_baronies  # captured for closure
+
         class _ValidatingWrapper:
             """Thin wrapper that adds self-consistency validation after each research call."""
             provider_id = provider.provider_id
@@ -282,14 +314,17 @@ async def run_research(
 
             async def research(
                 self, p: str, s: type, c: dict | None, q: asyncio.Queue | None
-            ) -> ResearchResult:
+            ):
                 result = await provider.research(p, s, c, q)
-                validate_condados_self_consistency(result)
+                if isinstance(result, MapResearchResult):
+                    validate_barony_assignments(result, _input_baronies)
+                else:
+                    validate_condados_self_consistency(result)
                 return result
 
         try:
-            result: ResearchResult = await run_with_retry(
-                _ValidatingWrapper(), prompt, ResearchResult, credentials, queue, max_retries=3
+            result = await run_with_retry(
+                _ValidatingWrapper(), prompt, schema_cls, credentials, queue, max_retries=3
             )
         except ResearchValidationError as e:
             msg = e.last_error[:600].replace("\n", " ")

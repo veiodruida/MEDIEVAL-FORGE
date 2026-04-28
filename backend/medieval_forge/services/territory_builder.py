@@ -27,6 +27,7 @@ If no cache row exists, the public entry point returns None and the caller
 """
 from __future__ import annotations
 
+import json
 import logging
 from pathlib import Path
 from typing import Any
@@ -253,7 +254,33 @@ async def build_territory_data_from_cache(
     if row is None:
         return None
 
-    territory_data = assemble_territory_data(row.payload)
+    # Etapa 7b: dispatch by payload shape. MapResearchResult-shaped payloads
+    # carry barony_assignments and require the baronies geojson on disk so
+    # the new aggregator (Etapa 7) can compute condado centroids from member
+    # barony centroids. Legacy ResearchResult payloads carry an embedded
+    # baronies dict + condado lon/lat and use the legacy assembler.
+    payload = row.payload
+    if "barony_assignments" in payload:
+        if project_path is None:
+            raise ValueError(
+                "build_territory_data_from_cache: MapResearchResult cache row "
+                f"requires project_path for project_id={project.id}"
+            )
+        baronies_geojson_path = project_path / "raw" / "baronies.geojson"
+        if not baronies_geojson_path.exists():
+            raise FileNotFoundError(
+                f"baronies.geojson missing for project={project.id} at "
+                f"{baronies_geojson_path} — required by MapResearchResult cache row."
+            )
+        baronies_geojson = json.loads(
+            baronies_geojson_path.read_text(encoding="utf-8")
+        )
+        territory_data = assemble_territory_data_from_baronies(
+            payload, baronies_geojson
+        )
+    else:
+        territory_data = assemble_territory_data(payload)
+
     logger.info(
         "territory_builder: assembled territory_data from cache "
         "(provider=%s model=%s, %d condados) for project=%s",
