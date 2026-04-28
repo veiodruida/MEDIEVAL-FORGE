@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database import AsyncSessionLocal, get_db
 from ..models import Project
+from ..services.baronies_builder import build_baronies_from_osm
 from ..services.ingest_runner import run_ingest
 from ..services.paths import is_valid_uuid, project_dir
 
@@ -180,3 +181,79 @@ async def trigger_ingest(
             "Connection": "keep-alive",
         },
     )
+
+
+# ---------------------------------------------------------------------------
+# Etapa 2: Baronies Builder endpoint
+# ---------------------------------------------------------------------------
+
+def _parse_count(raw: str) -> int | str:
+    """Validate and parse the ?count= query param.
+
+    Accepts: 'all' (case-insensitive) or a positive integer string.
+    Raises HTTPException 422 on invalid input.
+    """
+    if raw is None:
+        raise HTTPException(status_code=422, detail="count query param is required")
+    lowered = raw.strip().lower()
+    if lowered == "all":
+        return "all"
+    try:
+        n = int(lowered)
+    except ValueError:
+        raise HTTPException(
+            status_code=422,
+            detail=f"count must be 'all' or positive integer, got {raw!r}",
+        )
+    if n < 1:
+        raise HTTPException(status_code=422, detail="count must be >= 1")
+    return n
+
+
+@router.post("/{project_id}/baronies")
+async def build_baronies(
+    project_id: str,
+    count: str = Query(..., description="'all' or positive integer (e.g. 50, 250, 1000)"),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Etapa 2: build baronies from raw/municipalities.geojson.
+
+    - count='all' → 1 município = 1 barony
+    - count=N (int) → KMeans cluster municípios into N baronies
+    Writes <project>/raw/baronies.geojson and returns metadata.
+    """
+    if not is_valid_uuid(project_id):
+        raise HTTPException(status_code=400, detail="project_id must be a valid UUID")
+    project = await db.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="project not found")
+
+    target_count = _parse_count(count)
+
+    muni_path = project_dir(project_id) / "raw" / "municipalities.geojson"
+    if not muni_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail="raw/municipalities.geojson not found — run /ingest first",
+        )
+
+    # scipy/shapely are CPU-bound and blocking — run in a worker thread so the
+    # event loop stays responsive for large municipality sets (Iberia ~6k).
+    result = await asyncio.to_thread(build_baronies_from_osm, muni_path, target_count)
+
+    baronies_path = muni_path.parent / "baronies.geojson"
+    baronies_path.write_text(
+        json.dumps(result, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    muni_data = json.loads(muni_path.read_text(encoding="utf-8"))
+    muni_count = sum(
+        1 for f in muni_data.get("features", [])
+        if f.get("geometry", {}).get("type") in ("Polygon", "MultiPolygon")
+    )
+
+    return {
+        "baronies_count": len(result["features"]),
+        "municipalities_count": muni_count,
+    }

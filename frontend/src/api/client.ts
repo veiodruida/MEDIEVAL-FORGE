@@ -286,3 +286,28 @@ export function useExport(projectId: string | undefined) {
     },
   })
 }
+
+// ---------------------------------------------------------------------------
+// Etapa 2: Baronies builder
+// ---------------------------------------------------------------------------
+
+export interface BuildBaroniesResponse {
+  baronies_count: number
+  municipalities_count: number
+}
+
+export async function buildBaronies(
+  projectId: string,
+  count: number | 'all',
+): Promise<BuildBaroniesResponse> {
+  const params = new URLSearchParams({ count: String(count) })
+  const res = await fetch(
+    `/api/projects/${projectId}/baronies?${params.toString()}`,
+    { method: 'POST' },
+  )
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }))
+    throw new Error(err.detail || `buildBaronies failed: ${res.status}`)
+  }
+  return (await res.json()) as BuildBaroniesResponse
+}
