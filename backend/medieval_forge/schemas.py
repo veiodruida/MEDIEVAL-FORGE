@@ -196,3 +196,36 @@ class PaintTerrainRequest(BaseModel):
 class PaintTerrainResponse(BaseModel):
     painted_ids: list[str]
     skipped_ids: list[str]
+
+
+# ==================== Etapa 8 (quick-260428-h1t): PATCH research/assignments ====================
+
+
+class CondadoRename(BaseModel):
+    """Rename / reparent a condado, OR (if cid is new) create one.
+
+    Both fields optional: at the handler level, an existing condado is patched
+    only on the fields that are not None. For a NEW condado_id, ``duchy_id``
+    is required so the handler can derive ``kingdom_id`` from the duchies map.
+    """
+    model_config = ConfigDict(extra="forbid")
+    name: str | None = None
+    duchy_id: str | None = None
+
+
+class EditAssignmentsRequest(BaseModel):
+    """Body of PATCH /api/projects/{id}/research/assignments.
+
+    At least one of ``barony_assignments`` / ``condado_renames`` must be set.
+    """
+    model_config = ConfigDict(extra="forbid")
+    barony_assignments: dict[str, str] | None = None
+    condado_renames: dict[str, CondadoRename] | None = None
+
+    @model_validator(mode="after")
+    def _at_least_one_field(self) -> "EditAssignmentsRequest":
+        if not self.barony_assignments and not self.condado_renames:
+            raise ValueError(
+                "at least one of 'barony_assignments' or 'condado_renames' must be provided"
+            )
+        return self

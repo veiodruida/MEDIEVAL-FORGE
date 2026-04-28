@@ -3,11 +3,15 @@ from __future__ import annotations
 
 import json
 import logging
+from copy import deepcopy
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import JSONResponse
+from pydantic import ValidationError as PydValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database import get_db
+from ..models import Project
 from ..services.project_meta import touch_project
 from shapely.geometry import Point
 
@@ -19,6 +23,7 @@ from ..schemas import (
     SaveSnapshotRequest,
     VertexHandle, VertexHandlesResponse,
     PaintTerrainRequest, PaintTerrainResponse,
+    EditAssignmentsRequest,
 )
 
 logger = logging.getLogger(__name__)
@@ -432,3 +437,142 @@ async def vertex_handles(
         handles.append(VertexHandle(lon=dx, lat=dy, source_index=best_idx))
 
     return VertexHandlesResponse(handles=handles)
+
+
+# ==================== Etapa 8 (quick-260428-h1t): PATCH research/assignments ====================
+
+
+@router.patch("/projects/{project_id}/research/assignments")
+async def patch_research_assignments(
+    project_id: str,
+    body: EditAssignmentsRequest,
+    session: AsyncSession = Depends(get_db),
+) -> JSONResponse:
+    """Edit barony→condado assignments and/or condado metadata after research.
+
+    Persists the edited payload back to the SAME ResearchCache row (overwrite-in-place),
+    so subsequent /generate calls consume the edits via territory_builder.
+
+    Errors:
+      400: invalid project_id, unknown barony id(s), unknown duchy_id, validation failure
+      404: project not found
+      409: no research cache, cache predates barony_assignments schema, baronies.geojson missing
+    """
+    from ..services.paths import is_valid_uuid, project_dir
+    from ..services.research_cache import set_cached
+    from ..services.territory_builder import select_latest_cache_row
+    from ..services.llm.schemas import MapResearchResult
+
+    # 1. Validate project_id
+    if not is_valid_uuid(project_id):
+        raise HTTPException(status_code=400, detail="Invalid project_id")
+
+    # 2. Load Project
+    project = await session.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    # 3. Load latest cache row
+    row = await select_latest_cache_row(
+        session, project.country_qid, project.period_start, project.period_end,
+    )
+    if row is None:
+        raise HTTPException(status_code=409, detail="No research cache to edit")
+    if "barony_assignments" not in row.payload:
+        raise HTTPException(
+            status_code=409,
+            detail="Cache row predates barony_assignments schema",
+        )
+
+    # 4. Load baronies.geojson
+    baronies_path = project_dir(project_id) / "raw" / "baronies.geojson"
+    if not baronies_path.exists():
+        raise HTTPException(status_code=409, detail="baronies.geojson missing")
+    baronies_geojson = json.loads(baronies_path.read_text(encoding="utf-8"))
+    valid_barony_ids: set[str] = set()
+    for feature in baronies_geojson.get("features", []) or []:
+        props = feature.get("properties", {}) or {}
+        bid = props.get("id")
+        if bid is not None:
+            valid_barony_ids.add(bid)
+
+    # 5. Deep-copy payload (NO mutation until step 10)
+    payload = deepcopy(row.payload)
+
+    # 6. Apply condado_renames FIRST
+    if body.condado_renames:
+        condados_by_id: dict[str, dict] = {c["id"]: c for c in payload.get("condados", [])}
+        duchies: dict = payload.get("duchies", {}) or {}
+
+        for cid, rename in body.condado_renames.items():
+            if cid in condados_by_id:
+                # Patch existing condado
+                cond = condados_by_id[cid]
+                if rename.name is not None:
+                    cond["name"] = rename.name
+                if rename.duchy_id is not None:
+                    if rename.duchy_id not in duchies:
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"unknown duchy_id: {rename.duchy_id!r}",
+                        )
+                    cond["duchy_id"] = rename.duchy_id
+                    # Re-derive kingdom_id from new duchy
+                    cond["kingdom_id"] = duchies[rename.duchy_id]["kingdom_id"]
+            else:
+                # Append new condado — duchy_id required
+                if rename.duchy_id is None:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"new condado {cid!r} requires duchy_id",
+                    )
+                if rename.duchy_id not in duchies:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"unknown duchy_id: {rename.duchy_id!r}",
+                    )
+                kingdom_id = duchies[rename.duchy_id]["kingdom_id"]
+                payload["condados"].append({
+                    "id": cid,
+                    "name": rename.name or cid,
+                    "kingdom_id": kingdom_id,
+                    "duchy_id": rename.duchy_id,
+                })
+
+    # 7. Apply barony_assignments delta
+    if body.barony_assignments:
+        existing_assignments: dict = payload.setdefault("barony_assignments", {})
+        existing_assignments.update(body.barony_assignments)
+
+    # 8. Validate every barony_id in FINAL assignments exists
+    final_assignments: dict = payload.get("barony_assignments", {}) or {}
+    unknown_baronies = sorted(
+        bid for bid in final_assignments.keys() if bid not in valid_barony_ids
+    )
+    if unknown_baronies:
+        raise HTTPException(
+            status_code=400,
+            detail=f"unknown barony id(s): {unknown_baronies}",
+        )
+
+    # 9. Re-parse through MapResearchResult (cross-ref invariant)
+    try:
+        MapResearchResult.model_validate(payload)
+    except PydValidationError as e:
+        raise HTTPException(status_code=400, detail=str(e)[:600])
+
+    # 10. Persist via set_cached (overwrite-in-place using same cache_key_hash)
+    await set_cached(
+        session,
+        row.cache_key_hash,
+        payload,
+        row.provider,
+        row.model,
+        row.country_qid,
+        row.period_start,
+        row.period_end,
+    )
+    await touch_project(session, project_id)
+    await session.commit()
+
+    return JSONResponse({"result": payload})
