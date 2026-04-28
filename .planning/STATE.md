@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-04-16)
 Phase: 05 (canvas-editing-advanced) — EXECUTING
 Plan: 1 of 3
 Status: Executing Phase 05
-Last activity: 2026-04-28 - Completed quick task 260428-jug: Etapa 8b (Frontend AssignmentEditor consumes PATCH /research/assignments)
+Last activity: 2026-04-28 - Completed quick task 260428-l0l: Etapa 9 (Codex schema + runner + endpoint — 17 new tests, 250→267)
 
 Progress: [█████░░░░░] 50% (3 of 6 phases plan-complete; verification pending)
 
@@ -131,9 +131,10 @@ None yet.
 | 260428-h0p | Etapa 7b: wire build_map_research_prompt + assignments validation + cache dispatch into research_runner (6 tests) | 2026-04-28 | 153fca8 | [260428-h0p-etapa-7b-wire-map-research-runner](./quick/260428-h0p-etapa-7b-wire-map-research-runner/) |
 | 260428-h1t | Etapa 8: PATCH /research/assignments — backend endpoint + condado renames + cache persistence (6 tests) | 2026-04-28 | ae6d341 | [260428-h1t-etapa-8-patch-research-assignments-endpo](./quick/260428-h1t-etapa-8-patch-research-assignments-endpo/) |
 | 260428-jug | Etapa 8b: Frontend AssignmentEditor — Radix dialog with barony Select + condado rename, consumes PATCH /research/assignments (5 tests) | 2026-04-28 | ed0ce92 | [260428-jug-etapa-8b-frontend-assignmenteditor-consu](./quick/260428-jug-etapa-8b-frontend-assignmenteditor-consu/) |
+| 260428-l0l | Etapa 9: Codex schema (12 categorias) + codex_runner SSE + /codex endpoints + CodexCache (alembic 0003) — 17 tests, 250→267 | 2026-04-28 | 87b2f3f | [260428-l0l-etapa-9-codex-schema-runner-endpoint-cod](./quick/260428-l0l-etapa-9-codex-schema-runner-endpoint-cod/) |
 
 ## Session Continuity
 
 Last session: 2026-04-28
-Stopped at: Etapa 8 (PATCH /research/assignments backend) complete — 246 tests passing
-Resume file: C:\Users\veio_\.claude\plans\hazy-hatching-abelson.md (Etapa 8b — AssignmentEditor.tsx frontend; or Etapa 9 — Codex schema + runner + endpoint)
+Stopped at: Etapa 9 (Codex schema + runner + endpoint) complete — 267 backend tests passing
+Resume file: C:\Users\veio_\.claude\plans\hazy-hatching-abelson.md (Etapa 10 — Codex viewer frontend, tabs por categoria, render markdown)
