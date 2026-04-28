@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-04-16)
 Phase: 05 (canvas-editing-advanced) — EXECUTING
 Plan: 1 of 3
 Status: Executing Phase 05
-Last activity: 2026-04-28 - Completed quick task 260428-lyh: Etapa 11 (Pipeline UI completa — Stepper + StepCard + ProviderEffortPicker + usePipelineStore; ProjectDetail refactor; 22 new frontend tests, 200→222)
+Last activity: 2026-04-28 - Completed quick task 260428-mci: Etapa 12 (Wikidata rebaixamento — OSM promoted to primary CTA, Wikidata moved to Avançado disclosure)
 
 Progress: [█████░░░░░] 50% (3 of 6 phases plan-complete; verification pending)
 
@@ -134,6 +134,7 @@ None yet.
 | 260428-l0l | Etapa 9: Codex schema (12 categorias) + codex_runner SSE + /codex endpoints + CodexCache (alembic 0003) — 17 tests, 250→267 | 2026-04-28 | 87b2f3f | [260428-l0l-etapa-9-codex-schema-runner-endpoint-cod](./quick/260428-l0l-etapa-9-codex-schema-runner-endpoint-cod/) |
 | 260428-lka | Etapa 10: Codex viewer frontend — CodexViewer (12 Radix Tabs + react-markdown) + useCodexStream SSE hook + api/codex.ts (9 tests, 191→200) | 2026-04-28 | dd0992d | [260428-lka-etapa-10-codex-viewer-frontend-codexview](./quick/260428-lka-etapa-10-codex-viewer-frontend-codexview/) |
 | 260428-lyh | Etapa 11: Pipeline UI completa — Stepper + StepCard + ProviderEffortPicker + usePipelineStore + ProjectDetail refactor (22 tests, 200→222) | 2026-04-28 | 23078f6 | [260428-lyh-etapa-11-pipeline-ui-completa-stepper-st](./quick/260428-lyh-etapa-11-pipeline-ui-completa-stepper-st/) |
+| 260428-mci | Etapa 12: Wikidata rebaixamento — OSM promoted to primary CTA, Wikidata moved to Avançado disclosure, ingest_wikidata.py marked deprecated | 2026-04-28 | 1b60eee | [260428-mci-etapa-12-wikidata-rebaixamento-change-de](./quick/260428-mci-etapa-12-wikidata-rebaixamento-change-de/) |
 
 ## Session Continuity
 
