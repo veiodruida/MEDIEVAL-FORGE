@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { Box, Button, Card, Callout, Flex, Heading, Tabs, Text, TextField, Tooltip } from '@radix-ui/themes'
+import { Box, Button, Card, Callout, Flex, Heading, Text, TextField, Tooltip } from '@radix-ui/themes'
 import { useQueryClient } from '@tanstack/react-query'
 import { useProject, useUpdateProject, useIngestStream, useGenerate, useExport, useIngestStatus, useTerritoryTemplate, useRenderModern, type Project } from '../api/client'
-import { TerritoryEditor, type TerritoryData } from './TerritoryEditor'
+import { type TerritoryData } from './TerritoryEditor'
 import { CanvasViewer } from '../components/canvas/CanvasViewer'
 import { EditToolbar } from '../components/canvas/EditToolbar'
 import { InspectorSidebar } from '../components/canvas/InspectorSidebar'
@@ -18,6 +18,13 @@ import { SaveStatusIndicator } from '../components/canvas/SaveStatusIndicator'
 import { SettingsPanel } from '../components/canvas/SettingsPanel'
 import { useBeforeUnloadGuard } from '../hooks/useBeforeUnloadGuard'
 import { ErrorBoundary } from 'react-error-boundary'
+import { usePipelineStore } from '../stores/usePipelineStore'
+import { Stepper } from '../components/pipeline/Stepper'
+import { StepCard } from '../components/pipeline/StepCard'
+import { ProviderEffortPicker } from '../components/pipeline/ProviderEffortPicker'
+import { BaronyGranularitySlider } from '../components/ingest/BaronyGranularitySlider'
+import { AssignmentEditor } from '../components/research/AssignmentEditor'
+import { CodexViewer } from '../components/codex/CodexViewer'
 
 const STATUS_LABEL: Record<string, string> = {
   created: 'Criado',
@@ -55,6 +62,20 @@ export function ProjectDetail() {
   const qc = useQueryClient()
   const [modernTs, setModernTs] = useState(0)
   const openResearchDialog = useResearchStore((s) => s.openDialog)
+  const manualResult = useResearchStore((s) => s.manualResult)
+
+  // Pipeline store
+  const {
+    currentStep,
+    steps,
+    setCurrentStep,
+    setStepStatus,
+    setStepProvider,
+    setBaroniesGranularity,
+  } = usePipelineStore()
+
+  // AssignmentEditor dialog state
+  const [assignmentEditorOpen, setAssignmentEditorOpen] = useState(false)
 
   // Detectar template de território baseado no país do projeto
   const iberiaQids = new Set(['Q29', 'Q45'])
@@ -97,9 +118,27 @@ export function ProjectDetail() {
     prevStatus.current = project?.status
   }, [project?.status])
 
+  // Pipeline store sync: OSM ingest done
+  useEffect(() => {
+    if (!ingest.isStreaming && ingestStatus.data?.has_polygons) {
+      setStepStatus('osm', 'done')
+    }
+  }, [ingest.isStreaming, ingestStatus.data?.has_polygons, setStepStatus])
+
+  // Pipeline store sync: Map generated
+  useEffect(() => {
+    if (project?.status === 'generated' || project?.status === 'exported') {
+      setStepStatus('map', 'done')
+    }
+  }, [project?.status, setStepStatus])
+
   if (isLoading) return <Box p="6"><Text>Carregando…</Text></Box>
   if (error) return <Box p="6"><Text color="red">{(error as Error).message}</Text></Box>
   if (!project) return null
+
+  // TypeScript doesn't narrow `project` inside nested function bodies defined
+  // after the guard above. Capture as const so renderStepContent can use it safely.
+  const proj = project
 
   const startEdit = () => {
     setDraft({ name: project.name, period_start: project.period_start, period_end: project.period_end })
@@ -117,6 +156,293 @@ export function ProjectDetail() {
   const isGenerated = project.status === 'generated' || project.status === 'exported'
   const hasError = project.status.startsWith('error')
 
+  // Build statuses object for Stepper
+  const stepperStatuses = {
+    osm: steps.osm.status,
+    baronies: steps.baronies.status,
+    research: steps.research.status,
+    map: steps.map.status,
+    codex: steps.codex.status,
+  }
+
+  // Render active step content inside StepCard
+  function renderStepContent() {
+    switch (currentStep) {
+      case 1:
+        return (
+          <StepCard
+            title="1. Ingerir OSM"
+            description="Descarrega polígonos geográficos reais via OpenStreetMap. Necessário antes de gerar o mapa medieval."
+            footer={
+              <>
+                <Button variant="soft" onClick={() => ingest.start('wikidata')} disabled={ingest.isStreaming}>
+                  {ingest.isStreaming ? 'Ingerindo…' : '1a. Wikidata (só pontos)'}
+                </Button>
+                <Button onClick={() => ingest.start('osm')} disabled={ingest.isStreaming}>
+                  {ingest.isStreaming ? 'Ingerindo…' : '1b. OSM com polígonos (recomendado)'}
+                </Button>
+                <Button
+                  variant="soft"
+                  color="blue"
+                  onClick={() => {
+                    renderModern.mutate(undefined, {
+                      onSuccess: () => setModernTs(Date.now()),
+                    })
+                  }}
+                  disabled={renderModern.isPending || !ingestStatus.data?.has_polygons}
+                  title={
+                    !ingestStatus.data?.has_polygons
+                      ? 'Precisa de polígonos OSM — ingerir via OSM primeiro'
+                      : 'Renderiza o mapa moderno (validação visual dos dados)'
+                  }
+                >
+                  {renderModern.isPending ? 'Renderizando…' : '1c. Mapa moderno (validar dados)'}
+                </Button>
+              </>
+            }
+          >
+            <>
+              {/* Status dos dados guardados */}
+              {ingestStatus.data && (
+                ingestStatus.data.has_data ? (
+                  <Card mb="3" style={{
+                    background: ingestStatus.data.has_polygons ? 'var(--green-1)' : 'var(--amber-1)',
+                    border: `1px solid ${ingestStatus.data.has_polygons ? 'var(--green-6)' : 'var(--amber-6)'}`,
+                  }}>
+                    <Flex align="center" gap="2">
+                      <Text style={{ fontSize: 18 }}>{ingestStatus.data.has_polygons ? '✅' : '⚠️'}</Text>
+                      <Box style={{ flex: 1 }}>
+                        <Text size="2" weight="medium">
+                          {ingestStatus.data.has_polygons
+                            ? `Dados OSM guardados — ${ingestStatus.data.polygon_count} polígonos prontos para gerar`
+                            : `Dados Wikidata guardados — ${ingestStatus.data.point_count} pontos (sem polígonos)`}
+                        </Text>
+                        <Text size="1" color="gray" as="p">
+                          {(ingestStatus.data.size_bytes / 1024).toFixed(0)} KB ·{' '}
+                          {ingestStatus.data.last_modified
+                            ? `Ingerido em ${new Date(ingestStatus.data.last_modified).toLocaleString('pt-BR')}`
+                            : ''}
+                          {!ingestStatus.data.has_polygons && ' — use OSM para gerar mapas visíveis'}
+                        </Text>
+                      </Box>
+                      <Text size="1" color="gray">Não precisa reingerir</Text>
+                    </Flex>
+                  </Card>
+                ) : (
+                  <Callout.Root size="1" mb="3">
+                    <Callout.Text>
+                      <strong>Sem dados geográficos.</strong> Use <strong>"Ingerir via OSM"</strong> para descarregar polígonos reais.
+                      Com a bounding box definida, a ingestão é muito mais rápida (~1-2 min).
+                    </Callout.Text>
+                  </Callout.Root>
+                )
+              )}
+
+              {/* Aviso de polígonos insuficientes */}
+              {ingestStatus.data?.has_data && !ingestStatus.data?.has_polygons && (
+                <Callout.Root size="1" color="amber" mb="2">
+                  <Callout.Text>
+                    <strong>Dados insuficientes para gerar.</strong> Os dados actuais são apenas pontos (Wikidata) — sem polígonos de fronteira.
+                    O mapa ficaria todo azul. Use primeiro <strong>"1b. OSM com polígonos"</strong>.
+                  </Callout.Text>
+                </Callout.Root>
+              )}
+
+              {ingest.error && <Text color="red" size="2" mb="2">Erro: {ingest.error.message}</Text>}
+              {renderModern.error && (
+                <Text color="red" size="2" mb="2">
+                  Erro ao renderizar mapa moderno: {(renderModern.error as Error).message}
+                </Text>
+              )}
+
+              {/* Pré-visualização do mapa moderno (validação geográfica) */}
+              {modernTs > 0 && (
+                <Card mb="3" style={{ background: 'var(--blue-1)', border: '1px solid var(--blue-6)' }}>
+                  <Heading size="2" mb="1" style={{ color: 'var(--blue-11)' }}>
+                    Mapa moderno — validação geográfica
+                  </Heading>
+                  <Text size="1" color="gray" as="p" mb="2">
+                    Cada cor representa uma província/município da ingestão OSM.
+                    Use esta imagem para confirmar que o bounding box e os dados estão corretos
+                    antes de gerar o mapa medieval.
+                  </Text>
+                  <img
+                    src={`/api/projects/${proj.id}/preview/modern_map.png?t=${modernTs}`}
+                    alt="Mapa moderno"
+                    style={{
+                      display: 'block',
+                      width: '100%',
+                      maxWidth: 900,
+                      border: '1px solid var(--blue-7)',
+                      borderRadius: 6,
+                    }}
+                  />
+                </Card>
+              )}
+
+              <Text size="2" weight="medium" as="p" mb="1">Log da ingestão:</Text>
+              <pre id="ingest-log" style={{
+                padding: 8, background: '#f5f5f5', borderRadius: 4,
+                maxHeight: 200, overflow: 'auto', fontSize: 11, whiteSpace: 'pre-wrap', minHeight: 40,
+              }}>
+                {ingest.lines.length > 0
+                  ? ingest.lines.join('')
+                  : <span style={{ color: '#999' }}>Nenhuma ingestão iniciada.</span>}
+              </pre>
+            </>
+          </StepCard>
+        )
+
+      case 2:
+        return (
+          <StepCard
+            title="2. Gerar Baronies"
+            description="Define a granularidade das baronies — sub-unidades geográficas usadas na pesquisa histórica."
+            footer={
+              <Button
+                onClick={() => {
+                  // TODO: wire Gerar Baronies button to /baronies endpoint when available
+                  // eslint-disable-next-line no-console
+                  console.warn('Gerar Baronies: backend wiring not in scope for etapa-11')
+                  setStepStatus('baronies', 'done')
+                  setCurrentStep(3)
+                }}
+              >
+                Gerar Baronies
+              </Button>
+            }
+          >
+            <BaronyGranularitySlider
+              value={steps.baronies.granularity as (50 | 250 | 1000 | 'all')}
+              onChange={(count) => setBaroniesGranularity(count)}
+            />
+          </StepCard>
+        )
+
+      case 3:
+        return (
+          <StepCard
+            title="3. Pesquisa Histórica"
+            description="Usa LLM para pesquisar dados históricos do período selecionado e atribuir baronies a condados medievais."
+            footer={
+              <Button
+                color="blue"
+                onClick={() => {
+                  setStepStatus('research', 'active')
+                  openResearchDialog({
+                    country: proj.country_qid,
+                    periodStart: proj.period_start,
+                    periodEnd: proj.period_end,
+                  })
+                }}
+                title="Pesquisa histórica com LLM — necessária antes de gerar o mapa"
+              >
+                Pesquisa histórica
+              </Button>
+            }
+          >
+            <>
+              <ProviderEffortPicker
+                providerId={steps.research.providerId ?? 'claude'}
+                effort={steps.research.effort ?? 'medium'}
+                onProviderChange={(id) => setStepProvider('research', id, steps.research.effort ?? 'medium')}
+                onEffortChange={(e) => setStepProvider('research', steps.research.providerId ?? 'claude', e)}
+              />
+              {manualResult && (
+                <Box mt="3">
+                  <Button
+                    variant="soft"
+                    onClick={() => setAssignmentEditorOpen(true)}
+                  >
+                    Editar assignments
+                  </Button>
+                  <AssignmentEditor
+                    open={assignmentEditorOpen}
+                    onOpenChange={setAssignmentEditorOpen}
+                    projectId={proj.id}
+                    researchResult={manualResult as unknown as Parameters<typeof AssignmentEditor>[0]['researchResult']}
+                  />
+                </Box>
+              )}
+            </>
+          </StepCard>
+        )
+
+      case 4:
+        return (
+          <StepCard
+            title="4. Gerar Mapa"
+            description="Gera o mapa medieval com Voronoi baseado nas baronies e dados históricos pesquisados."
+            footer={
+              <Button
+                onClick={() => generate.mutate(territory as unknown as Record<string, unknown>)}
+                disabled={
+                  proj.status === 'generating' ||
+                  generate.isPending ||
+                  (ingestStatus.data?.has_data === true && !ingestStatus.data?.has_polygons)
+                }
+                color={ingestStatus.data?.has_data && !ingestStatus.data?.has_polygons ? 'gray' : undefined}
+                title={
+                  ingestStatus.data?.has_data && !ingestStatus.data?.has_polygons
+                    ? 'Ingerido apenas pontos (Wikidata) — use OSM primeiro'
+                    : 'Gerar mapa com a estrutura de territórios definida'
+                }
+              >
+                {proj.status === 'generating' ? 'Gerando…' : 'Gerar mapa'}
+              </Button>
+            }
+          >
+            <>
+              {generate.error && (() => {
+                const msg = (generate.error as Error).message
+                const isResearchMissing = msg.includes('No cached research found')
+                if (isResearchMissing) {
+                  return (
+                    <Callout.Root color="amber" size="2" mb="2">
+                      <Callout.Text>
+                        <strong>Pesquisa histórica em falta.</strong>{' '}
+                        Execute <strong>"Pesquisa histórica"</strong> (etapa 3) antes de gerar o mapa.
+                      </Callout.Text>
+                    </Callout.Root>
+                  )
+                }
+                return <Text color="red" size="2" mb="2">Erro: {msg}</Text>
+              })()}
+              {proj.status === 'error_generating' && Boolean(proj.generator_config?.last_error) && (
+                <Text color="red" size="2" mb="2">Último erro: {String(proj.generator_config?.last_error ?? '')}</Text>
+              )}
+              {isGenerated && (
+                <Text size="2" color="green">Mapa gerado. Veja o preview abaixo.</Text>
+              )}
+            </>
+          </StepCard>
+        )
+
+      case 5:
+        return (
+          <StepCard
+            title="5. Codex Histórico"
+            description="Gera o codex medieval com categorias históricas usando LLM. O codex documenta o período histórico do mapa."
+          >
+            <>
+              <ProviderEffortPicker
+                providerId={steps.codex.providerId ?? 'claude'}
+                effort={steps.codex.effort ?? 'medium'}
+                onProviderChange={(id) => setStepProvider('codex', id, steps.codex.effort ?? 'medium')}
+                onEffortChange={(e) => setStepProvider('codex', steps.codex.providerId ?? 'claude', e)}
+              />
+              <Box mt="3">
+                <CodexViewer projectId={proj.id} />
+              </Box>
+            </>
+          </StepCard>
+        )
+
+      default:
+        return null
+    }
+  }
+
   return (
     <Box p="6">
       <Flex justify="between" align="center" mb="4">
@@ -128,7 +454,7 @@ export function ProjectDetail() {
         </Flex>
       </Flex>
 
-      {/* Barra de progresso */}
+      {/* Barra de progresso (status do projeto) */}
       <Card mb="4">
         <Flex gap="4" align="center" wrap="wrap">
           {[
@@ -267,206 +593,15 @@ export function ProjectDetail() {
         </Card>
       )}
 
-      {/* Pipeline + Editor */}
-      <Card>
-        <Tabs.Root defaultValue="pipeline">
-          <Tabs.List>
-            <Tabs.Trigger value="pipeline">Pipeline</Tabs.Trigger>
-            <Tabs.Trigger value="territory">Estrutura política</Tabs.Trigger>
-          </Tabs.List>
+      {/* Pipeline — Stepper + StepCard (replaces legacy Pipeline/Estrutura política Tabs block) */}
+      <Stepper
+        currentStep={currentStep}
+        statuses={stepperStatuses}
+        onStepClick={setCurrentStep}
+      />
+      {renderStepContent()}
 
-          {/* ── Aba Pipeline ── */}
-          <Tabs.Content value="pipeline">
-            <Box pt="3">
-              <Text size="2" color="gray" as="p" mb="3">
-                Execute em ordem: <strong>1. Ingerir OSM</strong> → <strong>2. Pesquisa histórica</strong> → <strong>3. Gerar mapa</strong> → <strong>4. Exportar ZIP</strong>.
-              </Text>
-
-              {/* Status dos dados guardados */}
-              {ingestStatus.data && (
-                ingestStatus.data.has_data ? (
-                  <Card mb="3" style={{
-                    background: ingestStatus.data.has_polygons ? 'var(--green-1)' : 'var(--amber-1)',
-                    border: `1px solid ${ingestStatus.data.has_polygons ? 'var(--green-6)' : 'var(--amber-6)'}`,
-                  }}>
-                    <Flex align="center" gap="2">
-                      <Text style={{ fontSize: 18 }}>{ingestStatus.data.has_polygons ? '✅' : '⚠️'}</Text>
-                      <Box style={{ flex: 1 }}>
-                        <Text size="2" weight="medium">
-                          {ingestStatus.data.has_polygons
-                            ? `Dados OSM guardados — ${ingestStatus.data.polygon_count} polígonos prontos para gerar`
-                            : `Dados Wikidata guardados — ${ingestStatus.data.point_count} pontos (sem polígonos)`}
-                        </Text>
-                        <Text size="1" color="gray" as="p">
-                          {(ingestStatus.data.size_bytes / 1024).toFixed(0)} KB ·{' '}
-                          {ingestStatus.data.last_modified
-                            ? `Ingerido em ${new Date(ingestStatus.data.last_modified).toLocaleString('pt-BR')}`
-                            : ''}
-                          {!ingestStatus.data.has_polygons && ' — use OSM para gerar mapas visíveis'}
-                        </Text>
-                      </Box>
-                      <Text size="1" color="gray">Não precisa reingerir</Text>
-                    </Flex>
-                  </Card>
-                ) : (
-                  <Callout.Root size="1" mb="3">
-                    <Callout.Text>
-                      <strong>Sem dados geográficos.</strong> Use <strong>"Ingerir via OSM"</strong> para descarregar polígonos reais.
-                      Com a bounding box definida, a ingestão é muito mais rápida (~1-2 min).
-                    </Callout.Text>
-                  </Callout.Root>
-                )
-              )}
-
-              {/* Aviso de polígonos insuficientes ANTES do botão Gerar */}
-              {ingestStatus.data?.has_data && !ingestStatus.data?.has_polygons && (
-                <Callout.Root size="1" color="amber" mb="2">
-                  <Callout.Text>
-                    <strong>Dados insuficientes para gerar.</strong> Os dados actuais são apenas pontos (Wikidata) — sem polígonos de fronteira.
-                    O mapa ficaria todo azul. Use primeiro <strong>"1b. OSM com polígonos"</strong>.
-                  </Callout.Text>
-                </Callout.Root>
-              )}
-
-              <Flex gap="2" mb="3" wrap="wrap">
-                <Button variant="soft" onClick={() => ingest.start('wikidata')} disabled={ingest.isStreaming}>
-                  {ingest.isStreaming ? 'Ingerindo…' : '1a. Wikidata (só pontos)'}
-                </Button>
-                <Button onClick={() => ingest.start('osm')} disabled={ingest.isStreaming}>
-                  {ingest.isStreaming ? 'Ingerindo…' : '1b. OSM com polígonos (recomendado)'}
-                </Button>
-                <Button
-                  variant="soft"
-                  color="blue"
-                  onClick={() => {
-                    renderModern.mutate(undefined, {
-                      onSuccess: () => setModernTs(Date.now()),
-                    })
-                  }}
-                  disabled={
-                    renderModern.isPending ||
-                    !ingestStatus.data?.has_polygons
-                  }
-                  title={
-                    !ingestStatus.data?.has_polygons
-                      ? 'Precisa de polígonos OSM — ingerir via OSM primeiro'
-                      : 'Renderiza o mapa moderno (validação visual dos dados)'
-                  }
-                >
-                  {renderModern.isPending ? 'Renderizando…' : '1c. Mapa moderno (validar dados)'}
-                </Button>
-                <Button
-                  color="blue"
-                  onClick={() => project && openResearchDialog({
-                    country: project.country_qid,
-                    periodStart: project.period_start,
-                    periodEnd: project.period_end,
-                  })}
-                  title="Pesquisa histórica com LLM — necessária antes de gerar o mapa"
-                >
-                  2. Pesquisa histórica
-                </Button>
-                <Button
-                  onClick={() => generate.mutate(territory as unknown as Record<string, unknown>)}
-                  disabled={
-                    project.status === 'generating' ||
-                    generate.isPending ||
-                    (ingestStatus.data?.has_data === true && !ingestStatus.data?.has_polygons)
-                  }
-                  color={ingestStatus.data?.has_data && !ingestStatus.data?.has_polygons ? 'gray' : undefined}
-                  title={
-                    ingestStatus.data?.has_data && !ingestStatus.data?.has_polygons
-                      ? 'Ingerido apenas pontos (Wikidata) — use OSM primeiro'
-                      : 'Gerar mapa com a estrutura de territórios definida'
-                  }
-                >
-                  {project.status === 'generating' ? 'Gerando…' : '3. Gerar mapa'}
-                </Button>
-                {!isGenerated && (
-                  <Button variant="soft" color="green" disabled>4. Exportar ZIP</Button>
-                )}
-              </Flex>
-
-              {ingest.error && <Text color="red" size="2" mb="2">Erro: {ingest.error.message}</Text>}
-              {generate.error && (() => {
-                const msg = (generate.error as Error).message
-                const isResearchMissing = msg.includes('No cached research found')
-                if (isResearchMissing) {
-                  return (
-                    <Callout.Root color="amber" size="2" mb="2">
-                      <Callout.Text>
-                        <strong>Pesquisa histórica em falta.</strong>{' '}
-                        Execute <strong>"2. Pesquisa histórica"</strong> antes de gerar o mapa.
-                      </Callout.Text>
-                    </Callout.Root>
-                  )
-                }
-                return <Text color="red" size="2" mb="2">Erro: {msg}</Text>
-              })()}
-              {renderModern.error && (
-                <Text color="red" size="2" mb="2">
-                  Erro ao renderizar mapa moderno: {(renderModern.error as Error).message}
-                </Text>
-              )}
-              {project.status === 'error_generating' && Boolean(project.generator_config?.last_error) && (
-                <Text color="red" size="2" mb="2">Último erro: {String(project.generator_config?.last_error ?? '')}</Text>
-              )}
-
-              {/* Pré-visualização do mapa moderno (validação geográfica) */}
-              {modernTs > 0 && (
-                <Card mb="3" style={{ background: 'var(--blue-1)', border: '1px solid var(--blue-6)' }}>
-                  <Heading size="2" mb="1" style={{ color: 'var(--blue-11)' }}>
-                    Mapa moderno — validação geográfica
-                  </Heading>
-                  <Text size="1" color="gray" as="p" mb="2">
-                    Cada cor representa uma província/município da ingestão OSM.
-                    Use esta imagem para confirmar que o bounding box e os dados estão corretos
-                    antes de gerar o mapa medieval.
-                  </Text>
-                  <img
-                    src={`/api/projects/${project.id}/preview/modern_map.png?t=${modernTs}`}
-                    alt="Mapa moderno"
-                    style={{
-                      display: 'block',
-                      width: '100%',
-                      maxWidth: 900,
-                      border: '1px solid var(--blue-7)',
-                      borderRadius: 6,
-                    }}
-                  />
-                </Card>
-              )}
-
-              <Text size="2" weight="medium" as="p" mb="1">Log da ingestão:</Text>
-              <pre id="ingest-log" style={{
-                padding: 8, background: '#f5f5f5', borderRadius: 4,
-                maxHeight: 200, overflow: 'auto', fontSize: 11, whiteSpace: 'pre-wrap', minHeight: 40,
-              }}>
-                {ingest.lines.length > 0
-                  ? ingest.lines.join('')
-                  : <span style={{ color: '#999' }}>Nenhuma ingestão iniciada.</span>}
-              </pre>
-            </Box>
-          </Tabs.Content>
-
-          {/* ── Aba Estrutura política ── */}
-          <Tabs.Content value="territory">
-            <Box pt="3">
-              <Callout.Root size="1" mb="3">
-                <Callout.Text>
-                  <strong>O que é isto?</strong> Define a hierarquia política do <em>jogo</em> — não vem da ingestão.
-                  A ingestão baixa fronteiras geográficas reais; aqui define-se como o Game Designer divide
-                  o território em reinos, ducados e territórios jogáveis.
-                  O gerador usa as coordenadas de cada território para atribuir municípios via Voronoi.
-                </Callout.Text>
-              </Callout.Root>
-              <TerritoryEditor value={territory} onChange={setTerritory} />
-            </Box>
-          </Tabs.Content>
-        </Tabs.Root>
-      </Card>
-
-      {/* ResearchDialog — mounted once outside Tabs; reads open state from useResearchStore */}
+      {/* ResearchDialog — mounted once outside pipeline; reads open state from useResearchStore */}
       <ResearchDialog projectId={project.id} />
     </Box>
   )
