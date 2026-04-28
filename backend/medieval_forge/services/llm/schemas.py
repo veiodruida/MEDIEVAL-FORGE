@@ -5,13 +5,17 @@ Shape: kingdoms / duchies / condados / baronies.
 
 The LLM GENERATES condados freely (no pre-supplied OSM list). Each condado
 carries its own id, name, and centroid coordinates, plus kingdom/duchy refs.
+
+Etapa 3 (hazy-hatching-abelson.md): MapResearchResult added — LLM returns
+condados WITHOUT coords plus barony_assignments dict; legacy ResearchResult
+kept for backwards compatibility until Etapa 4 migrates callers.
 """
 from __future__ import annotations
 
 import json
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ConfigDict, ValidationError, model_validator
 
 
 # Top-level keys that ResearchResult accepts. Used to sanitize LLM output that
@@ -77,3 +81,47 @@ class ResearchResult(BaseModel):
     duchies: dict[str, Duchy]           # id -> Duchy(kingdom_id, name)
     condados: list[Condado]             # historically-generated counties with coords
     baronies: dict[str, list[Barony]]   # condado_id -> baronies
+
+
+class MapCondado(BaseModel):
+    """Condado as returned by the new map_research prompt — NO coords.
+
+    Etapa 3: centroids are no longer LLM-invented; they will be computed later
+    by territory_builder from member baronies (CK3-style aggregation).
+    """
+    model_config = ConfigDict(extra="forbid")
+    id: str          # LLM-invented slug, e.g. "C_BRAGA"
+    name: str        # Historical display name
+    kingdom_id: str  # References a key in MapResearchResult.kingdoms
+    duchy_id: str    # References a key in MapResearchResult.duchies
+
+
+class MapResearchResult(BaseModel):
+    """New CK3-style schema (Etapa 3) — condados without coords + barony_assignments.
+
+    The LLM no longer invents barony lists per condado nor centroids; instead it
+    assigns previously-generated baronies to condados via a flat dict mapping
+    barony_id -> condado_id. A cross-reference validator enforces that every
+    assignment points to a condado actually present in `condados[]`.
+    """
+    model_config = ConfigDict(extra="forbid")
+    kingdoms: dict[str, str]                # id -> display_name
+    duchies: dict[str, Duchy]               # id -> Duchy(kingdom_id, name)
+    condados: list[MapCondado]              # NO coords
+    barony_assignments: dict[str, str]      # barony_id -> condado_id
+
+    @model_validator(mode="after")
+    def _validate_barony_assignments_reference_existing_condados(self) -> "MapResearchResult":
+        condado_ids = {c.id for c in self.condados}
+        unknown = {
+            bid: cid
+            for bid, cid in self.barony_assignments.items()
+            if cid not in condado_ids
+        }
+        if unknown:
+            raise ValueError(
+                f"barony_assignments reference unknown condado_id(s): "
+                f"{sorted(set(unknown.values()))}; "
+                f"known condado ids: {sorted(condado_ids)}"
+            )
+        return self
