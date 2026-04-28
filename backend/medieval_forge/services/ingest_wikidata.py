@@ -1,5 +1,13 @@
 """INGEST-01: Wikidata SPARQL paginated municipality fetcher.
 
+DEPRECATED (Etapa 12, 2026-04-28): Wikidata is now a SECONDARY ingestion path,
+retained only as a points-only fallback when OSM fails for a given bounding box.
+The recommended flow is OSM (see ingest_osm.py) which provides real polygons.
+The frontend hides this provider behind an "Avançado" (Advanced) disclosure in
+Step 1 of ProjectDetail. Do NOT promote this back to a primary CTA without
+revisiting the points-only / no-polygons UX limitation that produces all-blue
+maps downstream.
+
 T-SSRF mitigation: validate_qid enforces ^Q\\d+$ before composing the query;
 endpoint URL is a hardcoded constant — never assembled from user input.
 """
