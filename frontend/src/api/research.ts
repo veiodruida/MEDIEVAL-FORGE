@@ -7,13 +7,33 @@ export type AuthMethod =
   | { type: "none" };
 
 export type Provider = {
-  provider_id: "claude" | "openai" | "gemini" | "ollama" | "manual";
+  provider_id: "claude" | "openai" | "gemini" | "ollama" | "llamacpp" | "manual";
   display_name: string;
   auth_methods: AuthMethod[];
   configured: boolean;
   healthy: boolean;
   default_model: string;
 };
+
+/**
+ * Probe a llama.cpp server directly from the browser by GET-ing {base_url}/v1/models.
+ * Returns {healthy, message}. Mirrors LlamaCppProvider.health_check on the backend
+ * (Etapa 5 quick-260428-fjc) — no new backend endpoint needed since the local
+ * llama-server is reachable from the browser.
+ */
+export async function probeLlamacppServer(
+  baseUrl: string,
+): Promise<{ healthy: boolean; message: string }> {
+  const trimmed = baseUrl.replace(/\/+$/, "");
+  try {
+    const res = await fetch(`${trimmed}/v1/models`, { method: "GET" });
+    if (res.ok) return { healthy: true, message: `Conectado a ${trimmed}` };
+    return { healthy: false, message: `HTTP ${res.status} em ${trimmed}` };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { healthy: false, message: `Inacessível: ${msg}` };
+  }
+}
 
 export type ResearchResult = {
   kingdoms: Record<string, string>;

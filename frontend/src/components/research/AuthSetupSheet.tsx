@@ -17,6 +17,7 @@ import {
   useOAuthStartMutation,
   useOllamaModelsQuery,
   useSetOllamaModelMutation,
+  probeLlamacppServer,
 } from "../../api/research";
 import { useResearchStore } from "../../stores/useResearchStore";
 
@@ -85,6 +86,25 @@ export function AuthSetupSheet() {
 
   const isGemini = provider?.provider_id === "gemini";
   const isOllama = provider?.provider_id === "ollama";
+  const isLlamacpp = provider?.provider_id === "llamacpp";
+
+  // Llama.cpp local panel state (Etapa 5 — quick-260428-fjc)
+  const [llamacppBaseUrl, setLlamacppBaseUrl] = useState("http://localhost:8080");
+  const [llamacppHealth, setLlamacppHealth] = useState<
+    { healthy: boolean; message: string } | null
+  >(null);
+  const [llamacppTesting, setLlamacppTesting] = useState(false);
+
+  const handleTestLlamacpp = async () => {
+    setLlamacppTesting(true);
+    try {
+      // Reuses probeLlamacppServer from api/research.ts — no new backend endpoint.
+      const result = await probeLlamacppServer(llamacppBaseUrl);
+      setLlamacppHealth(result);
+    } finally {
+      setLlamacppTesting(false);
+    }
+  };
 
   const ollamaModels = useOllamaModelsQuery(isOllama && isOpen);
   const setOllamaModel = useSetOllamaModelMutation();
@@ -133,7 +153,7 @@ export function AuthSetupSheet() {
             )}
 
             {/* Persistent status badge — shows whether the provider has a credential saved */}
-            {!isOllama && !isClaudeWithCli && provider && (
+            {!isOllama && !isLlamacpp && !isClaudeWithCli && provider && (
               <Badge color={provider.configured ? "green" : "amber"} size="2">
                 {provider.configured
                   ? "✓ Credencial salva nesta sessão"
@@ -218,8 +238,43 @@ export function AuthSetupSheet() {
               </Flex>
             )}
 
-            {/* API key input — hidden for Ollama (local, no auth) */}
-            {!isOllama && (
+            {/* Llama.cpp local panel — base_url + Testar conexão + status badge */}
+            {isLlamacpp && (
+              <Flex direction="column" gap="2">
+                <Heading size="3">Servidor Llama.cpp local</Heading>
+                <Text size="1" color="gray">
+                  Llama.cpp roda localmente e não precisa de chave de API. Informa a URL do servidor (default: http://localhost:8080) e testa a conexão.
+                </Text>
+                <TextField.Root
+                  placeholder="http://localhost:8080"
+                  value={llamacppBaseUrl}
+                  onChange={(e) => {
+                    setLlamacppBaseUrl(e.target.value);
+                    setLlamacppHealth(null);
+                  }}
+                />
+                <Button
+                  onClick={handleTestLlamacpp}
+                  disabled={!llamacppBaseUrl.trim() || llamacppTesting}
+                  color="blue"
+                >
+                  {llamacppTesting ? "Testando..." : "Testar conexão"}
+                </Button>
+                {llamacppHealth && (
+                  <Badge color={llamacppHealth.healthy ? "green" : "red"} size="2">
+                    {llamacppHealth.healthy
+                      ? `✓ ${llamacppHealth.message}`
+                      : `✗ ${llamacppHealth.message}`}
+                  </Badge>
+                )}
+                <Text size="1" color="gray">
+                  O modelo é definido pelo próprio servidor (parâmetro de boot do llama-server). Não há seleção de modelo aqui.
+                </Text>
+              </Flex>
+            )}
+
+            {/* API key input — hidden for Ollama and Llama.cpp (local, no auth) */}
+            {!isOllama && !isLlamacpp && (
               <Flex direction="column" gap="2">
                 <Heading size="3">Chave de API</Heading>
                 <TextField.Root
