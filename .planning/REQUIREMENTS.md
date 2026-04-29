@@ -59,6 +59,24 @@
 - [ ] **VALIDATE-06**: Validation results are shown in the UI with severity (error/warning) and territory highlight
 - [ ] **VALIDATE-07**: Export is blocked when errors exist; warnings can be overridden by user
 
+### GEO — Geographic Terrain Ingestion (Phase 2.1)
+- [ ] **GEO-01**: System fetches river and stream geometries via OSM Overpass (`waterway=river`, `waterway=stream`) for the project bbox and stores to `raw/rivers.geojson`
+- [ ] **GEO-02**: System fetches mountain peaks and ridges via OSM Overpass (`natural=peak`, `natural=ridge`, `natural=cliff`) and stores to `raw/topography.geojson`
+- [ ] **GEO-03**: System fetches coastline via OSM Overpass (`natural=coastline`) at ~10m precision for land/sea boundary, stores to `raw/coastline.geojson`
+- [ ] **GEO-04**: System fetches sub-municipal boundaries (`admin_level=8` parishes/freguesias) via Overpass where available, stores to `raw/parishes.geojson`
+- [ ] **GEO-05**: System extracts HydroSHEDS river basin polygons (from vendored shapefiles) for the project bbox and stores filtered result to `raw/basins.geojson`
+- [ ] **GEO-06**: System downloads DEM elevation raster tiles (Copernicus DEM 90m) for the project bbox with local tile cache (`data/dem_cache/`), mosaics and stores to `raw/dem.tif`
+- [ ] **GEO-07**: System derives ridge lines from DEM via slope+curvature analysis (thresholded laplacian + skeletonization) and stores to `raw/ridges.geojson`
+- [ ] **GEO-08**: User can trigger each extended ingestion step (rivers, terrain, HydroSHEDS, DEM) from the UI pipeline panel; each step shows real-time progress feedback
+
+### TERR — Geometry-First Territory Construction (Phase 2.2)
+- [ ] **TERR-01**: System clusters baronies into condados using hierarchical clustering constrained by rivers, ridges, and HydroSHEDS basins (no cluster crosses a principal river or watershed divide); target ~8–12 baronies per condado; output in `raw/condados.geojson`
+- [ ] **TERR-02**: System aggregates condados into duchies and kingdoms using the same constrained hierarchical approach; outputs `raw/duchies.geojson` and `raw/kingdoms.geojson`
+- [ ] **TERR-03**: Barony polygon construction is refined so that no barony polygon spans a principal river (Strahler ≥ 4 or `waterway=river` without `intermittent=yes`) or a classified ridge line
+- [ ] **TERR-04**: Map generation pipeline builds `territory_data` directly from geometric GeoJSON files (`condados.geojson`, `duchies.geojson`, `kingdoms.geojson`) without requiring LLM research; placeholder names (e.g. `"Condado_001"`) are used when no research has run
+- [ ] **TERR-05**: LLM research (Phase 3) functions as a "political paint" operation — assigns historical names, kingdom ownership, and political relationships to already-geometrically-defined territories; research never creates, removes, or repositions territory polygons
+- [ ] **TERR-06**: User can trigger territory construction from the UI pipeline panel; the system reports barony/condado/duchy/kingdom counts after completion
+
 ### EXPORT — Unity Export
 - [ ] **EXPORT-01**: User can export a Unity-ready ZIP containing all 12 standardized files
 - [ ] **EXPORT-02**: Export ZIP includes: lookup_barony.png, lookup_condado.png, lookup_barony_colors.json, lookup_condado_colors.json, terrain_lookup.png, terrain_types.json, territory_metadata.json, mountains_mask.png, rivers_overlay.png, visual_barony.png, visual_condado.png, mountain_river_data.json
@@ -80,7 +98,6 @@
 - WebSocket live preview (real-time generation progress) — polling is sufficient for v1
 - Multi-user / cloud sync — single-user local tool by design for v1
 - GPU acceleration for canvas — Konva handles up to 1000 territories without it
-- SRTM/elevation auto-download — user uploads manually in v1
 - History branching (named snapshots) — linear 50-step undo sufficient for v1
 
 ---

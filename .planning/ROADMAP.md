@@ -8,7 +8,9 @@ Six phases take Medieval Forge from zero to a fully validated, Unity-ready map p
 
 - [ ] **Phase 1: Data Pipeline + Backend Scaffold** — Working CLI, project CRUD, Wikidata/OSM ingestion, headless map generation, SQLite persistence, basic Unity ZIP export
 - [ ] **Phase 2: Read-Only Canvas Viewer** — Interactive Konva canvas with pan/zoom, territory polygons, layer toggles, click-to-inspect, fit-to-view
-- [ ] **Phase 3: LLM Research Integration** — Claude API + Ollama adapter, SSE streaming, schema validation + retry, per-project cache
+- [ ] **Phase 2.1: Extended Terrain Ingestion** — OSM rivers/peaks/coast via Overpass, HydroSHEDS basin polygons (vendored), Copernicus DEM 90m download + ridge derivation
+- [ ] **Phase 2.2: Geometry-First Territories** — Constrained hierarchical clustering produces condados/duchies/kingdoms from geometry; generator decoupled from LLM; LLM research becomes political-paint-only
+- [ ] **Phase 3: LLM Research Integration** — Claude API + Ollama adapter, SSE streaming, schema validation + retry, per-project cache (political paint only — geometry fixed by Phase 2.2)
 - [ ] **Phase 4: Canvas Editing — Basic** — Capital drag + Voronoi recalc <500ms, territory merge, undo/redo 50-step with partialize+diff
 - [ ] **Phase 5: Canvas Editing — Advanced** — Territory split by cut line, border vertex drag, terrain paint brush with land mask
 - [ ] **Phase 6: Validation Gate + Export Polish** — Pre-export validation UI, blocked export on errors, full 12-file Unity ZIP with lookup PNGs
@@ -68,9 +70,50 @@ Six phases take Medieval Forge from zero to a fully validated, Unity-ready map p
 
 ---
 
+### Phase 2.1: Extended Terrain Ingestion
+**Goal**: The system can fetch all natural-boundary data needed for geometry-first territory construction — rivers, peaks, coastline, parishes, HydroSHEDS basin polygons, and DEM elevation raster — for any project bbox, storing each dataset as a GeoJSON or raster file in `raw/`. The Game Designer triggers each step from the UI pipeline panel and sees real-time progress.
+**Depends on**: Phase 1
+**Requirements**: GEO-01, GEO-02, GEO-03, GEO-04, GEO-05, GEO-06, GEO-07, GEO-08
+**UI hint**: yes
+
+### Success Criteria
+1. After triggering "Ingestão alargada" for a Spain project, `raw/rivers.geojson`, `raw/topography.geojson`, `raw/coastline.geojson`, and `raw/parishes.geojson` are written with non-empty feature collections.
+2. `raw/basins.geojson` is written containing HydroSHEDS level-6 basin polygons clipped to the project bbox (Iberia: at least Tejo, Douro, Guadalquivir basins visible).
+3. `raw/dem.tif` is downloaded (Copernicus DEM 90m tiles) and mosaiced for the project bbox; `raw/ridges.geojson` is derived from it with at least one ridge polygon per major mountain range (Pyrenees, Sierra Nevada for Iberia).
+4. Each ingestion step (rivers, terrain, HydroSHEDS, DEM+ridges) shows a live progress log in the UI pipeline panel; the step can be re-triggered independently without re-running the others.
+5. All new `raw/*.geojson` files are valid FeatureCollections passable to `shapely.from_geojson()` without errors.
+
+### Plans
+- [ ] TBD — to be planned via `/gsd-plan-phase 2.1`
+
+---
+
+### Phase 2.2: Geometry-First Territories
+**Goal**: Territory construction is driven entirely by geography — no LLM required. A new `territories_builder.py` clusters baronies into condados (~8–12 per condado), condados into duchies, and duchies into kingdoms using constrained hierarchical clustering that respects rivers, ridges, and HydroSHEDS basin divides. The generation pipeline reads these GeoJSON files directly and builds maps with placeholder names when no research exists. LLM research (Phase 3) is scoped to political-paint-only: it assigns names and ownership to geometrically-fixed territories, never creating or moving them.
+**Depends on**: Phase 2.1
+**Requirements**: TERR-01, TERR-02, TERR-03, TERR-04, TERR-05, TERR-06
+**UI hint**: yes
+
+**Critical constraints:**
+- `AgglomerativeClustering` linkage must use adjacency matrix derived from `shapely.touches` + hard-infinite-distance for cross-river/cross-ridge pairs — not just centroid distance
+- `territories_builder.build_all()` must be idempotent: re-running produces the same GeoJSON files without changing IDs (stable IDs required so LLM research patches don't become stale)
+- Decoupling generator from LLM must NOT break existing projects that already have `territory_data` — migrate gracefully (read from GeoJSON if exists, fall back to `territory_data` in config)
+
+### Success Criteria
+1. Running `territories_builder.build_all('<iberia_project_id>')` produces `raw/condados.geojson` with 80–100 features, `raw/duchies.geojson` with 15–25 features, `raw/kingdoms.geojson` with 4–8 features — purely from geometry, with no LLM call.
+2. Inspection of condado polygons confirms that none cross a principal river (any polygon in `raw/condados.geojson` does not intersect `raw/rivers.geojson` features classified `waterway=river`).
+3. Map generation succeeds and renders the canvas with placeholder names (`"Condado_001"` etc.) when no LLM research has been run; `KeyError: 0` and similar hierarchy-mismatch errors do not occur.
+4. After LLM research runs (Phase 3), the research response assigns names/owners to existing territory IDs — the condado polygon coordinates are unchanged by research; only `name` and `kingdom_owner` properties are updated.
+5. Barony polygons in `raw/baronies.geojson` do not span principal rivers; visual inspection on the canvas shows river lines align with barony borders.
+
+### Plans
+- [ ] TBD — to be planned via `/gsd-plan-phase 2.2`
+
+---
+
 ### Phase 3: LLM Research Integration
 **Goal**: User can trigger historical research from inside a project and receive a structured kingdoms/duchies/counties/baronies JSON assigned to territories, using one of several LLM providers (Claude, OpenAI, Gemini, Ollama) via a plugin-style architecture that supports browser OAuth where available, local CLI piggyback for Claude, and API-key paste as fallback — with progress feedback, caching, and automatic retry on invalid responses.
-**Depends on**: Phase 1
+**Depends on**: Phase 1, Phase 2.2
 **Requirements**: RESEARCH-01, RESEARCH-02, RESEARCH-03, RESEARCH-04, RESEARCH-05, RESEARCH-06, RESEARCH-07, RESEARCH-08, RESEARCH-09
 **UI hint**: yes
 
@@ -180,6 +223,8 @@ Six phases take Medieval Forge from zero to a fully validated, Unity-ready map p
 |-------|----------------|--------|-----------|
 | 1. Data Pipeline + Backend Scaffold | 0/5 | Not started | - |
 | 2. Read-Only Canvas Viewer | 4/5 | Gap closure planning (02-05) | - |
+| 2.1 Extended Terrain Ingestion | 0/? | Not planned | - |
+| 2.2 Geometry-First Territories | 0/? | Not planned | - |
 | 3. LLM Research Integration | 0/4 | Not started | - |
 | 4. Canvas Editing — Basic | 10/12 | Gap closure planning (04-11, 04-12) | - |
 | 5. Canvas Editing — Advanced | 0/3 | Plans drafted | - |
@@ -189,8 +234,8 @@ Six phases take Medieval Forge from zero to a fully validated, Unity-ready map p
 
 ## Requirement Coverage
 
-**Total v1 requirements: 48**
-**Mapped: 48/48**
+**Total v1 requirements: 62**
+**Mapped: 62/62**
 
 | REQ-ID | Phase |
 |--------|-------|
@@ -215,6 +260,20 @@ Six phases take Medieval Forge from zero to a fully validated, Unity-ready map p
 | EXPORT-01 | Phase 1 |
 | EXPORT-02 | Phase 1 |
 | CANVAS-01 | Phase 2 |
+| GEO-01 | Phase 2.1 |
+| GEO-02 | Phase 2.1 |
+| GEO-03 | Phase 2.1 |
+| GEO-04 | Phase 2.1 |
+| GEO-05 | Phase 2.1 |
+| GEO-06 | Phase 2.1 |
+| GEO-07 | Phase 2.1 |
+| GEO-08 | Phase 2.1 |
+| TERR-01 | Phase 2.2 |
+| TERR-02 | Phase 2.2 |
+| TERR-03 | Phase 2.2 |
+| TERR-04 | Phase 2.2 |
+| TERR-05 | Phase 2.2 |
+| TERR-06 | Phase 2.2 |
 | CANVAS-02 | Phase 2 |
 | CANVAS-03 | Phase 2 |
 | CANVAS-04 | Phase 2 |
