@@ -29,8 +29,7 @@ from typing import Any
 
 import numpy as np
 import rasterio
-from rasterio.features import shapes as raster_shapes
-from rasterio.features import geometry_mask
+from rasterio.features import shapes as raster_shapes, rasterize
 from scipy import ndimage
 from skimage import morphology
 from shapely.geometry import (
@@ -73,43 +72,6 @@ def _stable_ridge_id(centroid_x: float, centroid_y: float, elev_max: float) -> s
     key = f"{centroid_x:.3f}|{centroid_y:.3f}|{int(round(elev_max))}"
     return sha1(key.encode("ascii")).hexdigest()[:12]
 
-
-def _elev_stats(
-    poly: Any,
-    z: np.ndarray,
-    transform: Any,
-    nodata: float,
-) -> tuple[float, float, float]:
-    """Return (elev_min, elev_max, elev_mean) for pixels inside poly."""
-    height, width = z.shape
-    m = geometry_mask([poly], transform=transform, out_shape=(height, width), invert=True)
-    sample = z[m & (z != nodata)]
-    if sample.size == 0:
-        return 0.0, 0.0, 0.0
-    return float(sample.min()), float(sample.max()), float(sample.mean())
-
-
-def _skeleton_to_line(
-    skeleton: np.ndarray,
-    poly: Any,
-    transform: Any,
-) -> LineString:
-    """Convert skeleton pixels inside poly to a LineString.
-
-    Cheap-but-correct v1: take all skeleton pixels inside poly, ordered by row
-    then col, and connect as a polyline. The polygon does the adjacency-penalty
-    work; the LineString is for visualization only (D-15).
-    """
-    height, width = skeleton.shape
-    m = geometry_mask([poly], transform=transform, out_shape=(height, width), invert=True)
-    ys, xs = np.where(skeleton & m)
-    if len(xs) < 2:
-        # Degenerate: return a tiny line at centroid so geometry stays valid.
-        cx, cy = poly.centroid.x, poly.centroid.y
-        return LineString([(cx, cy), (cx + 1e-6, cy + 1e-6)])
-    # Convert pixel (col, row) to world (x, y) via affine transform.
-    coords = [transform * (int(c), int(r)) for r, c in zip(ys, xs)]
-    return LineString(coords)
 
 
 def derive_ridges(
@@ -211,13 +173,34 @@ def derive_ridges(
                 "basins cross-ref failed (continuing without basin_ids): %s", exc
             )
 
-    # --- 8. Build features ---
-    features = []
-    for poly in polys:
-        cx, cy = poly.centroid.x, poly.centroid.y
+    # --- 8. Label raster: one rasterize call replaces per-polygon geometry_mask calls ---
+    height, width = z.shape
+    label_raster = np.zeros((height, width), dtype=np.int32)
+    if polys:
+        shapes_with_labels = [(poly.__geo_interface__, i + 1) for i, poly in enumerate(polys)]
+        label_raster = rasterize(
+            shapes_with_labels,
+            out_shape=(height, width),
+            transform=transform,
+            fill=0,
+            dtype=np.int32,
+        )
 
-        # Elevation stats from DEM pixels inside polygon
-        elev_min, elev_max, elev_mean = _elev_stats(poly, z, transform, nodata)
+    # --- 9. Build features ---
+    features = []
+    for i, poly in enumerate(polys):
+        cx, cy = poly.centroid.x, poly.centroid.y
+        label = i + 1
+        pix_mask = label_raster == label  # boolean mask for this polygon
+
+        # Elevation stats via label mask (replaces per-polygon geometry_mask)
+        sample = z[pix_mask & (z != nodata)]
+        if sample.size == 0:
+            elev_min, elev_max, elev_mean = 0.0, 0.0, 0.0
+        else:
+            elev_min = float(sample.min())
+            elev_max = float(sample.max())
+            elev_mean = float(sample.mean())
 
         # OSM peak cross-ref: count contained peaks + pick name
         contained_peaks = [(pt, name) for (pt, name) in peaks if poly.contains(pt)]
@@ -228,8 +211,15 @@ def derive_ridges(
         # Basin cross-ref
         basin_ids = sorted({bid for (g, bid) in basins if poly.intersects(g)})
 
-        # Centerline from skeleton pixels inside polygon
-        centerline = _skeleton_to_line(skeleton, poly, transform)
+        # Centerline from skeleton pixels inside polygon via label mask
+        ys, xs = np.where(skeleton & pix_mask)
+        if len(xs) < 2:
+            # Degenerate: return a tiny line at centroid so geometry stays valid.
+            centerline = LineString([(cx, cy), (cx + 1e-6, cy + 1e-6)])
+        else:
+            # Convert pixel (col, row) to world (x, y) via affine transform.
+            coords = [transform * (int(c), int(r)) for r, c in zip(ys, xs)]
+            centerline = LineString(coords)
 
         # Deterministic ID (Pitfall 7)
         feat_id = _stable_ridge_id(cx, cy, elev_max)
