@@ -118,6 +118,19 @@ def test_derive_ridges_geometry_is_geometry_collection():
         assert geoms[1]["type"] in {"LineString", "MultiLineString"}, f"Second sub-geom should be LineString; got {geoms[1]['type']}"
 
 
+def test_geometry_mask_called_once(monkeypatch):
+    """geometry_mask must not be called during derive_ridges (label-raster path)."""
+    import rasterio.features as _rf
+    calls = []
+    original = _rf.geometry_mask
+    def _spy(*args, **kwargs):
+        calls.append(1)
+        return original(*args, **kwargs)
+    monkeypatch.setattr(_rf, "geometry_mask", _spy)
+    derive_ridges(SYNTHETIC_DEM, sensitivity="med")
+    assert calls == [], f"geometry_mask was called {len(calls)} time(s); expected 0"
+
+
 @pytest.mark.asyncio
 async def test_derive_ridges_sensitivity_high_without_whitebox_returns_412():
     """sensitivity='high' without whitebox installed triggers 412-like SSE message via runner."""
