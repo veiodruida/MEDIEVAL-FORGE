@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 02.1-04-PLAN.md
-last_updated: "2026-04-29T17:10:40.336Z"
+stopped_at: Completed 02.1-05-PLAN.md
+last_updated: "2026-04-29T17:20:19.068Z"
 last_activity: 2026-04-29
 progress:
   total_phases: 9
   completed_phases: 4
   total_plans: 35
-  completed_plans: 32
-  percent: 91
+  completed_plans: 33
+  percent: 94
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-04-16)
 ## Current Position
 
 Phase: 02.1 (extended-terrain-ingestion) — EXECUTING
-Plan: 5 of 6
+Plan: 6 of 6
 Status: Ready to execute
 Last activity: 2026-04-29
 
@@ -62,6 +62,7 @@ Progress: [█████░░░░░] 50% (3 of 6 phases plan-complete; ver
 | Phase 02.1 P02 | 5 | 2 tasks | 4 files |
 | Phase 02.1 P03 | 20 | 3 tasks | 5 files |
 | Phase 02.1 P04 | 7 | 2 tasks | 6 files |
+| Phase 02.1 P05 | 15 | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -88,6 +89,8 @@ Recent decisions affecting current work:
 - [Phase 02.1]: EU-subset shapefile (hybas_eu_lev06_v1c) accepted for Iberia-focused use; non-EU bboxes return empty FeatureCollections
 - [Phase 02.1]: DEM_CACHE_DIR shared across all projects (D-09); tile data is global geography not per-project secret
 - [Phase 02.1]: resp.raise_for_status() replaced with explicit status_code check in dem.py — httpx mock Response has no request object
+- [Phase 02.1]: Unnormalized scipy laplacian in ridges.py (RESEARCH.md §4 defaults): plan draft normalization by std would have made curvature_min unreachable on real DEMs
+- [Phase 02.1]: ridges.py decoupled from FastAPI: RuntimeError for high-quality gate, runner translates to 412 SSE message
 
 ### Pending Todos
 
@@ -152,6 +155,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-29T17:10:40.334Z
-Stopped at: Completed 02.1-04-PLAN.md
+Last session: 2026-04-29T17:20:19.066Z
+Stopped at: Completed 02.1-05-PLAN.md
 Resume file: None
