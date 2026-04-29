@@ -83,8 +83,15 @@ Six phases take Medieval Forge from zero to a fully validated, Unity-ready map p
 4. Each ingestion step (rivers, terrain, HydroSHEDS, DEM+ridges) shows a live progress log in the UI pipeline panel; the step can be re-triggered independently without re-running the others.
 5. All new `raw/*.geojson` files are valid FeatureCollections passable to `shapely.from_geojson()` without errors.
 
+**Plans:** 6 plans
+
 ### Plans
-- [ ] TBD — to be planned via `/gsd-plan-phase 2.1`
+- [ ] `02.1-01-overpass-foundation-PLAN.md` — shared overpass_client.py extraction (D-02), Project.bbox_* backfill on ingestion completion (D-20), api/terrain.py router with 4 stub endpoints + /stop, ingest_terrain package skeleton, deps pinned (geopandas, scikit-image, respx, httpx[http2], rasterio<1.5, [high-quality] extra) + Wave 0 RED tests (8 tests) (GEO-01..08 foundation)
+- [ ] `02.1-02-overpass-terrain-quartet-PLAN.md` — 4 Overpass fetchers (rivers/topography/coast/parishes) with line_merge wrap + graceful empty parishes; SSE runner with (project_id,step) stop registry + D-21 bbox split; replaces /overpass and /stop stubs; 9 RED tests (GEO-01..04)
+- [ ] `02.1-03-hydrosheds-basins-PLAN.md` — vendored hybas_lev06_v1c shapefile + LICENSE.txt (human-action gate); geopandas bbox clip → raw/basins.geojson with HYBAS_ID/NEXT_DOWN/SUB_AREA renamed; replaces /hydrosheds stub; 5 RED tests (GEO-05)
+- [ ] `02.1-04-dem-mosaic-PLAN.md` — Copernicus DEM 90m tile enumeration + concurrent (sem=4) httpx fetch with 404-ocean skip + shared data/dem_cache + rasterio.merge in to_thread → raw/dem.tif (EPSG:4326, int16, nodata=-32768); HEAD-probe URL prefix; replaces /dem stub; 8 RED tests (GEO-06)
+- [ ] `02.1-05-ridge-derivation-PLAN.md` — numpy+scipy+skimage pipeline (gradient → laplacian → skeletonize) with low/med/high thresholds, deterministic SHA1-12 ids (Pitfall 7), GeometryCollection of MultiPolygon+LineString (D-15), OSM peak + HydroSHEDS basin cross-ref, [high-quality] extra check (412), fail-soft 60s budget; replaces /ridges stub; 7 RED tests (GEO-07)
+- [ ] `02.1-06-frontend-terrain-section-PLAN.md` — useTerrainStepStream hook (4-state status, AbortController + scoped /stop), TerrainDataSection with collapsible header + N/4 badge + 4 StepCards + ridge low/med/high SegmentedControl + shared SSE log (D-24..27), ProjectDetail integration above existing Stepper; 7 RED tests (GEO-08)
 
 ---
 
@@ -223,7 +230,7 @@ Six phases take Medieval Forge from zero to a fully validated, Unity-ready map p
 |-------|----------------|--------|-----------|
 | 1. Data Pipeline + Backend Scaffold | 0/5 | Not started | - |
 | 2. Read-Only Canvas Viewer | 4/5 | Gap closure planning (02-05) | - |
-| 2.1 Extended Terrain Ingestion | 0/? | Not planned | - |
+| 2.1 Extended Terrain Ingestion | 0/6 | Plans drafted | - |
 | 2.2 Geometry-First Territories | 0/? | Not planned | - |
 | 3. LLM Research Integration | 0/4 | Not started | - |
 | 4. Canvas Editing — Basic | 10/12 | Gap closure planning (04-11, 04-12) | - |
