@@ -1,7 +1,7 @@
-"""Phase 2.1 terrain ingestion API. Each endpoint is a stub here — Plans 02-05 each replace ONE stub.
+"""Phase 2.1 terrain ingestion API. Plans 02-05 each replace ONE stub.
 
 File-ownership convention (so Plans 02-05 can run in parallel without conflicts):
-  - Plan 02 owns _overpass_handler implementation
+  - Plan 02 owns /overpass + /stop implementation (this plan)
   - Plan 03 owns _hydrosheds_handler implementation
   - Plan 04 owns _dem_handler implementation
   - Plan 05 owns _ridges_handler implementation
@@ -9,16 +9,40 @@ File-ownership convention (so Plans 02-05 can run in parallel without conflicts)
 """
 from __future__ import annotations
 
+import asyncio
+
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
+
+from medieval_forge.services.paths import is_valid_uuid
+from medieval_forge.services.ingest_terrain import runner as terrain_runner
 
 router = APIRouter(prefix="/projects/{project_id}/terrain", tags=["terrain"])
 
 
+async def _stream_from_queue(queue: asyncio.Queue):
+    """Consume queue until None sentinel, yielding SSE strings."""
+    while True:
+        item = await queue.get()
+        if item is None:
+            break
+        yield item
+
+
 @router.post("/overpass")
 async def post_overpass_terrain(project_id: str) -> StreamingResponse:
-    """Plan 02: rivers + peaks + coast + parishes via Overpass."""
-    raise HTTPException(status_code=501, detail="Plan 02 stub — overpass terrain not yet implemented")
+    """Plan 02: rivers + peaks + coast + parishes via Overpass.
+
+    T-02-02 / T-PATH: project_id is UUID-validated before use.
+    """
+    if not is_valid_uuid(project_id):
+        raise HTTPException(status_code=400, detail="invalid project_id")
+    queue: asyncio.Queue = asyncio.Queue()
+    stop_event = terrain_runner.register_stop_event(project_id, "overpass")
+    asyncio.create_task(
+        terrain_runner.run_terrain_overpass(project_id, queue, stop_event=stop_event)
+    )
+    return StreamingResponse(_stream_from_queue(queue), media_type="text/event-stream")
 
 
 @router.post("/hydrosheds")
@@ -41,8 +65,17 @@ async def post_ridges(project_id: str, sensitivity: str = "med") -> StreamingRes
 
 @router.post("/stop")
 async def post_stop_terrain(project_id: str, step: str) -> dict:
-    """Cancel currently-running step. Plans 02-05 each register their stop_event in a shared dict.
+    """Cancel currently-running step.
 
-    T-01-04 mitigation: scope stop to (project_id, step) — never global.
+    T-02-02: project_id is UUID-validated; step is whitelisted;
+    stop_event is keyed on (project_id, step) — cannot cancel another project's run.
     """
-    raise HTTPException(status_code=501, detail="Stop endpoint stub — wired by Plan 02 first")
+    if not is_valid_uuid(project_id):
+        raise HTTPException(status_code=400, detail="invalid project_id")
+    if step not in {"overpass", "hydrosheds", "dem", "ridges"}:
+        raise HTTPException(status_code=400, detail=f"invalid step: {step}")
+    ev = terrain_runner.get_stop_event(project_id, step)
+    if ev is None:
+        return {"status": "no-active-step"}
+    ev.set()
+    return {"status": "stopping", "project_id": project_id, "step": step}
