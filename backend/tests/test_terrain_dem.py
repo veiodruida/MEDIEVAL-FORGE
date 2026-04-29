@@ -89,8 +89,11 @@ def test_tile_url_rejects_non_int_lat_lon():
 async def test_fetch_dem_skips_404_ocean_tiles(tmp_path, monkeypatch):
     """404 tiles emit 'ausente (oceano)'; mosaic continues with remaining tiles."""
     import medieval_forge.services.paths as paths_mod
+    import medieval_forge.services.ingest_terrain.dem as dem_mod
 
     monkeypatch.setattr(paths_mod, "PROJECTS_ROOT", tmp_path / "projects")
+    # Isolate cache so previously-downloaded real tiles cannot be used.
+    monkeypatch.setattr(dem_mod, "DEM_CACHE_DIR", tmp_path / "dem_cache")
 
     tile_bytes = SYNTHETIC_TILE.read_bytes()
     # bbox covering exactly 2 tiles: (40,0) and (40,1)
@@ -125,9 +128,11 @@ async def test_fetch_dem_skips_404_ocean_tiles(tmp_path, monkeypatch):
 async def test_fetch_dem_concurrency_is_capped_at_four(tmp_path, monkeypatch):
     """No more than 4 tiles should be in-flight at the same time (D-08 / Semaphore(4))."""
     import medieval_forge.services.paths as paths_mod
+    import medieval_forge.services.ingest_terrain.dem as dem_mod
     import httpx
 
     monkeypatch.setattr(paths_mod, "PROJECTS_ROOT", tmp_path / "projects")
+    monkeypatch.setattr(dem_mod, "DEM_CACHE_DIR", tmp_path / "dem_cache")
 
     tile_bytes = SYNTHETIC_TILE.read_bytes()
     # bbox covering 8 tiles: lon 0..7, lat 40..41
@@ -172,8 +177,10 @@ async def test_fetch_dem_concurrency_is_capped_at_four(tmp_path, monkeypatch):
 async def test_fetch_dem_emits_mosaic_complete(tmp_path, monkeypatch):
     """SSE queue should contain 'mosaic_complete' after raw/dem.tif is written."""
     import medieval_forge.services.paths as paths_mod
+    import medieval_forge.services.ingest_terrain.dem as dem_mod
 
     monkeypatch.setattr(paths_mod, "PROJECTS_ROOT", tmp_path / "projects")
+    monkeypatch.setattr(dem_mod, "DEM_CACHE_DIR", tmp_path / "dem_cache")
 
     tile_bytes = SYNTHETIC_TILE.read_bytes()
     # Single tile bbox

@@ -64,8 +64,18 @@ async def post_hydrosheds_basins(project_id: str) -> StreamingResponse:
 
 @router.post("/dem")
 async def post_dem(project_id: str) -> StreamingResponse:
-    """Plan 04: Copernicus DEM 90m mosaic."""
-    raise HTTPException(status_code=501, detail="Plan 04 stub — DEM not yet implemented")
+    """Plan 04: Copernicus DEM 90m mosaic — download + cache + mosaic to raw/dem.tif.
+
+    T-04-01: project_id UUID-validated; tile URLs constructed only from int lat/lon.
+    """
+    if not is_valid_uuid(project_id):
+        raise HTTPException(status_code=400, detail="invalid project_id")
+    queue: asyncio.Queue = asyncio.Queue()
+    stop_event = terrain_runner.register_stop_event(project_id, "dem")
+    asyncio.create_task(
+        terrain_runner.run_terrain_dem(project_id, queue, stop_event=stop_event)
+    )
+    return StreamingResponse(_stream_from_queue(queue), media_type="text/event-stream")
 
 
 @router.post("/ridges")

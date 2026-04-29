@@ -20,6 +20,7 @@ from medieval_forge.services.paths import ensure_project_dirs
 from medieval_forge.services.ingest_runner import _write_geojson_atomic
 from medieval_forge.services.ingest_terrain import overpass_terrain
 from medieval_forge.services.ingest_terrain import hydrosheds as _hydrosheds
+from medieval_forge.services.ingest_terrain import dem as _dem
 
 logger = logging.getLogger(__name__)
 
@@ -149,6 +150,41 @@ async def run_terrain_overpass(
         await queue.put(f"data: ERROR: {exc.__class__.__name__}\n\n")
     finally:
         clear_stop_event(project_id, "overpass")
+        await queue.put(None)
+
+
+async def run_terrain_dem(
+    project_id: str,
+    queue: asyncio.Queue,
+    *,
+    stop_event: asyncio.Event | None = None,
+    db_session_factory: async_sessionmaker | None = None,
+) -> None:
+    """Producer task: download Copernicus DEM 90m tiles, mosaic to raw/dem.tif.
+
+    db_session_factory: injected for testing. Defaults to production AsyncSessionLocal.
+    """
+    factory = db_session_factory or AsyncSessionLocal
+    if stop_event is None:
+        stop_event = register_stop_event(project_id, "dem")
+    try:
+        if stop_event.is_set():
+            raise asyncio.CancelledError("ingest stopped by user")
+
+        bbox = await _resolve_bbox(project_id, queue, factory)
+        if bbox is None:
+            return
+        await queue.put(f"data: bbox: {bbox}\n\n")
+        raw_dir = ensure_project_dirs(project_id)["raw"]
+        await _dem.fetch_dem(bbox, raw_dir / "dem.tif", queue, stop_event=stop_event)
+        await queue.put("data: DONE\n\n")
+    except asyncio.CancelledError:
+        await queue.put("data: Cancelado pelo usuário.\n\n")
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("run_terrain_dem failed")
+        await queue.put(f"data: ERROR: {exc.__class__.__name__}\n\n")
+    finally:
+        clear_stop_event(project_id, "dem")
         await queue.put(None)
 
 
