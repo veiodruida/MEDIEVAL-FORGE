@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 02.1-02-PLAN.md
-last_updated: "2026-04-29T16:08:18.837Z"
+stopped_at: Completed 02.1-03-PLAN.md
+last_updated: "2026-04-29T17:01:30.618Z"
 last_activity: 2026-04-29
 progress:
   total_phases: 9
   completed_phases: 4
   total_plans: 35
-  completed_plans: 30
-  percent: 86
+  completed_plans: 31
+  percent: 89
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-04-16)
 ## Current Position
 
 Phase: 02.1 (extended-terrain-ingestion) — EXECUTING
-Plan: 3 of 6
+Plan: 4 of 6
 Status: Ready to execute
 Last activity: 2026-04-29
 
@@ -60,6 +60,7 @@ Progress: [█████░░░░░] 50% (3 of 6 phases plan-complete; ver
 | Phase 02 P04 | 25 | 3 tasks | 10 files |
 | Phase 02.1 P01 | 561 | 3 tasks | 16 files |
 | Phase 02.1 P02 | 5 | 2 tasks | 4 files |
+| Phase 02.1 P03 | 20 | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -82,6 +83,8 @@ Recent decisions affecting current work:
 - [Phase 02.1]: api/terrain.py stubs use prefix=/projects/{project_id}/terrain registered with prefix=/api; T-01-05 applied: only exc.__class__.__name__ in SSE error messages
 - [Phase 02.1]: shapely.ops.linemerge (not line_merge) — Shapely 2.x API; aliased for plan-spec compatibility
 - [Phase 02.1]: run_terrain_overpass accepts db_session_factory (mirrors run_ingest) for test isolation; early stop_event check before _resolve_bbox for correct cancellation semantics
+- [Phase 02.1]: importlib.resources.files() exclusively for shapefile path construction (T-03-01 path-traversal mitigation)
+- [Phase 02.1]: EU-subset shapefile (hybas_eu_lev06_v1c) accepted for Iberia-focused use; non-EU bboxes return empty FeatureCollections
 
 ### Pending Todos
 
@@ -146,6 +149,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-29T16:08:18.834Z
-Stopped at: Completed 02.1-02-PLAN.md
+Last session: 2026-04-29T17:01:30.615Z
+Stopped at: Completed 02.1-03-PLAN.md
 Resume file: None
