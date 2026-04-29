@@ -26,20 +26,13 @@ import httpx
 from shapely.geometry import LineString, MultiPolygon, Polygon, mapping
 from shapely.ops import linemerge, polygonize, unary_union
 
-from . import country_boundaries
+from . import country_boundaries, overpass_client
 
 log = logging.getLogger(__name__)
 
-# Endpoints públicos do Overpass API em ordem de preferência.
-# Verificados live em 2026-04-28:
-#   - overpass-api.de: instância oficial principal
-#   - overpass.private.coffee: mirror europeu independente
-#   - overpass.kumi.systems: mirror alemão confiável
-OVERPASS_ENDPOINTS: list[str] = [
-    "https://overpass-api.de/api/interpreter",
-    "https://overpass.private.coffee/api/interpreter",
-    "https://overpass.kumi.systems/api/interpreter",
-]
+# OVERPASS_ENDPOINTS moved to overpass_client.py per D-02.
+# Re-exported here for backward compatibility with existing callers.
+OVERPASS_ENDPOINTS = overpass_client.OVERPASS_ENDPOINTS
 
 ISO_RE: re.Pattern[str] = re.compile(r"^[A-Z]{2}$")
 _TIMEOUT_S: float = 180.0  # aumentado para 3 min
@@ -254,74 +247,10 @@ async def _post_query(
     *,
     stop_event: asyncio.Event | None = None,
 ) -> dict[str, Any]:
-    """Loop infinito pelos endpoints Overpass até um responder com sucesso ou stop_event ser setado.
-
-    Cicla OVERPASS_ENDPOINTS indefinidamente (attempt % len). Emite mensagens
-    SSE [Tentativa N] para cada tentativa. Quando stop_event é setado, levanta
-    asyncio.CancelledError para sinalizar cancelamento pelo usuário.
-
-    Backoff: min(30, 5 * attempt) segundos após respostas 5xx. Erros de rede
-    (timeout/connect) passam imediatamente para o próximo endpoint sem espera.
-    """
-    if stop_event is None:
-        stop_event = asyncio.Event()
-
-    def _factory() -> httpx.AsyncClient:
-        if client_factory is not None:
-            return client_factory()
-        return httpx.AsyncClient(timeout=_TIMEOUT_S)
-
-    retryable = {406, 408, 429, 502, 503, 504}
-    attempt = 0
-
-    while not stop_event.is_set():
-        endpoint = OVERPASS_ENDPOINTS[attempt % len(OVERPASS_ENDPOINTS)]
-        attempt += 1
-        await queue.put(f"data: [Tentativa {attempt}] {endpoint} — aguardando resposta...\n\n")
-        try:
-            async with _factory() as client:
-                resp = await asyncio.wait_for(
-                    client.post(
-                        endpoint,
-                        data={"data": query},
-                        headers={"Accept": "application/json"},
-                    ),
-                    timeout=_TIMEOUT_S,
-                )
-
-                if resp.status_code >= 500 or resp.status_code in retryable:
-                    wait_s = min(30, 5 * attempt)
-                    await queue.put(
-                        f"data: [Tentativa {attempt}] {endpoint} retornou {resp.status_code}. "
-                        f"Aguardando {wait_s}s...\n\n"
-                    )
-                    try:
-                        await asyncio.wait_for(stop_event.wait(), timeout=wait_s)
-                    except (asyncio.TimeoutError, TimeoutError):
-                        pass  # backoff elapsed, continue loop
-                    continue
-
-                resp.raise_for_status()
-                payload = resp.json()
-                elem_count = len(payload.get("elements", []))
-                await queue.put(
-                    f"data: [Tentativa {attempt}] {endpoint} — sucesso ({elem_count} elementos).\n\n"
-                )
-                return payload
-
-        except (asyncio.TimeoutError, TimeoutError):
-            await queue.put(
-                f"data: [Tentativa {attempt}] Timeout em {endpoint}. Tentando próximo...\n\n"
-            )
-            continue
-        except (httpx.TimeoutException, httpx.ConnectError) as exc:
-            await queue.put(
-                f"data: [Tentativa {attempt}] Falha de rede ({exc.__class__.__name__}) "
-                f"em {endpoint}. Tentando próximo...\n\n"
-            )
-            continue
-
-    raise asyncio.CancelledError("ingest stopped by user")
+    """Thin wrapper — delegates to overpass_client.post_query (D-02)."""
+    return await overpass_client.post_query(
+        query, queue, client_factory, stop_event=stop_event
+    )
 
 
 async def fetch_municipalities(
