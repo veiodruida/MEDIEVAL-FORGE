@@ -46,10 +46,11 @@ def _q_coastline(lon_min: float, lat_min: float, lon_max: float, lat_max: float)
 
 def _q_parishes(lon_min: float, lat_min: float, lon_max: float, lat_max: float) -> str:
     return (
-        "[out:json][timeout:160];\n"
+        "[out:json][timeout:60][maxsize:33554432];\n"
         "(\n"
-        f'  relation["boundary"="administrative"]["admin_level"="8"]({lat_min},{lon_min},{lat_max},{lon_max});\n'
-        ");\nout geom;\n"
+        f'  relation["boundary"="administrative"]["admin_level"="8"]'
+        f'({lat_min},{lon_min},{lat_max},{lon_max});\n'
+        ");\nout body qt;\n>;\nout skel qt;\n"
     )
 
 
