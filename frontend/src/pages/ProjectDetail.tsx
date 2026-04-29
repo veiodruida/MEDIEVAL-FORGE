@@ -25,6 +25,7 @@ import { ProviderEffortPicker } from '../components/pipeline/ProviderEffortPicke
 import { BaronyGranularitySlider } from '../components/ingest/BaronyGranularitySlider'
 import { AssignmentEditor } from '../components/research/AssignmentEditor'
 import { CodexViewer } from '../components/codex/CodexViewer'
+import { TerrainDataSection } from '../components/pipeline/TerrainDataSection'
 
 const STATUS_LABEL: Record<string, string> = {
   created: 'Criado',
@@ -609,6 +610,9 @@ export function ProjectDetail() {
           </Flex>
         </Card>
       )}
+
+      {/* Terrain Data — Phase 2.1 terrain ingestion section (D-24: above Phase 1 Stepper) */}
+      {id && <TerrainDataSection projectId={id} />}
 
       {/* Pipeline — Stepper + StepCard (replaces legacy Pipeline/Estrutura política Tabs block) */}
       <Stepper

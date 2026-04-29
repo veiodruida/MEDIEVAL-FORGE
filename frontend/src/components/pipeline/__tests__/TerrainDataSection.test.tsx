@@ -121,9 +121,10 @@ describe('TerrainDataSection', () => {
     expect(slider).toBeInTheDocument()
 
     // The three options should be visible inside the selector area
-    expect(within(slider).getByText('low')).toBeInTheDocument()
-    expect(within(slider).getByText('med')).toBeInTheDocument()
-    expect(within(slider).getByText('high')).toBeInTheDocument()
+    // Radix SegmentedControl renders each label twice (active + inactive spans) — use getAllByText
+    expect(within(slider).getAllByText('low').length).toBeGreaterThan(0)
+    expect(within(slider).getAllByText('med').length).toBeGreaterThan(0)
+    expect(within(slider).getAllByText('high').length).toBeGreaterThan(0)
   })
 
   it('each step card shows "pendente" badge initially', () => {
