@@ -19,6 +19,7 @@ from medieval_forge.database import AsyncSessionLocal
 from medieval_forge.services.paths import ensure_project_dirs
 from medieval_forge.services.ingest_runner import _write_geojson_atomic
 from medieval_forge.services.ingest_terrain import overpass_terrain
+from medieval_forge.services.ingest_terrain import hydrosheds as _hydrosheds
 
 logger = logging.getLogger(__name__)
 
@@ -148,4 +149,45 @@ async def run_terrain_overpass(
         await queue.put(f"data: ERROR: {exc.__class__.__name__}\n\n")
     finally:
         clear_stop_event(project_id, "overpass")
+        await queue.put(None)
+
+
+async def run_terrain_hydrosheds(
+    project_id: str,
+    queue: asyncio.Queue,
+    *,
+    stop_event: asyncio.Event | None = None,
+    db_session_factory: async_sessionmaker | None = None,
+) -> None:
+    """Producer task: clip HydroSHEDS lv6 basins to project bbox, write raw/basins.geojson.
+
+    db_session_factory: injected for testing (mirrors run_terrain_overpass pattern).
+    Defaults to production AsyncSessionLocal when None.
+
+    T-03-03 mitigation: geopandas.read_file with bbox= filters at GDAL layer;
+    asyncio.to_thread keeps the event loop free during the blocking call.
+    """
+    factory = db_session_factory or AsyncSessionLocal
+    if stop_event is None:
+        stop_event = register_stop_event(project_id, "hydrosheds")
+    try:
+        if stop_event.is_set():
+            raise asyncio.CancelledError("ingest stopped by user")
+
+        bbox = await _resolve_bbox(project_id, queue, factory)
+        if bbox is None:
+            return
+        await queue.put(f"data: bbox: {bbox}\n\n")
+        raw_dir = ensure_project_dirs(project_id)["raw"]
+        fc = await _hydrosheds.fetch_basins(bbox, queue, stop_event=stop_event)
+        _write_geojson_atomic(raw_dir / "basins.geojson", fc)
+        await queue.put(f"data: bacias: {len(fc['features'])} features → basins.geojson\n\n")
+        await queue.put("data: DONE\n\n")
+    except asyncio.CancelledError:
+        await queue.put("data: Cancelado pelo usuário.\n\n")
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("run_terrain_hydrosheds failed")
+        await queue.put(f"data: ERROR: {exc.__class__.__name__}\n\n")
+    finally:
+        clear_stop_event(project_id, "hydrosheds")
         await queue.put(None)

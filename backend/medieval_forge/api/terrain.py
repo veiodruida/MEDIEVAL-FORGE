@@ -47,8 +47,19 @@ async def post_overpass_terrain(project_id: str) -> StreamingResponse:
 
 @router.post("/hydrosheds")
 async def post_hydrosheds_basins(project_id: str) -> StreamingResponse:
-    """Plan 03: HydroSHEDS lv6 basin polygons clipped to bbox."""
-    raise HTTPException(status_code=501, detail="Plan 03 stub — hydrosheds not yet implemented")
+    """Plan 03: HydroSHEDS lv6 basin polygons clipped to bbox → raw/basins.geojson.
+
+    T-03-01: project_id validated via is_valid_uuid before use.
+    Shapefile path is constructed via importlib.resources in hydrosheds.py — no user input.
+    """
+    if not is_valid_uuid(project_id):
+        raise HTTPException(status_code=400, detail="invalid project_id")
+    queue: asyncio.Queue = asyncio.Queue()
+    stop_event = terrain_runner.register_stop_event(project_id, "hydrosheds")
+    asyncio.create_task(
+        terrain_runner.run_terrain_hydrosheds(project_id, queue, stop_event=stop_event)
+    )
+    return StreamingResponse(_stream_from_queue(queue), media_type="text/event-stream")
 
 
 @router.post("/dem")
