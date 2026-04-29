@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-04-16)
 Phase: 02.1 (extended-terrain-ingestion) — EXECUTING
 Plan: 6 of 6
 Status: Phase complete — ready for verification
-Last activity: 2026-04-29
+Last activity: 2026-04-29 - Completed quick task 260429-qty: Fix performance: ridges geometry_mask batching + overpass parishes query
 
 Progress: [█████░░░░░] 50% (3 of 6 phases plan-complete; verification pending)
 
@@ -155,6 +155,7 @@ None yet.
 | 260428-lyh | Etapa 11: Pipeline UI completa — Stepper + StepCard + ProviderEffortPicker + usePipelineStore + ProjectDetail refactor (22 tests, 200→222) | 2026-04-28 | 23078f6 | [260428-lyh-etapa-11-pipeline-ui-completa-stepper-st](./quick/260428-lyh-etapa-11-pipeline-ui-completa-stepper-st/) |
 | 260428-mci | Etapa 12: Wikidata rebaixamento — OSM promoted to primary CTA, Wikidata moved to Avançado disclosure, ingest_wikidata.py marked deprecated | 2026-04-28 | 1b60eee | [260428-mci-etapa-12-wikidata-rebaixamento-change-de](./quick/260428-mci-etapa-12-wikidata-rebaixamento-change-de/) |
 | 260428-nwl | Etapa 13: OSM retry infinito — 3 mirrors verificados (private.coffee), loop infinito com stop_event, botão "Parar ingestão" via AbortController (9 new tests, 272+226) | 2026-04-28 | 6978f84 | [260428-nwl-etapa-13-osm-retry-infinito-urls-actuali](./quick/260428-nwl-etapa-13-osm-retry-infinito-urls-actuali/) |
+| 260429-qty | Fix performance: ridges geometry_mask batching + overpass parishes query | 2026-04-29 | f3533ad | [260429-qty-fix-performance-ridges-geometry-mask-bat](./quick/260429-qty-fix-performance-ridges-geometry-mask-bat/) |
 
 ## Session Continuity
 
