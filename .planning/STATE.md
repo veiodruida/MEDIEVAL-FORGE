@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Phase 2.1 context gathered
-last_updated: "2026-04-29T12:43:13.167Z"
-last_activity: 2026-04-29 -- Phase 2.1 planning complete
+stopped_at: Completed 02.1-01-PLAN.md
+last_updated: "2026-04-29T15:59:52.391Z"
+last_activity: 2026-04-29
 progress:
   total_phases: 9
   completed_phases: 4
   total_plans: 35
-  completed_plans: 28
-  percent: 80
+  completed_plans: 29
+  percent: 83
 ---
 
 # Project State
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-16)
 
 **Core value:** A Game Designer can go from "country + historical period" to a validated, Unity-ready map package without manual pixel editing or blind iteration.
-**Current focus:** Phase 05 — canvas-editing-advanced
+**Current focus:** Phase 02.1 — extended-terrain-ingestion
 
 ## Current Position
 
-Phase: 05 (canvas-editing-advanced) — EXECUTING
-Plan: 1 of 3
+Phase: 02.1 (extended-terrain-ingestion) — EXECUTING
+Plan: 2 of 6
 Status: Ready to execute
-Last activity: 2026-04-29 -- Phase 2.1 planning complete
+Last activity: 2026-04-29
 
 Progress: [█████░░░░░] 50% (3 of 6 phases plan-complete; verification pending)
 
@@ -58,6 +58,7 @@ Progress: [█████░░░░░] 50% (3 of 6 phases plan-complete; ver
 
 *Updated after each plan completion*
 | Phase 02 P04 | 25 | 3 tasks | 10 files |
+| Phase 02.1 P01 | 561 | 3 tasks | 16 files |
 
 ## Accumulated Context
 
@@ -75,6 +76,9 @@ Recent decisions affecting current work:
 - [Initialization]: Phase 3 (LLM) has no canvas dependency — can run in parallel with Phase 2 if bandwidth allows
 - [Initialization]: EXPORT-01/02 delivered headlessly in Phase 1; EXPORT-03/04 (polish + dialog) deferred to Phase 6
 - [Phase 02]: Plan 02-04 closed gaps G-01/G-02/G-03 via service-layer adapter rewrite (D-04 black-box preserved); added condado_colors.json and barony_colors.json sidecars for frontend consumption
+- [Phase 02.1]: overpass_client.py is single source for 3-mirror Overpass retry (D-02); ingest_osm delegates via thin wrapper; OVERPASS_ENDPOINTS re-exported for backward compat
+- [Phase 02.1]: Project.bbox_* auto-backfilled via unary_union(features).bounds after every successful ingestion (D-20); bbox columns pre-exist in migration 0001
+- [Phase 02.1]: api/terrain.py stubs use prefix=/projects/{project_id}/terrain registered with prefix=/api; T-01-05 applied: only exc.__class__.__name__ in SSE error messages
 
 ### Pending Todos
 
@@ -139,6 +143,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-29T12:05:08.429Z
-Stopped at: Phase 2.1 context gathered
-Resume file: .planning/phases/02.1-extended-terrain-ingestion/02.1-CONTEXT.md
+Last session: 2026-04-29T15:59:52.388Z
+Stopped at: Completed 02.1-01-PLAN.md
+Resume file: None

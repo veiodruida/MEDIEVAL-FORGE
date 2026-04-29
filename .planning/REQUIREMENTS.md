@@ -60,14 +60,14 @@
 - [ ] **VALIDATE-07**: Export is blocked when errors exist; warnings can be overridden by user
 
 ### GEO — Geographic Terrain Ingestion (Phase 2.1)
-- [ ] **GEO-01**: System fetches river and stream geometries via OSM Overpass (`waterway=river`, `waterway=stream`) for the project bbox and stores to `raw/rivers.geojson`
-- [ ] **GEO-02**: System fetches mountain peaks and ridges via OSM Overpass (`natural=peak`, `natural=ridge`, `natural=cliff`) and stores to `raw/topography.geojson`
-- [ ] **GEO-03**: System fetches coastline via OSM Overpass (`natural=coastline`) at ~10m precision for land/sea boundary, stores to `raw/coastline.geojson`
-- [ ] **GEO-04**: System fetches sub-municipal boundaries (`admin_level=8` parishes/freguesias) via Overpass where available, stores to `raw/parishes.geojson`
-- [ ] **GEO-05**: System extracts HydroSHEDS river basin polygons (from vendored shapefiles) for the project bbox and stores filtered result to `raw/basins.geojson`
-- [ ] **GEO-06**: System downloads DEM elevation raster tiles (Copernicus DEM 90m) for the project bbox with local tile cache (`data/dem_cache/`), mosaics and stores to `raw/dem.tif`
-- [ ] **GEO-07**: System derives ridge lines from DEM via slope+curvature analysis (thresholded laplacian + skeletonization) and stores to `raw/ridges.geojson`
-- [ ] **GEO-08**: User can trigger each extended ingestion step (rivers, terrain, HydroSHEDS, DEM) from the UI pipeline panel; each step shows real-time progress feedback
+- [x] **GEO-01**: System fetches river and stream geometries via OSM Overpass (`waterway=river`, `waterway=stream`) for the project bbox and stores to `raw/rivers.geojson`
+- [x] **GEO-02**: System fetches mountain peaks and ridges via OSM Overpass (`natural=peak`, `natural=ridge`, `natural=cliff`) and stores to `raw/topography.geojson`
+- [x] **GEO-03**: System fetches coastline via OSM Overpass (`natural=coastline`) at ~10m precision for land/sea boundary, stores to `raw/coastline.geojson`
+- [x] **GEO-04**: System fetches sub-municipal boundaries (`admin_level=8` parishes/freguesias) via Overpass where available, stores to `raw/parishes.geojson`
+- [x] **GEO-05**: System extracts HydroSHEDS river basin polygons (from vendored shapefiles) for the project bbox and stores filtered result to `raw/basins.geojson`
+- [x] **GEO-06**: System downloads DEM elevation raster tiles (Copernicus DEM 90m) for the project bbox with local tile cache (`data/dem_cache/`), mosaics and stores to `raw/dem.tif`
+- [x] **GEO-07**: System derives ridge lines from DEM via slope+curvature analysis (thresholded laplacian + skeletonization) and stores to `raw/ridges.geojson`
+- [x] **GEO-08**: User can trigger each extended ingestion step (rivers, terrain, HydroSHEDS, DEM) from the UI pipeline panel; each step shows real-time progress feedback
 
 ### TERR — Geometry-First Territory Construction (Phase 2.2)
 - [ ] **TERR-01**: System clusters baronies into condados using hierarchical clustering constrained by rivers, ridges, and HydroSHEDS basins (no cluster crosses a principal river or watershed divide); target ~8–12 baronies per condado; output in `raw/condados.geojson`
