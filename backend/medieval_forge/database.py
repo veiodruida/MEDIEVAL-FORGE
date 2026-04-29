@@ -14,6 +14,8 @@ from sqlalchemy.ext.asyncio import (
 DATA_DIR: Path = Path.home() / ".medieval-forge"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
+DEM_CACHE_DIR: Path = DATA_DIR / "dem_cache"
+
 DB_URL: str = f"sqlite+aiosqlite:///{DATA_DIR}/medieval_forge.db"
 
 engine = create_async_engine(DB_URL, echo=False, future=True)
