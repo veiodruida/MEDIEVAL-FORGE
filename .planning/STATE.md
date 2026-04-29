@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-stopped_at: Completed 02.1-05-PLAN.md
-last_updated: "2026-04-29T17:20:19.068Z"
+status: verifying
+stopped_at: Completed 02.1-06-PLAN.md
+last_updated: "2026-04-29T17:27:14.171Z"
 last_activity: 2026-04-29
 progress:
   total_phases: 9
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 35
-  completed_plans: 33
-  percent: 94
+  completed_plans: 34
+  percent: 97
 ---
 
 # Project State
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-04-16)
 
 Phase: 02.1 (extended-terrain-ingestion) — EXECUTING
 Plan: 6 of 6
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-04-29
 
 Progress: [█████░░░░░] 50% (3 of 6 phases plan-complete; verification pending)
@@ -63,6 +63,7 @@ Progress: [█████░░░░░] 50% (3 of 6 phases plan-complete; ver
 | Phase 02.1 P03 | 20 | 3 tasks | 5 files |
 | Phase 02.1 P04 | 7 | 2 tasks | 6 files |
 | Phase 02.1 P05 | 15 | 2 tasks | 5 files |
+| Phase 02.1 P06 | 180 | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -91,6 +92,8 @@ Recent decisions affecting current work:
 - [Phase 02.1]: resp.raise_for_status() replaced with explicit status_code check in dem.py — httpx mock Response has no request object
 - [Phase 02.1]: Unnormalized scipy laplacian in ridges.py (RESEARCH.md §4 defaults): plan draft normalization by std would have made curvature_min unreachable on real DEMs
 - [Phase 02.1]: ridges.py decoupled from FastAPI: RuntimeError for high-quality gate, runner translates to 412 SSE message
+- [Phase 02.1]: getAllByText for Radix SegmentedControl items: renders each label in active+inactive span pairs — getByText throws on multiple matches
+- [Phase 02.1]: TerrainDataSection uses Radix Card as outermost wrapper (not Tailwind div) to avoid Tailwind v4 + Radix Collapsible transparency bug (Pitfall 8)
 
 ### Pending Todos
 
@@ -155,6 +158,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-29T17:20:19.066Z
-Stopped at: Completed 02.1-05-PLAN.md
+Last session: 2026-04-29T17:27:14.169Z
+Stopped at: Completed 02.1-06-PLAN.md
 Resume file: None
