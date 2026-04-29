@@ -18,9 +18,12 @@ from medieval_forge.models import Project
 from medieval_forge.database import AsyncSessionLocal
 from medieval_forge.services.paths import ensure_project_dirs
 from medieval_forge.services.ingest_runner import _write_geojson_atomic
+import time
+
 from medieval_forge.services.ingest_terrain import overpass_terrain
 from medieval_forge.services.ingest_terrain import hydrosheds as _hydrosheds
 from medieval_forge.services.ingest_terrain import dem as _dem
+from medieval_forge.services.ingest_terrain import ridges as _ridges
 
 logger = logging.getLogger(__name__)
 
@@ -226,4 +229,73 @@ async def run_terrain_hydrosheds(
         await queue.put(f"data: ERROR: {exc.__class__.__name__}\n\n")
     finally:
         clear_stop_event(project_id, "hydrosheds")
+        await queue.put(None)
+
+
+async def run_terrain_ridges(
+    project_id: str,
+    queue: asyncio.Queue,
+    *,
+    sensitivity: str = "med",
+    stop_event: asyncio.Event | None = None,
+) -> None:
+    """Producer task: derive ridge polygons + centerlines from raw/dem.tif.
+
+    D-14: sensitivity='high' requires [high-quality] extra (whitebox). Returns
+    a 412 SSE message when whitebox is not installed.
+    D-17: sensitivity=low|med|high is validated at the /ridges endpoint before
+    this function is called.
+    D-18: fail-soft 60s budget — warn via SSE but do NOT abort.
+    """
+    if stop_event is None:
+        stop_event = register_stop_event(project_id, "ridges")
+    try:
+        if stop_event.is_set():
+            raise asyncio.CancelledError("ingest stopped by user")
+
+        raw_dir = ensure_project_dirs(project_id)["raw"]
+        dem_path = raw_dir / "dem.tif"
+        if not dem_path.exists():
+            await queue.put(
+                "data: ERROR: raw/dem.tif não existe — execute o passo DEM primeiro.\n\n"
+            )
+            return
+
+        await queue.put(f"data: derivando ridges (sensitivity={sensitivity})...\n\n")
+        t0 = time.monotonic()
+
+        try:
+            fc = await asyncio.to_thread(
+                _ridges.derive_ridges,
+                dem_path,
+                sensitivity,
+                raw_dir / "topography.geojson",
+                raw_dir / "basins.geojson",
+            )
+        except RuntimeError as exc:
+            # D-14: high-quality extra not installed → 412.
+            if "high-quality" in str(exc):
+                await queue.put(f"data: 412: {exc}\n\n")
+                return
+            raise
+
+        elapsed = time.monotonic() - t0
+        if elapsed > 60.0:
+            # D-18 fail-soft: warn but don't abort.
+            await queue.put(
+                f"data: AVISO: derivação levou {elapsed:.1f}s (>60s budget). Continuando.\n\n"
+            )
+
+        _write_geojson_atomic(raw_dir / "ridges.geojson", fc)
+        await queue.put(
+            f"data: ridges: {len(fc['features'])} features → ridges.geojson\n\n"
+        )
+        await queue.put("data: DONE\n\n")
+    except asyncio.CancelledError:
+        await queue.put("data: Cancelado pelo usuário.\n\n")
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("run_terrain_ridges failed")
+        await queue.put(f"data: ERROR: {exc.__class__.__name__}\n\n")
+    finally:
+        clear_stop_event(project_id, "ridges")
         await queue.put(None)

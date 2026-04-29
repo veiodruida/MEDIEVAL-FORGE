@@ -118,61 +118,46 @@ def test_derive_ridges_geometry_is_geometry_collection():
         assert geoms[1]["type"] in {"LineString", "MultiLineString"}, f"Second sub-geom should be LineString; got {geoms[1]['type']}"
 
 
-def test_derive_ridges_sensitivity_high_without_whitebox_returns_412():
+@pytest.mark.asyncio
+async def test_derive_ridges_sensitivity_high_without_whitebox_returns_412():
     """sensitivity='high' without whitebox installed triggers 412-like SSE message via runner."""
-    import asyncio
+    import shutil
+    import tempfile
+    import uuid
+    from pathlib import Path
     from unittest.mock import patch
 
-    # Monkeypatch whitebox as absent
+    from medieval_forge.services import paths as mf_paths
+    from medieval_forge.services.ingest_terrain.ridges import _check_high_quality_available
+
+    # 1. Direct unit: _check_high_quality_available raises RuntimeError when whitebox absent.
     with patch.dict(sys.modules, {"whitebox": None}):
-        queue: asyncio.Queue = asyncio.Queue()
+        with pytest.raises((RuntimeError, ImportError)):
+            _check_high_quality_available()
 
-        async def _run():
-            from medieval_forge.services.ingest_terrain.runner import run_terrain_ridges
-            # We need a dem_path that exists; use synthetic DEM but in a fake project dir
-            # The runner checks for raw/dem.tif — use tmp dir workaround via direct call
-            # Test the underlying derive_ridges raises RuntimeError for high without whitebox
-            with pytest.raises((RuntimeError, ImportError)):
-                from medieval_forge.services.ingest_terrain.ridges import (
-                    _check_high_quality_available,
-                )
-                _check_high_quality_available()
+    # 2. SSE path: runner emits "412" or "high-quality" in SSE messages.
+    with tempfile.TemporaryDirectory() as tmpdir:
+        pid = str(uuid.uuid4())
+        old_root = mf_paths.PROJECTS_ROOT
+        mf_paths.PROJECTS_ROOT = Path(tmpdir)
+        dirs = mf_paths.ensure_project_dirs(pid)
+        shutil.copy(str(SYNTHETIC_DEM), str(dirs["raw"] / "dem.tif"))
 
-        asyncio.get_event_loop().run_until_complete(_run())
+        try:
+            with patch.dict(sys.modules, {"whitebox": None}):
+                from medieval_forge.services.ingest_terrain.runner import run_terrain_ridges
+                q: asyncio.Queue = asyncio.Queue()
+                await run_terrain_ridges(pid, q, sensitivity="high")
 
-    # Also verify the SSE path: mock run_terrain_ridges queue message
-    async def _run_sse():
-        import tempfile
-        import shutil
-        from pathlib import Path
-        from medieval_forge.services import paths as mf_paths
+            messages = []
+            while not q.empty():
+                msg = q.get_nowait()
+                if msg is not None:
+                    messages.append(msg)
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            # Monkeypatch PROJECTS_ROOT and set up project dir
-            import uuid
-            pid = str(uuid.uuid4())
-            old_root = mf_paths.PROJECTS_ROOT
-            mf_paths.PROJECTS_ROOT = Path(tmpdir)
-            dirs = mf_paths.ensure_project_dirs(pid)
-            shutil.copy(str(SYNTHETIC_DEM), str(dirs["raw"] / "dem.tif"))
-
-            try:
-                with patch.dict(sys.modules, {"whitebox": None}):
-                    from medieval_forge.services.ingest_terrain.runner import run_terrain_ridges
-                    q: asyncio.Queue = asyncio.Queue()
-                    await run_terrain_ridges(pid, q, sensitivity="high")
-
-                messages = []
-                while not q.empty():
-                    msg = q.get_nowait()
-                    if msg is not None:
-                        messages.append(msg)
-
-                all_text = " ".join(messages)
-                assert "412" in all_text or "high-quality" in all_text, (
-                    f"Expected 412 or high-quality in SSE messages; got: {messages}"
-                )
-            finally:
-                mf_paths.PROJECTS_ROOT = old_root
-
-    asyncio.get_event_loop().run_until_complete(_run_sse())
+            all_text = " ".join(messages)
+            assert "412" in all_text or "high-quality" in all_text, (
+                f"Expected 412 or high-quality in SSE messages; got: {messages}"
+            )
+        finally:
+            mf_paths.PROJECTS_ROOT = old_root

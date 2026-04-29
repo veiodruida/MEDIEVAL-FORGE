@@ -80,8 +80,28 @@ async def post_dem(project_id: str) -> StreamingResponse:
 
 @router.post("/ridges")
 async def post_ridges(project_id: str, sensitivity: str = "med") -> StreamingResponse:
-    """Plan 05: DEM-derived ridges (low/med/high sensitivity)."""
-    raise HTTPException(status_code=501, detail="Plan 05 stub — ridges not yet implemented")
+    """Plan 05: DEM-derived ridges (low/med/high sensitivity).
+
+    T-05-01: project_id UUID-validated; sensitivity whitelisted to {low,med,high}.
+    D-14: sensitivity='high' without [high-quality] extra → 412 via SSE message.
+    D-17: sensitivity param is threaded through to derive_ridges THRESHOLDS dict.
+    D-18: 60s fail-soft budget warning emitted by runner if exceeded.
+    """
+    if not is_valid_uuid(project_id):
+        raise HTTPException(status_code=400, detail="invalid project_id")
+    if sensitivity not in {"low", "med", "high"}:
+        raise HTTPException(
+            status_code=400,
+            detail=f"sensitivity must be low|med|high; got {sensitivity!r}",
+        )
+    queue: asyncio.Queue = asyncio.Queue()
+    stop_event = terrain_runner.register_stop_event(project_id, "ridges")
+    asyncio.create_task(
+        terrain_runner.run_terrain_ridges(
+            project_id, queue, sensitivity=sensitivity, stop_event=stop_event
+        )
+    )
+    return StreamingResponse(_stream_from_queue(queue), media_type="text/event-stream")
 
 
 @router.post("/stop")
