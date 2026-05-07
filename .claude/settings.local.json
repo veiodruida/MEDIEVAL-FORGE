@@ -6,7 +6,10 @@
       "Skill(gsd-quick)",
       "Skill(gsd-quick:*)",
       "Skill(gsd-next)",
-      "Skill(gsd-next:*)"
+      "Skill(gsd-next:*)",
+      "Bash(mkdir -p .claude/skills/karpathy)",
+      "Bash(git mv *)",
+      "Bash(rmdir Skill)"
     ]
   }
 }
