@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: + bootstrap v3 infrastructure
 status: executing
-stopped_at: Completed 01-01-PLAN.md (Wave 0 preflight + scaffold)
-last_updated: "2026-05-07T15:08:44.496Z"
+stopped_at: Completed 01-02-PLAN.md
+last_updated: "2026-05-07T15:57:57.366Z"
 last_activity: 2026-05-07
 progress:
   total_phases: 8
   completed_phases: 0
   total_plans: 3
-  completed_plans: 1
-  percent: 33
+  completed_plans: 2
+  percent: 67
 ---
 
 # Project State (v3)
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md
 ## Current Position
 
 Phase: 01 (pipeline-parity-port-harness-together) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3
 Status: Ready to execute
 Last activity: 2026-05-07
 
@@ -43,6 +43,8 @@ See `.planning/PROJECT.md` Key Decisions table (D-V3-01 through D-V3-07).
 - [Phase 01-pipeline-parity-port-harness-together]: RegionConfig is @dataclass (not pydantic) per RESEARCH §2.b — drift from inicio is the hard cost.
 - [Phase 01-pipeline-parity-port-harness-together]: border_polygon length is 40 (verbatim from inicio:132-143) — plan/CLAUDE.md mis-counted as 38; documented as Rule 1 deviation.
 - [Phase 01-pipeline-parity-port-harness-together]: ES TopoJSON sourced via npm pack es-atlas@0.6.0 (shasum 4c926d9cba); PT GeoJSON via Git LFS.
+- [Phase 01]: Plan 02 verbatim port: all 8 inicio sections ported 1:1 across 9 submodules; CLI smoke produces 10 contract files with byte-deterministic SHA-256 across runs; Image.NEAREST + cfg.rng_seed + per-country KD-trees + 9999/-1 sentinels + 2x independent masks all preserved
+- [Phase 01]: Windows portability fix (Rule 3 deviation): added encoding='utf-8' to ES TopoJSON open in landmask.py; inicio's POSIX-default open errors on cp1252; fix matches inicio's PT path which already uses utf-8
 
 ### Blockers/Concerns
 
@@ -61,6 +63,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-07T15:08:44.490Z
-Stopped at: Completed 01-01-PLAN.md (Wave 0 preflight + scaffold)
+Last session: 2026-05-07T15:57:57.359Z
+Stopped at: Completed 01-02-PLAN.md
 Resume file: None
