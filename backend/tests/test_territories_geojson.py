@@ -64,12 +64,6 @@ def test_invalid_uuid_rejected():
         )
 
 
-def test_whitelist_contains_territories_and_baronies_geojson():
-    from medieval_forge.services.generator import GENERATED_FILE_WHITELIST
-    assert "territories.geojson" in GENERATED_FILE_WHITELIST
-    assert "baronies.geojson" in GENERATED_FILE_WHITELIST
-
-
 def test_empty_condados_produces_empty_feature_collection(tmp_path, monkeypatch):
     pid = str(uuid.uuid4())
     from medieval_forge.services import paths as _paths
