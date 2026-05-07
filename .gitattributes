@@ -1,2 +1,5 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Phase 01 — large pipeline inputs tracked via Git LFS (RESEARCH §4.b)
+data/regions/iberia_868/inputs/pt_concelhos_wgs84.geojson filter=lfs diff=lfs merge=lfs -text

@@ -88,18 +88,35 @@ IrfanView). A condado label, if present, would appear as readable text near each
 
 ---
 
-## Q11 source: ES TopoJSON (Task 2)
+## Q11 source: ES TopoJSON via npm `es-atlas@0.6.0`
 
-ES TopoJSON `municipalities.json` is sourced via npm (`npm pack es-atlas`) — preferred for reproducibility per
-RESEARCH §4.b. Method to be exercised in Task 2; final source SHA recorded inline in this file at completion of
-Task 2.
+Method A (preferred): `npm pack es-atlas` in `/tmp/es-atlas-scratch`, extracted
+`package/es/municipalities.json` and copied verbatim to
+`data/regions/iberia_868/inputs/es-atlas-pkg/package/es/municipalities.json`.
+
+- npm package: `es-atlas`, version `0.6.0`
+- tarball: `es-atlas-0.6.0.tgz` (514.7 kB packaged, 1.9 MB unpacked)
+- shasum: `4c926d9cba69bb129a148ad251adcd6c73ff01de`
+- integrity: `sha512-+sl1xwndSaM1E[...]tCZ2SdkzbF/fg==`
+- file size on disk: 1 821 999 B (1.74 MB) — well under any LFS threshold; direct commit.
+- target path verbatim: `data/regions/iberia_868/inputs/es-atlas-pkg/package/es/municipalities.json`
+  (matches inicio line 123 `municipality_es_topojson="es-atlas-pkg/package/es/municipalities.json"`).
 
 ---
 
-## Q12 LFS verdict (Task 2)
+## Q12 LFS verdict: LFS configured
 
-To be filled by Task 2: either "LFS configured" (`pt_concelhos_wgs84.geojson` tracked via `.gitattributes`) or
-"direct commit fallback" (with reason — e.g. `git lfs` unavailable). Default plan: LFS.
+`git lfs` (3.7.1) was available; ran `git lfs install` once (updated git hooks) and added a tracking line to
+`.gitattributes`:
+
+```
+data/regions/iberia_868/inputs/pt_concelhos_wgs84.geojson filter=lfs diff=lfs merge=lfs -text
+```
+
+The 29 705 375 B (28.3 MB) PT GeoJSON is committed through LFS so the regular git pack stays light. Verify
+post-commit with `git lfs ls-files`. If a contributor's environment lacks `git-lfs` installed, the smudge filter
+yields a 134-byte text pointer; the loaders then raise on first JSON parse — Plan 03's parity test surfaces the
+breakage in <45 s with a clear error.
 
 ---
 
