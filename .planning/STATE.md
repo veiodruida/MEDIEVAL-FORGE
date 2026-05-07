@@ -28,7 +28,7 @@ See: .planning/PROJECT.md
 Phase: 00 — archive v1.0 + bootstrap v3 (in-progress)
 Plan: quick/260507-g1v-phase-00-v3-archive-milestone-reset
 Status: planning complete, executing
-Last activity: 2026-05-07 — Started Phase 00
+Last activity: 2026-05-07 — Completed quick task 260507-g1v: Phase 00 v3 archive milestone reset
 
 Progress: [░░░░░░░░░░] 0% (0 of 8 phases complete)
 
@@ -48,7 +48,7 @@ None yet.
 
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
-|   |             |      |        |           |
+| 260507-g1v | Phase 00 v3 archive milestone reset | 2026-05-07 | a437f5e | [260507-g1v-phase-00-v3-archive-milestone-reset](./quick/260507-g1v-phase-00-v3-archive-milestone-reset/) |
 
 ## Session Continuity
 
