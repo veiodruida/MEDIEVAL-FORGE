@@ -106,19 +106,49 @@ class RegionConfig:
 # ═══════════════════════════════════════════════════════════════
 
 
-def geo_to_pixel(lon: float, lat: float, cfg: RegionConfig) -> Tuple[int, int]:
-    """Verbatim port pending — Plan 02 §2 task fills body from inicio:152-167."""
-    raise NotImplementedError
+def geo_to_pixel(lon: float, lat: float, cfg: RegionConfig,
+                 w: int = None, h: int = None) -> Tuple[int, int]:
+    """Convert WGS84 lon/lat to pixel coordinates.
+
+    Verbatim port of inicio/map_generator.py:152-167 (D-01).
+    """
+    w = w or cfg.map_w
+    h = h or cfg.map_h
+    span = (cfg.lon_max - cfg.lon_min) * cfg.lon_scale
+    px = int((lon - cfg.lon_min) * cfg.lon_scale / span * w)
+    py = int((1.0 - (lat - cfg.lat_min) / (cfg.lat_max - cfg.lat_min)) * h)
+    return (px, py)
 
 
-def pixel_to_geo(x: int, y: int, cfg: RegionConfig) -> Tuple[float, float]:
-    """Verbatim port pending — Plan 02 §2 task fills body from inicio:170-178."""
-    raise NotImplementedError
+def pixel_to_geo(px: int, py: int, cfg: RegionConfig,
+                 w: int = None, h: int = None) -> Tuple[float, float]:
+    """Convert pixel coordinates to WGS84 lon/lat.
+
+    Verbatim port of inicio/map_generator.py:170-178 (D-01).
+    """
+    w = w or cfg.map_w
+    h = h or cfg.map_h
+    span = (cfg.lon_max - cfg.lon_min) * cfg.lon_scale
+    lon = px / w * span / cfg.lon_scale + cfg.lon_min
+    lat = cfg.lat_max - py / h * (cfg.lat_max - cfg.lat_min)
+    return (lon, lat)
 
 
-def point_in_polygon(point, polygon) -> bool:
-    """Verbatim port pending — Plan 02 §2 task fills body from inicio:181-185."""
-    raise NotImplementedError
+def point_in_polygon(x: float, y: float, polygon: list) -> bool:
+    """Ray-casting point-in-polygon test.
+
+    Verbatim port of inicio/map_generator.py:181-185 (D-01).
+    """
+    n = len(polygon)
+    inside = False
+    j = n - 1
+    for i in range(n):
+        xi, yi = polygon[i]
+        xj, yj = polygon[j]
+        if (yi > y) != (yj > y) and x < (xj - xi) * (y - yi) / (yj - yi) + xi:
+            inside = not inside
+        j = i
+    return inside
 
 
 __all__ = [
