@@ -1,55 +1,97 @@
 {
   "status": "paused",
-  "paused_at": "2026-04-19T20:59:00Z",
-  "phase": "02-read-only-canvas-viewer",
-  "plan": "02-05-canvas-sizing-color-ux-fixes",
-  "task": "stabilization-session-complete",
-  "total_tasks": 5,
-  "next_action": "Wait for Overpass API to recover, then re-ingest asa/new projects at admin_level=7+, then re-apply PT/ES split + densify + 5% padding (see deferred items).",
+  "paused_at": "2026-05-07T15:30:00Z",
+  "phase": "01-pipeline-parity-port-harness-together",
+  "plan": "01-03",
+  "task": "task-3-local-green-gate",
+  "total_tasks": 4,
+  "tasks_completed": 2,
+  "checkpoint_type": "human-verify",
+  "checkpoint_gate": "blocking",
+  "next_action": "Pick a triage option (fix | flip-anyway | refresh-baseline | triage-only) and re-run /gsd-execute-phase 1. Recommended: fix — investigate why port produces 91 condados while golden has 92, add fix(01-03): commit, re-run parity, expect 10/10 green, then proceed to Task 4 (CI flip).",
   "context_notes": [
-    "Session goal evolved from fixing 2 canvas bugs (misalignment + dead zone) into a cascade of 6+ related fixes + reverts.",
-    "Root insight: current OSM data is sparse (66 admin_level=6 polygons for Iberia). Many services/layer 'fixes' that should help with denser data actively hurt with sparse data (condados erode to 0 pixels).",
-    "The working baseline is: 15% padding + no PT/ES split + no densification + Fix B index remap + cache-busting. This gives 91/92 condados with halo of ocean.",
-    "When Overpass recovers, re-ingest with admin_level=7 or 8, then re-apply reverted commits (1ee40bc, 46499ed, 0daffe3) in order. Verify condado count stays >=90 at each step."
+    "Plans 01-01 and 01-02 are FULLY DONE with SUMMARY.md files. Plan 01-03 has Tasks 1 and 2 committed (a9c2032, 04a6e83) but Task 3 (local-green checkpoint) is BLOCKED — parity is RED.",
+    "Parity test result: 4 pass / 6 fail. The 4 passing tests are mountains_mask SSIM, rivers_overlay SSIM, lookup_barony_colors deep-equal, mountain_river_data deep-equal — these don't depend on condado count.",
+    "Root-cause hypothesis: port produces 91 condados while golden has 92. The missing condado (golden has '255,128,0': 92 in lookup_condado_colors.json) cascades to all 6 failing tests via pixel redistribution.",
+    "Plan 01-02 SUMMARY already logged '251 baronies, 91 condados active' and flagged size deltas as pre-existing. This is a port-correctness issue, NOT a parity-harness issue.",
+    "Plan 01-03 <resume-signal> is explicit: 'If failure, do NOT proceed to Task 4 — triage and fix first.' The CI flip (Task 4) must wait for green parity per RESEARCH §7.",
+    "The orchestrator stopped here intentionally. Resuming via /gsd-execute-phase 1 will re-detect Plan 01-03 incomplete (no SUMMARY.md) and re-spawn the gsd-executor agent with fresh context."
   ],
-  "shipped_commits": [
-    "43b1e14 fix(02-05): territories_geojson uses actual pc.shape for pixel->lonlat (GAP-04)",
-    "c88cbc4 fix(02-05): CanvasViewer sync-measures container on observe (GAP-05 belt-and-suspenders)",
-    "a6747e3 fix(ingest): retry Overpass mirrors on 4xx rate-limit/overload codes",
-    "acb85bc fix(territories_geojson): remap orig_idx -> meta_ci (Problem B — kept)",
-    "8a9d2eb fix(canvas): version preview URLs with project.updated_at to bust caches"
-  ],
-  "reverted_commits": [
-    "1ee40bc fix(generator): split municipalities.geojson PT/ES — reverted by a94f4c1 (correct routing hurt with sparse data)",
-    "46499ed fix(generator): densify PT rings + bbox-expand ES centroids — reverted by 9d05376 (built on the split, also hurt)",
-    "0daffe3 fix(02-05): reduce generator padding 15%->5% — reverted by becf3af (tighter bbox caused condado erosion regression)"
-  ],
-  "deferred": [
+  "parity_failure_details": {
+    "test_command": "pytest backend/tests/parity/ -v -m parity",
+    "runtime_seconds": 284,
+    "passing": [
+      "test_visual_png_ssim[mountains_mask.png]",
+      "test_visual_png_ssim[rivers_overlay.png]",
+      "test_json_deep_equal[lookup_barony_colors.json]",
+      "test_json_deep_equal[mountain_river_data.json]"
+    ],
+    "failing": {
+      "test_lookup_png_byte_equal[lookup_barony.png]": "pixel-mismatch (DIFF_*.png written)",
+      "test_lookup_png_byte_equal[lookup_condado.png]": "pixel-mismatch (DIFF_*.png written)",
+      "test_visual_png_ssim[visual_condado.png]": "SSIM 0.9716 < 0.98 threshold",
+      "test_visual_png_ssim[visual_barony.png]": "SSIM 0.9723 < 0.98 threshold",
+      "test_json_deep_equal[lookup_condado_colors.json]": "golden has 92 entries (incl. '255,128,0': 92), port emits 91",
+      "test_json_deep_equal[territory_metadata.json]": "barony pixel_count drift (Grado 889->882, Salas 299->301, Tineo 3158->3170)"
+    }
+  },
+  "triage_options": [
     {
-      "item": "Re-apply PT/ES split + densification + 5% padding with denser OSM data",
-      "blocker": "Overpass API external outage at session end (all 3 mirrors returning 5xx/dispatcher errors)",
-      "unblock_test": "curl POST /api/interpreter with a small admin_level=8 query — if 200, proceed",
-      "order": "1. Re-ingest one test project with admin_level=8. 2. Cherry-pick 1ee40bc and 46499ed. 3. Re-apply padding 5%. 4. Verify condado count stays at 92."
+      "key": "fix",
+      "recommended": true,
+      "summary": "Investigate why port emits 91 vs golden's 92 condados; add fix(01-03): commit; re-run parity until 10/10 green; then proceed to Task 4. Matches plan's own resume-signal contract.",
+      "starting_points": [
+        "Compare territory_data_v3.py condado list against the deployed Reconquista output — is condado at color (255,128,0) in our input data? If yes, check why it gets dropped.",
+        "Check cleanup.py merge step (<200px blob removal) — could be pruning condado 92 due to a numpy/scipy version difference.",
+        "Check voronoi.py per-country KD-tree assignment — could be misrouting condado 92 baronies across PT/ES border.",
+        "Run pipeline with intermediate dumps and inspect the condado_idx array before/after each cleanup pass."
+      ]
     },
     {
-      "item": "Ocean gradient in visual_barony.png",
-      "blocker": "D-04 black-box (map_generator.py). Reference image has gradient; ours is flat steel-blue.",
-      "impact": "Visual polish only. Non-blocking."
+      "key": "flip-anyway",
+      "recommended": false,
+      "summary": "NOT recommended. RESEARCH §7 forbids flipping CI to non-skippable while parity is red — would gate Phase 01's own merge against itself."
     },
     {
-      "item": "GAP-08 zoom threshold 1.5 + tooltip, GAP-07 ErrorBoundary around Stage",
-      "blocker": "Tasks 4 and 5 of plan 02-05 not executed — deferred for focus on the stabilization chain.",
-      "impact": "UX polish."
+      "key": "refresh-baseline",
+      "recommended": false,
+      "summary": "Replace golden fixtures with port output. Contradicts D-09 'deployed wins'. Only valid if we verify the deployed Reconquista output is itself buggy."
+    },
+    {
+      "key": "triage-only",
+      "recommended": false,
+      "summary": "Investigate without editing — open DIFF_*.png, dump full territory_metadata.json diff, report findings. Useful as a precursor to 'fix'."
     }
   ],
-  "blockers": [
-    "Overpass API external outage (transient, retry in hours)"
+  "shipped_commits_this_session": [
+    "13864fa docs(01): record P-1 and Q10 preflight verdicts",
+    "11fad14 chore(01): commit Iberia 868 pipeline inputs + LFS for PT GeoJSON",
+    "e652281 chore(01): commit Iberia 868 golden fixtures (10 of 12 contract files)",
+    "513c353 feat(01): move territory data into package (D-13)",
+    "078bf1c feat(01): scaffold pipeline package skeleton with RegionConfig + iberia_config",
+    "fbacf0f docs(01-01): complete Wave 0 preflight + scaffold plan",
+    "512c63e feat(01): port section 2 coordinate transforms -> contracts.py",
+    "5c123b5 feat(01): port sections 3+4 data loading + land mask -> landmask.py",
+    "6811579 feat(01): port section 5 border mask -> border.py",
+    "a13e103 feat(01): port sections 6+8 voronoi (per-country KD-trees) -> voronoi.py",
+    "1e3249c feat(01): port section 7 cleanup_and_smooth -> cleanup.py",
+    "19ca70b feat(01): port sections 10+11 lookup + export (P-1 per Q8) -> lookup.py, export.py",
+    "13d72d4 feat(01): port sections 9+12 rendering -> render.py",
+    "b74e3d2 feat(01): wire section 13 run_pipeline orchestration -> pipeline/__init__.py",
+    "19a9ef6 docs(01-02): complete verbatim port plan",
+    "a9c2032 chore(01-03): delete v1 generator stack + main.py register edit (D-05/D-06/D-07)",
+    "04a6e83 test(01-03): parity harness + unit + integration tests for v3 pipeline"
   ],
-  "human_actions_pending": [
-    "When Overpass is back, test the deferred re-apply sequence (see deferred[0].order)"
-  ],
-  "uncommitted_files": [],
-  "current_condado_count": {
-    "asa": {"metadata": 91, "geojson": 91, "territory_iberia_defined": 92, "missing_in_cleanup": 1}
-  }
+  "resume_command": "/gsd-execute-phase 1",
+  "resume_session_doc": ".planning/sessions/2026-05-07-session.md",
+  "files_to_read_on_resume": [
+    ".planning/sessions/2026-05-07-session.md",
+    ".planning/HANDOFF.json",
+    ".planning/STATE.md",
+    ".planning/phases/01-pipeline-parity-port-harness-together/01-03-PLAN.md",
+    ".planning/phases/01-pipeline-parity-port-harness-together/01-01-SUMMARY.md",
+    ".planning/phases/01-pipeline-parity-port-harness-together/01-02-SUMMARY.md",
+    ".planning/phases/01-pipeline-parity-port-harness-together/01-RESEARCH.md",
+    ".planning/phases/01-pipeline-parity-port-harness-together/PREFLIGHT.md"
+  ]
 }

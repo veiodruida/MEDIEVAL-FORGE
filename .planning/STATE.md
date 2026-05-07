@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: + bootstrap v3 infrastructure
-status: executing
-stopped_at: Completed 01-02-PLAN.md
-last_updated: "2026-05-07T15:57:57.366Z"
+status: paused
+stopped_at: Plan 01-03 Task 3 (local-green gate) — parity RED, awaiting triage decision
+last_updated: "2026-05-07T15:30:00Z"
 last_activity: 2026-05-07
 progress:
   total_phases: 8
@@ -25,12 +25,14 @@ See: .planning/PROJECT.md
 
 ## Current Position
 
-Phase: 01 (pipeline-parity-port-harness-together) — EXECUTING
-Plan: 3 of 3
-Status: Ready to execute
+Phase: 01 (pipeline-parity-port-harness-together) — PAUSED at parity-red checkpoint
+Plan: 01-03 of 3 (Tasks 1+2 done, Task 3 blocked on parity green, Task 4 gated)
+Status: Awaiting triage decision (fix | flip-anyway | refresh-baseline | triage-only)
 Last activity: 2026-05-07
 
 Progress: [░░░░░░░░░░] 0% (0 of 8 phases complete)
+
+**RESUME:** see `.planning/sessions/2026-05-07-session.md` and `.planning/HANDOFF.json`. Run `/gsd-execute-phase 1` after picking a triage option. Recommended: `fix` — port emits 91 condados, golden has 92; investigate the missing condado, add `fix(01-03):` commit, re-run parity to 10/10 green, then proceed to Task 4.
 
 ## Accumulated Context
 
