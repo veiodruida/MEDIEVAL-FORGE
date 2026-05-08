@@ -78,11 +78,20 @@ async def _refresh_iberia(use_temp_projects_root: bool) -> tuple[Path, Path]:
 
 
 async def _drain(queue: asyncio.Queue) -> None:
+    # Windows default stdout is cp1252 and chokes on the Unicode arrows the
+    # SSE messages use (e.g. "→"). Re-encode each message through stdout's
+    # actual encoding with backslash-escape replacement so the script never
+    # crashes mid-fetch. UTF-8 terminals are unaffected.
+    enc = (sys.stdout.encoding or "ascii").lower()
     while True:
         msg = await queue.get()
         if msg is None:
             return
-        sys.stdout.write(msg)
+        try:
+            sys.stdout.write(msg)
+        except UnicodeEncodeError:
+            safe = msg.encode(enc, errors="backslashreplace").decode(enc, errors="replace")
+            sys.stdout.write(safe)
         sys.stdout.flush()
 
 
