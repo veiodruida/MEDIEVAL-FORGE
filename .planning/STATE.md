@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: + bootstrap v3 infrastructure
 status: executing
-stopped_at: Completed 02-02-PLAN.md
-last_updated: "2026-05-08T14:30:13.604Z"
+stopped_at: Plan 02-03 paused at D-09 LIVE waiver decision — see .planning/phases/02-ingestion-adapter/D-09-LIVE-WAIVER.md (4 options on the table)
+last_updated: "2026-05-08T16:06:06.488Z"
 last_activity: 2026-05-08
 progress:
   total_phases: 8
@@ -54,6 +54,7 @@ See `.planning/PROJECT.md` Key Decisions table (D-V3-01 through D-V3-07).
 
 - v1 archive holds the lessons that v3 must NOT relearn. Before Phase 01 planning, re-read `.planning/v1-archive/STATE.md` for the 30+ pitfalls discovered during v1.0.
 - 6 stale worktrees were removed in Phase 00 — verify `git worktree list` returns 1 line before any future agent work.
+- Plan 02-03 paused at decision checkpoint: live OSM admin_level=8 ES (8179 features) is structurally larger than vendored es-atlas (~3000). Waiver-loop strategy locked in plan <approach> cannot converge. Live parity 4/10 pass, 6/10 fail (visual_condado SSIM=0.9630, visual_barony SSIM=0.9439, lookup PNGs byte-mismatch, territory_metadata.json mismatch). Phase 01 parity 10/10 green — isolation confirmed. See .planning/phases/02-ingestion-adapter/D-09-LIVE-WAIVER.md for evidence + 4 options.
 
 ### Pending Todos
 
@@ -67,6 +68,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-08T14:30:13.601Z
-Stopped at: Completed 02-02-PLAN.md
+Last session: 2026-05-08T16:06:01.898Z
+Stopped at: Plan 02-03 paused at D-09 LIVE waiver decision — see .planning/phases/02-ingestion-adapter/D-09-LIVE-WAIVER.md (4 options on the table)
 Resume file: None
