@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: + bootstrap v3 infrastructure
-status: executing
-stopped_at: "Completed Phase 02 Plan 04 (v3 SSE ingest endpoint, commit d5b0827). Phase 02 closeout: SC-2 + SC-3 met; SC-1 still pending Plan 02-03 D-09 LIVE waiver decision."
-last_updated: "2026-05-08T16:18:17.110Z"
+status: verifying
+stopped_at: "Phase 02 complete. Plan 02-03 closed with Option C (defer + xfail). ROADMAP-02#1 deferred to Phase 02.1 backlog. Phase 02 SC-2 + SC-3 met; SC-1 deferred. Ready for Phase 03 (read-only canvas) or Phase 02 verification gate."
+last_updated: "2026-05-08T16:38:46.833Z"
 last_activity: 2026-05-08
 progress:
-  total_phases: 8
-  completed_phases: 1
+  total_phases: 9
+  completed_phases: 2
   total_plans: 7
-  completed_plans: 6
-  percent: 86
+  completed_plans: 7
+  percent: 100
 ---
 
 # Project State (v3)
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md
 
 Phase: 02 (ingestion-adapter) — EXECUTING
 Plan: 4 of 4
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-05-08
 
 Progress: [░░░░░░░░░░] 0% (0 of 8 phases complete)
@@ -50,6 +50,7 @@ See `.planning/PROJECT.md` Key Decisions table (D-V3-01 through D-V3-07).
 - [Phase 02]: Plan 02-01: ProjectDataset migration completed atomically (D-01, D-03, D-04, D-06, D-08); 5 callsites migrated; Phase 01 parity stays 10/10; 9 new unit tests
 - [Phase 02]: Plan 02-02: services/pipeline/adapters/ subpackage built (4-file flat split: __init__/base/osm/terrain). build_dataset_from_osm wraps fetch_municipalities (D-05); _split_by_iso uses representative_point (Pitfall A3); build_terrain returns vendored mountain_river_data.json (D-13 stub); D-15+D-16 honored by absence. 11 unit tests + Phase 01 parity 10/10 unchanged; combined wave 21/21 green.
 - [Phase 02]: Plan 02-04: D-14 implemented (GET /api/v3/projects/{id}/ingest SSE endpoint). Mirrors v1 _sse_generator pattern; wraps build_dataset_from_osm; terminal None sentinel; per-(project_id, step) stop_event; status: ingested on success, error_ingesting on cancel/exception. Legacy v1 /api/projects/{id}/ingest stays mounted (D-14 coexistence). D-13/D-15/D-16 honored by absence. 6 unit tests pass; Phase 01 parity unchanged 10/10.
+- [Phase 02]: Plan 02-03 closed with Option C (defer + xfail). ROADMAP-02#1 deferred to Phase 02.1 ('Resolve live-ingestion parity contract') — vendored (es-atlas/IGE) and live (raw OSM) are different upstream sources, structural divergence cannot converge under any waiver-loop iteration. test_iberia_868_live.py xfail(strict=False); 6 xfailed + 4 xpassed, suite exit 0; Phase 01 parity 10/10 green. See D-09-LIVE-WAIVER.md.
 
 ### Blockers/Concerns
 
@@ -69,6 +70,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-08T16:18:17.108Z
-Stopped at: Completed Phase 02 Plan 04 (v3 SSE ingest endpoint, commit d5b0827). Phase 02 closeout: SC-2 + SC-3 met; SC-1 still pending Plan 02-03 D-09 LIVE waiver decision.
+Last session: 2026-05-08T16:38:46.831Z
+Stopped at: Phase 02 complete. Plan 02-03 closed with Option C (defer + xfail). ROADMAP-02#1 deferred to Phase 02.1 backlog. Phase 02 SC-2 + SC-3 met; SC-1 deferred. Ready for Phase 03 (read-only canvas) or Phase 02 verification gate.
 Resume file: None
