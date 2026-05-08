@@ -3,8 +3,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 from medieval_forge.services.pipeline.contracts import ProjectDataset
 from medieval_forge.services.pipeline.regions import iberia_config
 

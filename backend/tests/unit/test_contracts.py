@@ -4,8 +4,6 @@ from __future__ import annotations
 from dataclasses import fields
 from pathlib import Path
 
-import pytest
-
 from medieval_forge.services.pipeline.contracts import ProjectDataset, RegionConfig
 
 
