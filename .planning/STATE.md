@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: + bootstrap v3 infrastructure
 status: executing
-stopped_at: Completed 02-01-PLAN.md
-last_updated: "2026-05-08T14:16:50.866Z"
+stopped_at: Completed 02-02-PLAN.md
+last_updated: "2026-05-08T14:30:13.604Z"
 last_activity: 2026-05-08
 progress:
   total_phases: 8
   completed_phases: 1
   total_plans: 7
-  completed_plans: 4
-  percent: 57
+  completed_plans: 5
+  percent: 71
 ---
 
 # Project State (v3)
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md
 ## Current Position
 
 Phase: 02 (ingestion-adapter) — EXECUTING
-Plan: 2 of 4
+Plan: 3 of 4
 Status: Ready to execute
 Last activity: 2026-05-08
 
@@ -48,6 +48,7 @@ See `.planning/PROJECT.md` Key Decisions table (D-V3-01 through D-V3-07).
 - [Phase 01]: Plan 02 verbatim port: all 8 inicio sections ported 1:1 across 9 submodules; CLI smoke produces 10 contract files with byte-deterministic SHA-256 across runs; Image.NEAREST + cfg.rng_seed + per-country KD-trees + 9999/-1 sentinels + 2x independent masks all preserved
 - [Phase 01]: Windows portability fix (Rule 3 deviation): added encoding='utf-8' to ES TopoJSON open in landmask.py; inicio's POSIX-default open errors on cp1252; fix matches inicio's PT path which already uses utf-8
 - [Phase 02]: Plan 02-01: ProjectDataset migration completed atomically (D-01, D-03, D-04, D-06, D-08); 5 callsites migrated; Phase 01 parity stays 10/10; 9 new unit tests
+- [Phase 02]: Plan 02-02: services/pipeline/adapters/ subpackage built (4-file flat split: __init__/base/osm/terrain). build_dataset_from_osm wraps fetch_municipalities (D-05); _split_by_iso uses representative_point (Pitfall A3); build_terrain returns vendored mountain_river_data.json (D-13 stub); D-15+D-16 honored by absence. 11 unit tests + Phase 01 parity 10/10 unchanged; combined wave 21/21 green.
 
 ### Blockers/Concerns
 
@@ -66,6 +67,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-08T14:16:50.864Z
-Stopped at: Completed 02-01-PLAN.md
+Last session: 2026-05-08T14:30:13.601Z
+Stopped at: Completed 02-02-PLAN.md
 Resume file: None
