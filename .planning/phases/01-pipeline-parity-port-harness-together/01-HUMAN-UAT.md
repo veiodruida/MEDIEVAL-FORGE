@@ -3,7 +3,7 @@ status: partial
 phase: 01-pipeline-parity-port-harness-together
 source: [01-VERIFICATION.md]
 started: 2026-05-08T11:05:00Z
-updated: 2026-05-08T11:05:00Z
+updated: 2026-05-08T12:00:00Z
 ---
 
 ## Current Test
@@ -14,7 +14,7 @@ updated: 2026-05-08T11:05:00Z
 
 ### 1. CI gate end-to-end test (ROADMAP SC-3)
 
-expected: Push a PR that deliberately breaks parity (e.g. change `np.random.default_rng(cfg.rng_seed)` to `default_rng(43)` in render.py). GitHub blocks merge with red status check on `pytest-parity`. Note: will currently FAIL on CR-01 (LFS pointer parse error) — fix CR-01 first.
+expected: Push a PR that deliberately breaks parity (e.g. change `np.random.default_rng(cfg.rng_seed)` to `default_rng(43)` in render.py). GitHub blocks merge with red status check on `pytest-parity`. CR-01 LFS blocker fixed in e7a1f8c — this test is now executable.
 result: [pending]
 
 ### 2. Visual inspection of refreshed golden
@@ -30,14 +30,14 @@ result: [pending]
 ### 4. CR-01 decision (CI lfs: true missing)
 
 expected: Single-line ci.yml fix via `/gsd-code-review-fix 01`, OR accept as known-broken with rationale.
-result: [pending]
+result: resolved — `/gsd-code-review-fix 01` applied (commit e7a1f8c). Also fixed WR-01/02/03.
 
 ## Summary
 
 total: 4
-passed: 0
+passed: 1
 issues: 0
-pending: 4
+pending: 3
 skipped: 0
 blocked: 0
 
