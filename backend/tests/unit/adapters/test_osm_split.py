@@ -68,10 +68,21 @@ def test_build_dataset_from_osm_writes_two_geojsons_to_inputs_dir(
     monkeypatch.setattr(paths_mod, "PROJECTS_ROOT", tmp_path / "projects")
 
     # Monkey-patch fetch_municipalities to return the synthetic FC (no network).
-    async def _fake_fetch(country_iso, queue, **kwargs):  # noqa: ARG001
-        return synthetic_iberia_fc
-
+    # The Plan 02-03 admin_level fix makes the adapter call fetch_municipalities
+    # ONCE PER ISO with `clip_iso_codes=[iso]`. The mock therefore mimics the real
+    # fetcher's per-call clipping: each invocation returns ONLY features for the
+    # ISO(s) requested, so the adapter's combined FC matches the synthetic split.
     import medieval_forge.services.pipeline.adapters.osm as osm_mod
+
+    async def _fake_fetch(country_iso, queue, *, clip_iso_codes=None, admin_level=6, **kwargs):  # noqa: ARG001
+        if not clip_iso_codes:
+            return synthetic_iberia_fc
+        by_iso = osm_mod._split_by_iso(synthetic_iberia_fc, clip_iso_codes)
+        feats = []
+        for iso in clip_iso_codes:
+            feats.extend(by_iso.get(iso, []))
+        return {"type": "FeatureCollection", "features": feats}
+
     monkeypatch.setattr(osm_mod, "fetch_municipalities", _fake_fetch)
 
     queue: asyncio.Queue = asyncio.Queue()

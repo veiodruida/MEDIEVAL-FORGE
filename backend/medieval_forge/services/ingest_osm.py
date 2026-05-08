@@ -261,6 +261,7 @@ async def fetch_municipalities(
     clip_iso_codes: list[str] | None = None,
     client_factory: Callable[[], httpx.AsyncClient] | None = None,
     stop_event: asyncio.Event | None = None,
+    admin_level: int = 6,
 ) -> dict[str, Any]:
     """Busca municípios OSM e retorna GeoJSON FeatureCollection.
 
@@ -275,21 +276,26 @@ async def fetch_municipalities(
               Exemplo: ["ES", "PT"] para Ibéria.
               Se None e bbox fornecido, sem clipping (avisa no SSE).
         client_factory: Fábrica de cliente HTTP (para testes).
+        admin_level: OSM admin_level for the relations to fetch. Default 6
+              preserves v1 behaviour (PT distrito / ES provincia). Phase 02
+              adapter overrides this per-ISO (PT=7 concelho, ES=8 municipio)
+              to match the vendored fixture cardinality.
     """
     if bbox is not None:
         lat_min, lon_min, lat_max, lon_max = bbox
         await queue.put(
             f"data: Consultando OSM por área ({lat_min:.2f},{lon_min:.2f} → "
-            f"{lat_max:.2f},{lon_max:.2f}) — mais rápido que por país...\n\n"
+            f"{lat_max:.2f},{lon_max:.2f}) admin_level={admin_level} — "
+            f"mais rápido que por país...\n\n"
         )
-        query = _build_bbox_query(lat_min, lon_min, lat_max, lon_max)
+        query = _build_bbox_query(lat_min, lon_min, lat_max, lon_max, admin_level=admin_level)
     else:
         validate_iso_country(country_iso)
         await queue.put(
-            f"data: Consultando OSM Overpass por país ({country_iso})... "
+            f"data: Consultando OSM Overpass por país ({country_iso}, admin_level={admin_level})... "
             f"Pode demorar até 3 min para países grandes.\n\n"
         )
-        query = _build_country_query(country_iso)
+        query = _build_country_query(country_iso, admin_level=admin_level)
 
     payload = await _post_query(query, queue, client_factory, stop_event=stop_event)
 

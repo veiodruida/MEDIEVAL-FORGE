@@ -27,6 +27,19 @@ log = logging.getLogger(__name__)
 # municipalities (Lisboa, Funchal) aren't dropped at the partition step.
 _COUNTRY_BUFFER_DEG: float = 0.025
 
+# Per-ISO OSM admin_level map. The vendored fixture cardinality is at the
+# concelho/municipio tier, NOT the v1 default of admin_level=6:
+#   PT concelho ≈ admin_level=7 (~278 features in the vendored
+#     pt_concelhos_wgs84.geojson)
+#   ES municipio ≈ admin_level=8 (~3000+ features in the vendored
+#     es-atlas municipalities)
+# v1 fetch_municipalities defaulted to admin_level=6 (PT distrito + ES
+# provincia), which on first live-snapshot capture returned only 18+50
+# features and broke the parity test (Plan 02-03 Rule 1 deviation).
+_ADMIN_LEVEL_BY_ISO: dict[str, int] = {"PT": 7, "ES": 8}
+# Fallback for any future ISO not explicitly mapped (matches v1 default).
+_DEFAULT_ADMIN_LEVEL: int = 6
+
 # D-13: vendored mountain_river_data.json path (Phase 02 stub passthrough).
 # Anchored to repo root via parents[5] from this file:
 #   adapters/osm.py -> adapters/ -> pipeline/ -> services/ -> medieval_forge/ -> backend/ -> repo root
@@ -122,18 +135,39 @@ async def build_dataset_from_osm(
             f"Phase 02 supports Iberia 868 only — iso_codes must include PT and ES, got {iso_codes!r}"
         )
 
-    # Step 1: wrap fetch_municipalities. country_iso is informational only when bbox is set.
-    await queue.put(f"data: Adapter: fetching OSM municipalities (bbox={bbox})...\n\n")
-    combined_fc = await fetch_municipalities(
-        country_iso=iso_codes[0],
-        queue=queue,
-        bbox=bbox,
-        clip_iso_codes=iso_codes,
-        client_factory=client_factory,
-        stop_event=stop_event,
-    )
+    # Step 1: wrap fetch_municipalities ONCE PER ISO using the per-ISO admin_level
+    # (PT=7 concelho, ES=8 municipio). v1's single-call admin_level=6 default
+    # returned PT distritos + ES provincias — the wrong cardinality tier and
+    # the cause of the Plan 02-03 Rule 1 deviation.
+    combined_features: list[dict[str, Any]] = []
+    for iso in iso_codes:
+        admin_level = _ADMIN_LEVEL_BY_ISO.get(iso, _DEFAULT_ADMIN_LEVEL)
+        await queue.put(
+            f"data: Adapter: fetching OSM municipalities for {iso} "
+            f"(bbox={bbox}, admin_level={admin_level})...\n\n"
+        )
+        per_iso_fc = await fetch_municipalities(
+            country_iso=iso,
+            queue=queue,
+            bbox=bbox,
+            clip_iso_codes=[iso],  # narrow the bbox return to this ISO only
+            client_factory=client_factory,
+            stop_event=stop_event,
+            admin_level=admin_level,
+        )
+        per_iso_features = per_iso_fc.get("features", [])
+        await queue.put(
+            f"data: Adapter: {iso} (admin_level={admin_level}) returned "
+            f"{len(per_iso_features)} features.\n\n"
+        )
+        combined_features.extend(per_iso_features)
 
-    # Step 2: split-by-ISO (NEW logic — see _split_by_iso docstring).
+    combined_fc = {"type": "FeatureCollection", "features": combined_features}
+
+    # Step 2: split-by-ISO over the combined per-ISO results. Defensive — even
+    # though clip_iso_codes already filtered each call, _split_by_iso re-routes
+    # any cross-border features to the canonical ISO and keeps the partition
+    # logic in one place for future ISOs that may share a bbox span.
     by_iso = _split_by_iso(combined_fc, iso_codes)
     pt_count = len(by_iso["PT"])
     es_count = len(by_iso["ES"])
