@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: + bootstrap v3 infrastructure
 status: executing
-stopped_at: Phase 02 context gathered
-last_updated: "2026-05-08T10:58:20.826Z"
+stopped_at: Completed 02-01-PLAN.md
+last_updated: "2026-05-08T14:16:50.866Z"
 last_activity: 2026-05-08
 progress:
   total_phases: 8
   completed_phases: 1
-  total_plans: 3
-  completed_plans: 3
-  percent: 100
+  total_plans: 7
+  completed_plans: 4
+  percent: 57
 ---
 
 # Project State (v3)
@@ -21,13 +21,13 @@ progress:
 See: .planning/PROJECT.md
 
 **Core value:** A Game Designer goes from "country + historical period" to a validated, Unity-ready map package — driven by geometry, with LLM as opt-in metadata.
-**Current focus:** Phase 01 — pipeline-parity-port-harness-together
+**Current focus:** Phase 02 — ingestion-adapter
 
 ## Current Position
 
-Phase: 02
-Plan: Not started
-Status: Executing Phase 01
+Phase: 02 (ingestion-adapter) — EXECUTING
+Plan: 2 of 4
+Status: Ready to execute
 Last activity: 2026-05-08
 
 Progress: [░░░░░░░░░░] 0% (0 of 8 phases complete)
@@ -47,6 +47,7 @@ See `.planning/PROJECT.md` Key Decisions table (D-V3-01 through D-V3-07).
 - [Phase 01-pipeline-parity-port-harness-together]: ES TopoJSON sourced via npm pack es-atlas@0.6.0 (shasum 4c926d9cba); PT GeoJSON via Git LFS.
 - [Phase 01]: Plan 02 verbatim port: all 8 inicio sections ported 1:1 across 9 submodules; CLI smoke produces 10 contract files with byte-deterministic SHA-256 across runs; Image.NEAREST + cfg.rng_seed + per-country KD-trees + 9999/-1 sentinels + 2x independent masks all preserved
 - [Phase 01]: Windows portability fix (Rule 3 deviation): added encoding='utf-8' to ES TopoJSON open in landmask.py; inicio's POSIX-default open errors on cp1252; fix matches inicio's PT path which already uses utf-8
+- [Phase 02]: Plan 02-01: ProjectDataset migration completed atomically (D-01, D-03, D-04, D-06, D-08); 5 callsites migrated; Phase 01 parity stays 10/10; 9 new unit tests
 
 ### Blockers/Concerns
 
@@ -65,6 +66,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-08T10:58:20.824Z
-Stopped at: Phase 02 context gathered
-Resume file: .planning/phases/02-ingestion-adapter/02-CONTEXT.md
+Last session: 2026-05-08T14:16:50.864Z
+Stopped at: Completed 02-01-PLAN.md
+Resume file: None

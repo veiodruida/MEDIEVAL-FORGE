@@ -40,9 +40,9 @@ Plans:
 1. Phase 01 parity test stays green when input is "live ingestion" instead of fixture snapshot
 2. `services/pipeline/contracts.py` defines `ProjectDataset` consumed by both fixture and live paths
 3. Adapter functions wrap (don't rewrite) `ingest_wikidata`, `ingest_osm`, `overpass_client`, `ingest_terrain`
-**Plans:** 4 plans
+**Plans:** 1/4 plans executed
 Plans:
-- [ ] 02-01-PLAN.md — Define ProjectDataset and atomically migrate all RegionConfig path-field callsites + GeoJSON branch + fail-fast assert (D-01..D-08)
+- [x] 02-01-PLAN.md — Define ProjectDataset and atomically migrate all RegionConfig path-field callsites + GeoJSON branch + fail-fast assert (D-01..D-08)
 - [ ] 02-02-PLAN.md — services/pipeline/adapters/ subpackage: build_dataset_from_osm + split-by-ISO + terrain stub (D-05, D-07, D-13, D-15, D-16)
 - [ ] 02-03-PLAN.md — Live-ingestion parity test + snapshot + manual refresh script (D-09..D-12, ROADMAP-02#1, waiver-loop strategy)
 - [ ] 02-04-PLAN.md — /api/v3/projects/{id}/ingest SSE endpoint + v3 router registration (D-14)
