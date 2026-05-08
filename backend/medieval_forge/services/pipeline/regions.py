@@ -2,9 +2,7 @@
 
 Verbatim port of inicio/map_generator.py §1 lines 115-145 (`iberia_config`)
 with these substitutions per CONTEXT.md / RESEARCH:
-  - municipality_pt_geojson  -> data/regions/iberia_868/inputs/pt_concelhos_wgs84.geojson  (D-11)
-  - municipality_es_topojson -> data/regions/iberia_868/inputs/es-atlas-pkg/package/es/municipalities.json  (D-11)
-  - mountain_river_json      -> data/regions/iberia_868/inputs/mountain_river_data.json  (D-11)
+  - dataset (ProjectDataset) → vendored paths under data/regions/iberia_868/inputs/  (D-08)
   - kingdoms/duchies/condados loaded statically from the package (D-13, D-14)
   - rng_seed=42 promoted onto cfg per CLAUDE.md determinism rule
   - draw_names=False per PREFLIGHT.md Q10 verdict
@@ -16,7 +14,7 @@ set are copied verbatim from inicio lines 125-143 (no reformatting).
 
 from pathlib import Path
 
-from .contracts import RegionConfig
+from .contracts import ProjectDataset, RegionConfig
 from ...data.regions.iberia_868.territory_data import (
     KINGDOMS,
     DUCHIES,
@@ -40,14 +38,20 @@ _INPUTS_DIR = (
 
 def iberia_config() -> RegionConfig:
     """Default configuration for the Iberian Peninsula (868 AD)."""
+    # D-08: vendored ProjectDataset (es-atlas-pkg TopoJSON + pt_concelhos GeoJSON
+    # + mountain_river_data.json). iberia_config() is the boundary between the
+    # Phase 01 vendored-fixture path and the Phase 02 live-adapter path; both
+    # produce the same `golden/` outputs (see Phase 02 D-11).
+    dataset = ProjectDataset(
+        pt_geojson=_INPUTS_DIR / "pt_concelhos_wgs84.geojson",
+        es_input=_INPUTS_DIR / "es-atlas-pkg" / "package" / "es" / "municipalities.json",
+        mountain_river_json=_INPUTS_DIR / "mountain_river_data.json",
+    )
     cfg = RegionConfig(
         name="iberia",
         map_w=1920, map_h=1080, upscale=2,
         lon_min=-13.2, lon_max=8.2, lat_min=35.4, lat_max=44.6,
         output_dir="../Assets/StreamingAssets/Maps",
-        municipality_pt_geojson=str(_INPUTS_DIR / "pt_concelhos_wgs84.geojson"),
-        municipality_es_topojson=str(_INPUTS_DIR / "es-atlas-pkg" / "package" / "es" / "municipalities.json"),
-        mountain_river_json=str(_INPUTS_DIR / "mountain_river_data.json"),
         pt_duchies={"d_portucale", "d_gharb", "d_fronteira"},
         kingdom_colors={
             0: (190, 158, 82),   # Astúrias — gold
@@ -73,6 +77,7 @@ def iberia_config() -> RegionConfig:
         condados=CONDADOS,
         rng_seed=42,
         draw_names=False,
+        dataset=dataset,
     )
     return cfg
 

@@ -178,7 +178,8 @@ def render_mountains(cfg: RegionConfig, land_2x=None):
     INDEPENDENTLY via build_land_mask at 2x resolution (target_w=map_w*upscale,
     target_h=map_h*upscale) — NOT an upscale of the 1x mask.
     """
-    if not cfg.mountain_river_json or not os.path.exists(cfg.mountain_river_json):
+    mr_path = cfg.dataset.mountain_river_json if cfg.dataset is not None else None
+    if not mr_path or not os.path.exists(mr_path):
         return None
 
     # Rule #6 + P-4: independent 2x land mask render (not an upscale).
@@ -192,7 +193,7 @@ def render_mountains(cfg: RegionConfig, land_2x=None):
             target_h=cfg.map_h * cfg.upscale,
         )
 
-    with open(cfg.mountain_river_json, 'r') as f:
+    with open(mr_path, 'r') as f:
         data = json.load(f)
 
     mountains = data.get('mountains', {})
@@ -225,10 +226,11 @@ def render_rivers(cfg: RegionConfig):
     Verbatim port of inicio/map_generator.py:765-791 (D-01).
     Independent 2x render at (map_w*upscale, map_h*upscale) per rule #6.
     """
-    if not cfg.mountain_river_json or not os.path.exists(cfg.mountain_river_json):
+    mr_path = cfg.dataset.mountain_river_json if cfg.dataset is not None else None
+    if not mr_path or not os.path.exists(mr_path):
         return None
 
-    with open(cfg.mountain_river_json, 'r') as f:
+    with open(mr_path, 'r') as f:
         data = json.load(f)
 
     rivers = data.get('rivers', {})

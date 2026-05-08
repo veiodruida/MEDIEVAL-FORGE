@@ -20,7 +20,26 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
-from typing import List, Tuple
+from pathlib import Path
+from typing import List, Optional, Tuple
+
+
+@dataclass
+class ProjectDataset:
+    """Paths to the three geometry inputs consumed by the pipeline (D-01..D-04).
+
+    Required: pt_geojson, es_input, mountain_river_json
+    Optional: dem_raster (slot reserved; not consumed by inicio yet — D-13)
+
+    Carries Path objects (not parsed FeatureCollections) per Phase 02 D-02 —
+    the pipeline opens/parses internally, preserving inicio behavior +
+    determinism.
+    """
+
+    pt_geojson: Path
+    es_input: Path
+    mountain_river_json: Path
+    dem_raster: Optional[Path] = None
 
 
 @dataclass
@@ -45,9 +64,10 @@ class RegionConfig:
 
     # Paths
     output_dir: str = "../Assets/StreamingAssets/Maps"
-    municipality_pt_geojson: str = None  # path to PT concelhos GeoJSON
-    municipality_es_topojson: str = None  # path to ES municipalities TopoJSON
-    mountain_river_json: str = None  # path to mountain/river data
+    # D-01: file inputs flow through cfg.dataset (ProjectDataset). The three
+    # legacy path fields (municipality_pt_geojson, municipality_es_topojson,
+    # mountain_river_json) were removed in Phase 02 Plan 01.
+    dataset: "ProjectDataset" = field(default=None)
 
     # PT/ES border polygon (for assigning municipalities to correct baronies)
     # List of (lon, lat) points defining the border
@@ -152,6 +172,7 @@ def point_in_polygon(x: float, y: float, polygon: list) -> bool:
 
 
 __all__ = [
+    "ProjectDataset",
     "RegionConfig",
     "geo_to_pixel",
     "pixel_to_geo",

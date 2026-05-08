@@ -171,8 +171,9 @@ def run_pipeline(cfg: RegionConfig) -> None:
     # 14. Copy mountain_river_data.json into output (10th contract file).
     # The deployed Reconquista folder ships this file alongside the others; it
     # is the same bytes as the input. Plan 03's parity test reads it from output.
-    if cfg.mountain_river_json and os.path.exists(cfg.mountain_river_json):
-        shutil.copy2(cfg.mountain_river_json,
+    mr_path = cfg.dataset.mountain_river_json if cfg.dataset is not None else None
+    if mr_path and os.path.exists(mr_path):
+        shutil.copy2(mr_path,
                      os.path.join(cfg.output_dir, "mountain_river_data.json"))
 
     print(f"\n{'='*60}")

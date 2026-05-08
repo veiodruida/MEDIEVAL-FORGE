@@ -1,8 +1,12 @@
 """Verbatim port of inicio/map_generator.py §3 (DATA LOADING) + §4 (LAND MASK).
 
-Three functions, all carrying inicio bodies 1:1 per D-01:
+Functions, all carrying inicio bodies 1:1 per D-01 except for the
+Phase 02 D-06 GeoJSON ES branch + D-04 fail-fast input assert in
+`load_municipalities`:
   - decode_topojson_municipalities (§3, inicio:200-242)
-  - load_municipalities             (§3, inicio:245-260)
+  - decode_geojson_municipalities  (Phase 02 D-06; output shape matches
+                                    decode_topojson_municipalities)
+  - load_municipalities             (§3, inicio:245-260; D-04 + D-06)
   - build_land_mask                 (§4, inicio:267-310) — P-11 island scaling
                                     `cfg.island_min_px * (w / cfg.map_w)` preserved
                                     so the 2x mask uses 4× the island threshold
@@ -16,6 +20,7 @@ from __future__ import annotations
 
 import json
 import os
+from pathlib import Path
 
 import numpy as np
 from PIL import Image, ImageDraw
@@ -72,27 +77,105 @@ def decode_topojson_municipalities(topo: dict, cfg: RegionConfig) -> list:
     return result
 
 
-def load_municipalities(cfg: RegionConfig):
-    """Load PT GeoJSON and ES TopoJSON municipality data.
+def decode_geojson_municipalities(fc: dict, cfg: RegionConfig) -> list:
+    """Decode GeoJSON FeatureCollection into list of {lon, lat, rings}.
 
-    Verbatim port of inicio/map_generator.py:245-260 (D-01).
+    Phase 02 D-06: live OSM ES output emits GeoJSON (not TopoJSON). Output
+    shape MUST match decode_topojson_municipalities byte-for-byte (verbatim
+    parity with inicio:215-219). Each item:
+
+        {"lon": float, "lat": float, "rings": list[list[tuple[float, float]]]}
+
+    lon/lat = arithmetic mean of the FIRST ring's points (mirrors inicio:215-217).
+    Bbox-filtered to cfg.lon_min..lon_max / cfg.lat_min..lat_max (mirrors
+    inicio:218-219). Rings shorter than 3 points are dropped (matches inicio:208-211).
+
+    Polygon → exterior ring only. MultiPolygon → list of exterior rings.
+    Anything else (Point, LineString, etc.) → skipped.
+    """
+    result = []
+    for feature in fc.get("features", []):
+        geom = feature.get("geometry") or {}
+        gt = geom.get("type", "")
+        coords = geom.get("coordinates", [])
+        rings = []
+        if gt == "Polygon" and coords:
+            r = coords[0]  # exterior ring only — matches TopoJSON branch
+            if len(r) >= 3:
+                rings.append([tuple(p) for p in r])
+        elif gt == "MultiPolygon":
+            for poly in coords:
+                if poly:
+                    r = poly[0]
+                    if len(r) >= 3:
+                        rings.append([tuple(p) for p in r])
+        else:
+            continue
+        if not rings:
+            continue
+        mr = rings[0]
+        cl = sum(p[0] for p in mr) / len(mr)
+        cla = sum(p[1] for p in mr) / len(mr)
+        if cfg.lon_min <= cl <= cfg.lon_max and cfg.lat_min <= cla <= cfg.lat_max:
+            result.append({"lon": cl, "lat": cla, "rings": rings})
+    return result
+
+
+def load_municipalities(cfg: RegionConfig):
+    """Load PT GeoJSON and ES TopoJSON/GeoJSON municipality data.
+
+    Verbatim port of inicio/map_generator.py:245-260 (D-01) extended in
+    Phase 02 with:
+      - D-04 fail-fast input assert: cfg.dataset and the three required
+        Path attributes (pt_geojson, es_input, mountain_river_json) MUST
+        exist on disk. Missing → FileNotFoundError naming the missing
+        attribute.
+      - D-06 ES extension discriminator: `.geojson` → GeoJSON branch
+        (decode_geojson_municipalities); ANY OTHER extension (including
+        the vendored `.json` TopoJSON) → existing TopoJSON branch.
+
     Returns (pt_data, es_municipalities) tuple.
     """
+    # D-04: required ProjectDataset paths must exist; fail fast on missing input.
+    # Phase 02 ProjectDataset is the single port through which file inputs flow;
+    # the legacy three flat path fields on RegionConfig are gone.
+    if cfg.dataset is None:
+        raise FileNotFoundError(
+            "RegionConfig.dataset is None — Phase 02 ProjectDataset is required."
+        )
+    for attr in ("pt_geojson", "es_input", "mountain_river_json"):
+        p = getattr(cfg.dataset, attr, None)
+        if p is None or not Path(p).exists():
+            raise FileNotFoundError(
+                f"ProjectDataset.{attr} missing or not found: {p!r}"
+            )
+
     pt_data = None
     es_municipalities = []
 
-    if cfg.municipality_pt_geojson and os.path.exists(cfg.municipality_pt_geojson):
-        with open(cfg.municipality_pt_geojson, 'r', encoding='utf-8') as f:
+    pt_path = cfg.dataset.pt_geojson
+    if pt_path and os.path.exists(pt_path):
+        with open(pt_path, 'r', encoding='utf-8') as f:
             pt_data = json.load(f)
         print(f"  Loaded PT municipalities: {len(pt_data.get('features', []))} features")
 
-    if cfg.municipality_es_topojson and os.path.exists(cfg.municipality_es_topojson):
-        # Windows-port deviation (Rule 3): inicio:256 omits encoding='utf-8',
-        # relying on POSIX UTF-8 default. On Windows cp1252 raises
-        # UnicodeDecodeError on byte 0x8d. PT load already uses utf-8 (inicio:251);
-        # adding it here keeps cross-platform behaviour identical to inicio's intent.
-        with open(cfg.municipality_es_topojson, 'r', encoding='utf-8') as f:
-            es_municipalities = decode_topojson_municipalities(json.load(f), cfg)
+    es_path = cfg.dataset.es_input
+    if es_path and os.path.exists(es_path):
+        # D-06: extension discriminator. `.geojson` → GeoJSON branch;
+        # anything else (including the vendored `.json` TopoJSON) → existing
+        # TopoJSON branch. DO NOT INVERT — the vendored npm package
+        # `es-atlas@0.6.0` ships municipalities as `.json` (TopoJSON despite
+        # the extension); only live adapter output uses `.geojson`.
+        if str(es_path).endswith(".geojson"):
+            with open(es_path, 'r', encoding='utf-8') as f:
+                es_municipalities = decode_geojson_municipalities(json.load(f), cfg)
+        else:
+            # Windows-port deviation (Rule 3): inicio:256 omits encoding='utf-8',
+            # relying on POSIX UTF-8 default. On Windows cp1252 raises
+            # UnicodeDecodeError on byte 0x8d. PT load already uses utf-8 (inicio:251);
+            # adding it here keeps cross-platform behaviour identical to inicio's intent.
+            with open(es_path, 'r', encoding='utf-8') as f:
+                es_municipalities = decode_topojson_municipalities(json.load(f), cfg)
         print(f"  Loaded ES municipalities: {len(es_municipalities)} features")
 
     return pt_data, es_municipalities
@@ -153,6 +236,7 @@ def build_land_mask(pt_data, es_municipalities, cfg: RegionConfig,
 
 __all__ = [
     "decode_topojson_municipalities",
+    "decode_geojson_municipalities",
     "load_municipalities",
     "build_land_mask",
 ]
