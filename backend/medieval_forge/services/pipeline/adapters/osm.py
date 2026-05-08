@@ -1,0 +1,158 @@
+"""OSM adapter: wrap ingest_osm.fetch_municipalities + split-by-ISO partition (D-05).
+
+Implements ROADMAP-02#3 "wrap, don't rewrite". The split-by-ISO step is NEW
+logic (the existing _clip_features_to_countries is a union filter, not a
+partition — see RESEARCH Pitfall 4).
+"""
+from __future__ import annotations
+
+import asyncio
+import logging
+from pathlib import Path
+from typing import Any, Callable
+
+import httpx
+from shapely.geometry import shape as shapely_shape
+
+from medieval_forge.services.country_boundaries import get_country_polygon
+from medieval_forge.services.ingest_osm import fetch_municipalities  # D-05: wrap
+from medieval_forge.services.pipeline.contracts import ProjectDataset
+
+from .base import project_inputs_dir, _write_geojson_atomic
+
+log = logging.getLogger(__name__)
+
+# 0.025 deg buffer around country polygons — matches ingest_osm._COUNTRY_BUFFER_DEG;
+# absorbs Natural Earth coastline imprecision (~1-2 km) so that coastal
+# municipalities (Lisboa, Funchal) aren't dropped at the partition step.
+_COUNTRY_BUFFER_DEG: float = 0.025
+
+# D-13: vendored mountain_river_data.json path (Phase 02 stub passthrough).
+# Anchored to repo root via parents[5] from this file:
+#   adapters/osm.py -> adapters/ -> pipeline/ -> services/ -> medieval_forge/ -> backend/ -> repo root
+_REPO_ROOT = Path(__file__).resolve().parents[5]
+_VENDORED_MOUNTAIN_RIVER = _REPO_ROOT / "data" / "regions" / "iberia_868" / "inputs" / "mountain_river_data.json"
+
+
+def _validate_bbox(bbox: tuple) -> None:
+    """T-DOS / T-SSRF: bbox must be 4 floats; lat/lon order valid; span ≤ 30°/axis."""
+    if not isinstance(bbox, tuple) or len(bbox) != 4:
+        raise ValueError(f"bbox must be a 4-tuple of floats, got {bbox!r}")
+    try:
+        lat_min, lon_min, lat_max, lon_max = (float(x) for x in bbox)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"bbox elements must be numeric, got {bbox!r}") from exc
+    if lat_min >= lat_max or lon_min >= lon_max:
+        raise ValueError(f"bbox has zero/negative span: {bbox!r}")
+    if (lat_max - lat_min) > 30 or (lon_max - lon_min) > 30:
+        raise ValueError(f"bbox exceeds 30° per axis (DoS guard): {bbox!r}")
+
+
+def _split_by_iso(
+    fc: dict[str, Any],
+    iso_codes: list[str],
+) -> dict[str, list[dict[str, Any]]]:
+    """Partition fc.features by representative-point-in-buffered-country-polygon.
+
+    Returns {iso: [features]} for each iso in iso_codes. Features whose
+    representative_point falls outside ALL polygons are dropped.
+
+    Uses representative_point (guaranteed inside the geometry) rather than
+    centroid (can fall outside concave shapes — Pitfall A3).
+    """
+    result: dict[str, list[dict[str, Any]]] = {iso: [] for iso in iso_codes}
+
+    # Build (iso, buffered_polygon) tuples. Skip ISOs not in Natural Earth.
+    polys: list[tuple[str, Any]] = []
+    for iso in iso_codes:
+        poly = get_country_polygon(iso)
+        if poly is None:
+            log.warning(
+                "split_by_iso: no Natural Earth polygon for %s — features routed to %s will be empty",
+                iso, iso,
+            )
+            continue
+        polys.append((iso, poly.buffer(_COUNTRY_BUFFER_DEG)))
+
+    for feat in fc.get("features", []):
+        geom = feat.get("geometry") or {}
+        gt = geom.get("type", "")
+        if gt not in ("Polygon", "MultiPolygon"):
+            continue  # only polygon features participate in country routing
+        try:
+            shp = shapely_shape(geom)
+            rp = shp.representative_point()
+        except Exception as exc:  # noqa: BLE001 — bad geometry; log + skip
+            log.warning("split_by_iso: bad geometry, dropping feature: %s", exc)
+            continue
+        for iso, buffered in polys:
+            if buffered.contains(rp):
+                result[iso].append(feat)
+                break  # first match wins; ISO order matters for border features
+
+    return result
+
+
+async def build_dataset_from_osm(
+    project_id: str,
+    bbox: tuple[float, float, float, float],
+    iso_codes: list[str],
+    queue: asyncio.Queue[str | None],
+    *,
+    stop_event: asyncio.Event | None = None,
+    client_factory: Callable[[], httpx.AsyncClient] | None = None,
+) -> ProjectDataset:
+    """Live OSM → ProjectDataset (D-01, D-05, D-07, D-13).
+
+    For Iberia 868: pass iso_codes=["PT", "ES"] (clip_iso_codes_for_qid("Q29,Q45")).
+
+    Steps:
+      1. Validate inputs (T-PATH project_id; T-DOS bbox).
+      2. Wrap ingest_osm.fetch_municipalities (D-05: wrap, don't rewrite).
+      3. Split combined FC into per-ISO lists (NEW logic).
+      4. Write each per-ISO FC atomically to projects/<uuid>/inputs/<iso>_*.geojson (D-07).
+      5. Return ProjectDataset with the two written .geojson paths +
+         vendored mountain_river_data.json (D-13 stub passthrough).
+    """
+    _validate_bbox(bbox)
+    inputs_dir = project_inputs_dir(project_id)  # raises ValueError if project_id is not UUID
+
+    if "PT" not in iso_codes or "ES" not in iso_codes:
+        raise ValueError(
+            f"Phase 02 supports Iberia 868 only — iso_codes must include PT and ES, got {iso_codes!r}"
+        )
+
+    # Step 1: wrap fetch_municipalities. country_iso is informational only when bbox is set.
+    await queue.put(f"data: Adapter: fetching OSM municipalities (bbox={bbox})...\n\n")
+    combined_fc = await fetch_municipalities(
+        country_iso=iso_codes[0],
+        queue=queue,
+        bbox=bbox,
+        clip_iso_codes=iso_codes,
+        client_factory=client_factory,
+        stop_event=stop_event,
+    )
+
+    # Step 2: split-by-ISO (NEW logic — see _split_by_iso docstring).
+    by_iso = _split_by_iso(combined_fc, iso_codes)
+    pt_count = len(by_iso["PT"])
+    es_count = len(by_iso["ES"])
+    await queue.put(f"data: Adapter: split-by-ISO → PT={pt_count}, ES={es_count}.\n\n")
+
+    # Step 3: write atomically (D-07).
+    pt_path = inputs_dir / "pt_concelhos_live.geojson"
+    es_path = inputs_dir / "es_municipalities_live.geojson"
+    _write_geojson_atomic(pt_path, {"type": "FeatureCollection", "features": by_iso["PT"]})
+    _write_geojson_atomic(es_path, {"type": "FeatureCollection", "features": by_iso["ES"]})
+    await queue.put(
+        f"data: Adapter: wrote {pt_path.name} ({pt_count}) + {es_path.name} ({es_count}).\n\n"
+    )
+
+    return ProjectDataset(
+        pt_geojson=pt_path,
+        es_input=es_path,
+        mountain_river_json=_VENDORED_MOUNTAIN_RIVER,  # D-13 stub passthrough
+    )
+
+
+__all__ = ["build_dataset_from_osm", "_split_by_iso"]
