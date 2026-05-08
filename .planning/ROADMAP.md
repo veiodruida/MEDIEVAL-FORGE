@@ -47,6 +47,16 @@ Plans:
 - [ ] 02-03-PLAN.md — Live-ingestion parity test + snapshot + manual refresh script (D-09..D-12, ROADMAP-02#1, waiver-loop strategy)
 - [x] 02-04-PLAN.md — /api/v3/projects/{id}/ingest SSE endpoint + v3 router registration (D-14)
 
+### Phase 02.1: Resolve live-ingestion parity contract (was ROADMAP-02#1)
+**Goal:** Replace the dead waiver-loop premise of Plan 02-03 with a coherent live-parity contract. Plan 02-03 assumed any divergence between live OSM and vendored fixture was transient drift; empirical evidence (`.planning/phases/02-ingestion-adapter/D-09-LIVE-WAIVER.md`) showed they are different upstream sources entirely (es-atlas@0.6.0 + IGE concelhos vs raw OSM admin_level=6/8), so live cardinality structurally exceeds vendored at every admin tier. ROADMAP-02#1 ("Phase 01 parity test stays green when input is live ingestion") is unreachable as written; this phase picks one of the rejected options (split golden, curate snapshot, in-pipeline cardinality match, or other) once the v3 vision on "what live should match" is sharper.
+**Depends on:** Phase 02 (closes with SC-1 deferred), and ideally Phase 04 (parameter studio may inform whether a curate-to-vendored pass belongs in the pipeline)
+**Status:** backlog
+**Success criteria:**
+1. Pick and document a live-parity contract option (re-open RESEARCH Open Q1 with current evidence)
+2. `backend/tests/parity/test_iberia_868_live.py` xfail markers removed; suite reports `passed` (not `xpassed`/`xfailed`) under the new contract
+3. ROADMAP-02#1 is either marked complete (success path) or formally retired with a follow-up requirement that supersedes it
+**Plans:** TBD when phase opens
+
 ### Phase 03: Read-only canvas redesign
 **Goal:** Single-canvas Figma/Mapbox workspace replaces the v1 stepper (697 lines), but read-only.
 **Depends on:** Phase 02
