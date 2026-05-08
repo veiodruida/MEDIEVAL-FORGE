@@ -14,11 +14,27 @@ The 38-point border_polygon, 4-color kingdom_colors, and 3-element pt_duchies
 set are copied verbatim from inicio lines 125-143 (no reformatting).
 """
 
+from pathlib import Path
+
 from .contracts import RegionConfig
 from ...data.regions.iberia_868.territory_data import (
     KINGDOMS,
     DUCHIES,
     CONDADOS,
+)
+
+# WR-01 fix: anchor pipeline input paths to the repo root rather than CWD.
+# The municipality + mountain/river JSON files ship at the repo root under
+# `data/regions/iberia_868/inputs/` (NOT inside the package). Resolving them
+# from `__file__` makes `iberia_config()` cwd-independent so a developer
+# running `pytest backend/tests/parity/` from inside `backend/` no longer
+# silently falls through to empty municipality data (see REVIEW.md WR-01).
+#
+# regions.py path: backend/medieval_forge/services/pipeline/regions.py
+# parents[4]     : repo root (matches conftest.py:55's REPO_ROOT convention)
+_INPUTS_DIR = (
+    Path(__file__).resolve().parents[4]
+    / "data" / "regions" / "iberia_868" / "inputs"
 )
 
 
@@ -29,9 +45,9 @@ def iberia_config() -> RegionConfig:
         map_w=1920, map_h=1080, upscale=2,
         lon_min=-13.2, lon_max=8.2, lat_min=35.4, lat_max=44.6,
         output_dir="../Assets/StreamingAssets/Maps",
-        municipality_pt_geojson="data/regions/iberia_868/inputs/pt_concelhos_wgs84.geojson",
-        municipality_es_topojson="data/regions/iberia_868/inputs/es-atlas-pkg/package/es/municipalities.json",
-        mountain_river_json="data/regions/iberia_868/inputs/mountain_river_data.json",
+        municipality_pt_geojson=str(_INPUTS_DIR / "pt_concelhos_wgs84.geojson"),
+        municipality_es_topojson=str(_INPUTS_DIR / "es-atlas-pkg" / "package" / "es" / "municipalities.json"),
+        mountain_river_json=str(_INPUTS_DIR / "mountain_river_data.json"),
         pt_duchies={"d_portucale", "d_gharb", "d_fronteira"},
         kingdom_colors={
             0: (190, 158, 82),   # Astúrias — gold
