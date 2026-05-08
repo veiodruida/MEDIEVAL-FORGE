@@ -20,7 +20,13 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e .[dev]
       - name: Run unit tests
-        # Coverage gate starts at 60% for Phase 00; Phase 01 raises to 85%.
+        # TODO(01-03 deviation): coverage gate is currently broken — actual
+        # coverage post-v1-deletion (commit a9c2032) sits at ~30% because the
+        # deleted tests covered surviving code paths (paths.py, voronoi.py,
+        # ingest_*). Both the planned 85% bump (must_haves) and the existing
+        # 60% gate fail. Bump deferred to a follow-up coverage-restoration
+        # plan; see .planning/phases/01-pipeline-parity-port-harness-together/
+        # 01-03-SUMMARY.md for rationale and recommended next step.
         run: pytest backend/tests/unit/ -v --cov=medieval_forge --cov-fail-under=60
 
   pytest-parity:
@@ -36,8 +42,8 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e .[dev]
       - name: Run parity + integration tests
-        # Non-skippable from Phase 01 forward. Phase 00 may have no parity tests yet (will pass empty).
-        run: pytest backend/tests/parity/ backend/tests/integration/ -v -m "parity or integration" --no-header || (echo "No parity/integration tests yet (Phase 00) — passing as placeholder"; exit 0)
+        # Non-skippable from Phase 01. Any parity-test failure blocks merge.
+        run: pytest backend/tests/parity/ backend/tests/integration/ -v -m "parity or integration" --no-header
 
   vitest:
     name: vitest
