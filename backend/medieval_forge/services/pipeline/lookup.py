@@ -32,6 +32,14 @@ def generate_lookup_map(result: np.ndarray, level_map: np.ndarray, n_items: int,
     color_map = {}
 
     for i in range(n_items):
+        # verbatim inicio:660 — when label=='barony', `level_map` is intentionally
+        # ignored and `result` is used as the per-barony id raster. The orchestrator
+        # in __init__.py:127 currently passes `result` for both arguments in the
+        # barony case (`("barony", result, nb)`), so the two branches are equivalent
+        # at today's call sites. Do NOT refactor under D-01 (verbatim port); a
+        # future caller passing a different `level_map` for barony would silently
+        # produce wrong RGBs without surfacing until parity tests catch the lookup
+        # PNG diff. Tracked as REVIEW.md WR-03.
         m = level_map == i if label != "barony" else result == i
         if not np.any(m):
             continue
