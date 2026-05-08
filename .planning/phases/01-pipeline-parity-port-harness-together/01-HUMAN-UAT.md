@@ -3,7 +3,7 @@ status: partial
 phase: 01-pipeline-parity-port-harness-together
 source: [01-VERIFICATION.md]
 started: 2026-05-08T11:05:00Z
-updated: 2026-05-08T12:00:00Z
+updated: 2026-05-08T12:30:00Z
 ---
 
 ## Current Test
@@ -20,7 +20,7 @@ result: [pending]
 ### 2. Visual inspection of refreshed golden
 
 expected: Open `tests/fixtures/iberia_868/golden/visual_condado.png` and `visual_barony.png`. Maps look coherent — kingdom colors match (Astúrias gold / Pamplona purple / Marca Hispânica pink / Emirato green); condado borders visible; mountain shading present; no obvious rendering glitches. Confirm Aveiro disappearance acceptable as v3-reset cost.
-result: [pending]
+result: passed — user approved 2026-05-08 after inline inspection: 4 kingdom colors correct, mountain/river overlays present, Aveiro removal accepted as v3-reset cost.
 
 ### 3. Reconquista Unity re-bake
 
@@ -35,9 +35,9 @@ result: resolved — `/gsd-code-review-fix 01` applied (commit e7a1f8c). Also fi
 ## Summary
 
 total: 4
-passed: 1
+passed: 2
 issues: 0
-pending: 3
+pending: 2
 skipped: 0
 blocked: 0
 
