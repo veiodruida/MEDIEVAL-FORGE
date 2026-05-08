@@ -26,11 +26,11 @@ Eight phases reset Medieval Forge to its roots. Phase 00 archives v1.0 and boots
 1. `pytest tests/parity/test_iberia_868.py` passes (pixel-perfect for lookup PNGs; SSIM ≥ 0.98 for visual PNGs; deep-equal for JSONs)
 2. Pipeline runs standalone (`python -m medieval_forge.services.pipeline --region iberia_868 --out /tmp/out`) without FastAPI
 3. CI blocks merges on parity break (non-skippable from this phase forward)
-**Plans:** 2/3 plans executed
+**Plans:** 3/3 plans complete
 Plans:
 - [x] 01-01-PLAN.md — Wave 0 preflight + scaffold (verify P-1/Q10, source ES TopoJSON, commit fixtures + inputs, move territory data, scaffold pipeline package + RegionConfig)
 - [x] 01-02-PLAN.md — Verbatim port of inicio/map_generator.py into 9 submodules (contracts/landmask/border/voronoi/cleanup/render/lookup/export + run_pipeline wiring)
-- [ ] 01-03-PLAN.md — Delete v1 generator stack + parity harness + CI flip to non-skippable
+- [x] 01-03-PLAN.md — Delete v1 generator stack + parity harness + CI flip to non-skippable
 
 ### Phase 02: Ingestion adapter
 **Goal:** The existing v1 ingestion (Wikidata/OSM/Overpass/DEM/HydroSHEDS) produces inputs that the v3 pipeline accepts unchanged.
