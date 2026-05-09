@@ -85,6 +85,33 @@ export function useTerritoryTemplate(region: string | null): UseQueryResult<Reco
   })
 }
 
+// ---------- Phase 03 Plan 02: v3 status manifest ----------
+
+export interface StatusManifest {
+  status: string
+  has_artifacts: Record<string, boolean>
+  last_generated_at: string | null
+}
+
+/**
+ * GET /api/v3/projects/{id}/status — returns the per-project status + a
+ * has_artifacts manifest over the 14-file allowlist. Frontend reads this on
+ * mount to decide which UI state (empty / generating / ready / error) to
+ * render. queryKey ['v3-status', id] is invalidated by the SSE done handler
+ * to force a re-fetch and re-evaluate the canvas body.
+ */
+export function useStatusManifest(
+  projectId: string | undefined,
+): UseQueryResult<StatusManifest> {
+  return useQuery({
+    queryKey: ['v3-status', projectId],
+    queryFn: () =>
+      jsonFetch<StatusManifest>(`/api/v3/projects/${projectId}/status`),
+    enabled: Boolean(projectId),
+    staleTime: 5_000,
+  })
+}
+
 export function useIngestStatus(projectId: string | undefined): UseQueryResult<IngestStatus> {
   return useQuery({
     queryKey: ['ingest-status', projectId],
