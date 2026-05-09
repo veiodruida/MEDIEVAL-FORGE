@@ -173,6 +173,16 @@ async def trigger_v3_ingest(
             detail=f"no clip_iso_codes for country_qid={project.country_qid!r}",
         )
 
+    # T-02-04-02 (DoS — anti-overlap): commit status='generating' BEFORE
+    # scheduling the producer so a second concurrent /ingest call hits the 409
+    # gate above. Done in the handler (not the producer) because the producer
+    # runs in asyncio.create_task and creates a race window — the handler-side
+    # commit completes synchronously before StreamingResponse returns.
+    # On success/failure the producer transitions this to "ingested" /
+    # "error_ingesting" via _set_status (mirrors v1 ingest_runner pattern).
+    project.status = "generating"
+    await db.commit()
+
     return StreamingResponse(
         _v3_sse_generator(project_id, bbox, iso_codes),
         media_type="text/event-stream",
