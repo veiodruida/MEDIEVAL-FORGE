@@ -66,6 +66,16 @@ Plans:
 2. Inspector populates on click; layer toggles work
 3. Old stepper invisible; no console errors
 4. Runs against Phase 01 artifacts directly
+**Plans:** 1/8 plans executed
+Plans:
+- [x] 03-01-PLAN.md — Wave 0 BLOCKER: pipeline canvas-sidecar emitter + _write_geojson_atomic lift + cfg.on_stage callback (closes RESEARCH Pitfalls 2 + 10)
+- [ ] 03-02-PLAN.md — Wave 1: backend v3 endpoints (POST /generate + GET /generate/stream + /status manifest + /artifacts FileResponse with allowlist)
+- [ ] 03-03-PLAN.md — Wave 1: frontend useRunStore + uiStore selectedTerritoryIds[] + useCanvasArtifacts URL swap
+- [ ] 03-04-PLAN.md — Wave 2: ProjectDetail rewrite + 6 workspace chrome components + SSE wiring
+- [ ] 03-05-PLAN.md — Wave 2: canvas surface (CanvasViewer strip + InteractionLayer multi-select + TerritoryLayer shift+click + HoverTooltip + MultiSelectInspector)
+- [ ] 03-06-PLAN.md — Wave 3: v1 frontend purge (D-10 + D-11 + D-13 frontend) + dangling-import grep gate
+- [ ] 03-07-PLAN.md — Wave 3: v1 backend purge (D-12 + D-13 backend incl. auth.py + credential_store.py + 3 ORM models) + main.py lifespan shrink
+- [ ] 03-08-PLAN.md — Wave 4: Playwright UAT for SC-1..SC-4 + final cross-surface grep + visual sign-off
 
 ### Phase 04: Parameter studio (live re-render)
 **Goal:** The same canvas drives the pipeline. Sliders for σ, median passes, fragment threshold, blob-merge threshold; toggles for per-stage outputs; incremental re-render.

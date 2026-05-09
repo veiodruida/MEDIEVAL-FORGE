@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: + bootstrap v3 infrastructure
-status: verifying
-stopped_at: Phase 03 context gathered
-last_updated: "2026-05-09T16:32:40.855Z"
-last_activity: 2026-05-08
+status: executing
+stopped_at: Completed 03-01-PLAN.md (canvas-sidecar BLOCKER closed)
+last_updated: "2026-05-09T20:50:45.650Z"
+last_activity: 2026-05-09
 progress:
   total_phases: 9
   completed_phases: 2
-  total_plans: 7
-  completed_plans: 7
-  percent: 100
+  total_plans: 15
+  completed_plans: 8
+  percent: 53
 ---
 
 # Project State (v3)
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md
 
 **Core value:** A Game Designer goes from "country + historical period" to a validated, Unity-ready map package — driven by geometry, with LLM as opt-in metadata.
-**Current focus:** Phase 02 — ingestion-adapter
+**Current focus:** Phase 03 — read-only-canvas-redesign
 
 ## Current Position
 
-Phase: 02.1
-Plan: Not started
-Status: Phase complete — ready for verification
-Last activity: 2026-05-08
+Phase: 03 (read-only-canvas-redesign) — EXECUTING
+Plan: 2 of 8
+Status: Ready to execute
+Last activity: 2026-05-09
 
 Progress: [░░░░░░░░░░] 0% (0 of 8 phases complete)
 
@@ -51,6 +51,7 @@ See `.planning/PROJECT.md` Key Decisions table (D-V3-01 through D-V3-07).
 - [Phase 02]: Plan 02-02: services/pipeline/adapters/ subpackage built (4-file flat split: __init__/base/osm/terrain). build_dataset_from_osm wraps fetch_municipalities (D-05); _split_by_iso uses representative_point (Pitfall A3); build_terrain returns vendored mountain_river_data.json (D-13 stub); D-15+D-16 honored by absence. 11 unit tests + Phase 01 parity 10/10 unchanged; combined wave 21/21 green.
 - [Phase 02]: Plan 02-04: D-14 implemented (GET /api/v3/projects/{id}/ingest SSE endpoint). Mirrors v1 _sse_generator pattern; wraps build_dataset_from_osm; terminal None sentinel; per-(project_id, step) stop_event; status: ingested on success, error_ingesting on cancel/exception. Legacy v1 /api/projects/{id}/ingest stays mounted (D-14 coexistence). D-13/D-15/D-16 honored by absence. 6 unit tests pass; Phase 01 parity unchanged 10/10.
 - [Phase 02]: Plan 02-03 closed with Option C (defer + xfail). ROADMAP-02#1 deferred to Phase 02.1 ('Resolve live-ingestion parity contract') — vendored (es-atlas/IGE) and live (raw OSM) are different upstream sources, structural divergence cannot converge under any waiver-loop iteration. test_iberia_868_live.py xfail(strict=False); 6 xfailed + 4 xpassed, suite exit 0; Phase 01 parity 10/10 green. See D-09-LIVE-WAIVER.md.
+- [Phase 03]: Plan 03-01: canvas sidecars emitted from new services/canvas_sidecars.py (NOT v1 territories_geojson.py); cfg.on_stage hook wired with 22 emit points across 11 canonical stages; _write_geojson_atomic lifted to paths.py with re-export stub. Parity 11/11 green.
 
 ### Blockers/Concerns
 
@@ -70,6 +71,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-09T16:32:40.852Z
-Stopped at: Phase 03 context gathered
-Resume file: .planning/phases/03-read-only-canvas-redesign/03-CONTEXT.md
+Last session: 2026-05-09T20:50:45.648Z
+Stopped at: Completed 03-01-PLAN.md (canvas-sidecar BLOCKER closed)
+Resume file: None
