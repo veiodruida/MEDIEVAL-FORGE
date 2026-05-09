@@ -162,7 +162,35 @@ async def build_dataset_from_osm(
         )
         combined_features.extend(per_iso_features)
 
-    combined_fc = {"type": "FeatureCollection", "features": combined_features}
+    # Dedupe by osm_id BEFORE the split-by-ISO partition. With per-ISO Overpass
+    # calls and a 0.025° country buffer, a feature whose representative_point
+    # falls inside the ~5 km PT/ES border overlap band can survive both per-ISO
+    # fetches and end up in combined_features twice with the same osm_id.
+    # _split_by_iso then routes both copies to the first ISO that contains them,
+    # writing the same border feature twice into pt_concelhos_live.geojson and
+    # inflating the GeoJSON byte budget vs. the byte-for-byte parity contract.
+    # _relation_to_geojson_feature populates feat["properties"]["osm_id"]
+    # (ingest_osm.py:235), so we dedupe on that key.
+    seen_ids: set = set()
+    deduped_features: list[dict[str, Any]] = []
+    duplicates = 0
+    for feat in combined_features:
+        oid = feat.get("properties", {}).get("osm_id")
+        if oid is None:
+            # No id — keep (defensive; shouldn't happen for OSM relations).
+            deduped_features.append(feat)
+            continue
+        if oid in seen_ids:
+            duplicates += 1
+            continue
+        seen_ids.add(oid)
+        deduped_features.append(feat)
+    if duplicates:
+        await queue.put(
+            f"data: Adapter: deduped {duplicates} cross-border feature(s) by osm_id.\n\n"
+        )
+
+    combined_fc = {"type": "FeatureCollection", "features": deduped_features}
 
     # Step 2: split-by-ISO over the combined per-ISO results. Defensive — even
     # though clip_iso_codes already filtered each call, _split_by_iso re-routes
