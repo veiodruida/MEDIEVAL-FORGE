@@ -143,7 +143,7 @@ const installFetchMock = (byProjectId: Record<string, ReturnType<typeof makeRawF
   vi.stubGlobal(
     'fetch',
     vi.fn(async (url: string) => {
-      const m = url.match(/\/api\/projects\/([^/?]+)\/preview\/territories\.geojson/)
+      const m = url.match(/\/api\/v3\/projects\/([^/?]+)\/artifacts\/territories\.geojson/)
       if (!m) return new Response('not found', { status: 404 })
       const id = decodeURIComponent(m[1])
       const body = byProjectId[id]

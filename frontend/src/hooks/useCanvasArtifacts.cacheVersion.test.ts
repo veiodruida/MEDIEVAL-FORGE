@@ -32,7 +32,7 @@ function wrapper() {
 }
 
 describe('useCanvasArtifacts — GAP-04 H4 cache-bust (cacheVersion propagation)', () => {
-  it('appends ?v=<cacheVersion> to every preview URL so browser HTTP cache is invalidated', async () => {
+  it('appends ?v=<cacheVersion> to every v3 artifacts URL so browser HTTP cache is invalidated', async () => {
     renderHook(() => useCanvasArtifacts('p1', FAKE_PROJECTION, '2026-04-23T10:00:00Z'), {
       wrapper: wrapper(),
     })
@@ -42,12 +42,17 @@ describe('useCanvasArtifacts — GAP-04 H4 cache-bust (cacheVersion propagation)
     })
 
     const urls = fetchSpy.mock.calls.map((c) => c[0] as string)
-    // Every fetched preview URL must carry ?v=<encoded cacheVersion>
+    // Every fetched v3 artifacts URL must carry ?v=<encoded cacheVersion>
     for (const url of urls) {
       expect(url).toMatch(/\?v=2026-04-23T10%3A00%3A00Z$/)
     }
+    // All URLs must use the v3 prefix (D-18 plan 03-02 contract)
+    for (const url of urls) {
+      expect(url).toMatch(/\/api\/v3\/projects\/p1\/artifacts\//)
+    }
     // All five sidecar/geojson endpoints should have been queued
     expect(urls.some((u) => u.includes('territories.geojson'))).toBe(true)
+    expect(urls.some((u) => u.includes('baronies.geojson'))).toBe(true)
     expect(urls.some((u) => u.includes('condado_colors.json'))).toBe(true)
     expect(urls.some((u) => u.includes('barony_colors.json'))).toBe(true)
     expect(urls.some((u) => u.includes('territory_metadata.json'))).toBe(true)

@@ -259,7 +259,7 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
       let resp: Response
       try {
         resp = await fetch(
-          `/api/projects/${encodeURIComponent(projectId)}/preview/territories.geojson${
+          `/api/v3/projects/${encodeURIComponent(projectId)}/artifacts/territories.geojson${
             cacheVersion ? `?v=${encodeURIComponent(cacheVersion)}` : ''
           }`,
         )

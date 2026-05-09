@@ -116,7 +116,7 @@ export function useCanvasArtifacts(
         queryKey: ['territories-geojson', projectId, cacheVersion] as const,
         queryFn: () =>
           fetchJson<FC<CondadoFeature>>(
-            `/api/projects/${projectId}/preview/territories.geojson${v}`,
+            `/api/v3/projects/${projectId}/artifacts/territories.geojson${v}`,
           ),
         enabled: Boolean(projectId && projection),
         staleTime: Infinity,
@@ -146,7 +146,7 @@ export function useCanvasArtifacts(
         queryKey: ['baronies-geojson', projectId, cacheVersion] as const,
         queryFn: () =>
           fetchJson<FC<BaronyFeature>>(
-            `/api/projects/${projectId}/preview/baronies.geojson${v}`,
+            `/api/v3/projects/${projectId}/artifacts/baronies.geojson${v}`,
           ),
         enabled: Boolean(projectId && projection),
         staleTime: Infinity,
@@ -167,7 +167,7 @@ export function useCanvasArtifacts(
         queryKey: ['condado-colors', projectId, cacheVersion] as const,
         queryFn: () =>
           fetchJson<Record<string, string>>(
-            `/api/projects/${projectId}/preview/condado_colors.json${v}`,
+            `/api/v3/projects/${projectId}/artifacts/condado_colors.json${v}`,
           ),
         enabled: Boolean(projectId),
         staleTime: Infinity,
@@ -178,7 +178,7 @@ export function useCanvasArtifacts(
         queryKey: ['barony-colors', projectId, cacheVersion] as const,
         queryFn: () =>
           fetchJson<Record<string, string>>(
-            `/api/projects/${projectId}/preview/barony_colors.json${v}`,
+            `/api/v3/projects/${projectId}/artifacts/barony_colors.json${v}`,
           ),
         enabled: Boolean(projectId),
         staleTime: Infinity,
@@ -189,7 +189,7 @@ export function useCanvasArtifacts(
         queryKey: ['territory-metadata', projectId, cacheVersion] as const,
         queryFn: () =>
           fetchJson<TerritoryMetadata>(
-            `/api/projects/${projectId}/preview/territory_metadata.json${v}`,
+            `/api/v3/projects/${projectId}/artifacts/territory_metadata.json${v}`,
           ),
         enabled: Boolean(projectId),
         staleTime: Infinity,
