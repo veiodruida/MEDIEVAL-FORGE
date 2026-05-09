@@ -3,8 +3,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from medieval_forge.services.ingest_runner import _write_geojson_atomic
-from medieval_forge.services.paths import project_dir, is_valid_uuid
+from medieval_forge.services.paths import (
+    _write_geojson_atomic,
+    is_valid_uuid,
+    project_dir,
+)
 
 
 def project_inputs_dir(project_id: str) -> Path:

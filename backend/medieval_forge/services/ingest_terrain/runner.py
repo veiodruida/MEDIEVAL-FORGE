@@ -16,8 +16,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from medieval_forge.models import Project
 from medieval_forge.database import AsyncSessionLocal
-from medieval_forge.services.paths import ensure_project_dirs
-from medieval_forge.services.ingest_runner import _write_geojson_atomic
+from medieval_forge.services.paths import _write_geojson_atomic, ensure_project_dirs
 import time
 
 from medieval_forge.services.ingest_terrain import overpass_terrain

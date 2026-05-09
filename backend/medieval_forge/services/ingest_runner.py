@@ -2,9 +2,7 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
-from pathlib import Path
 from typing import Any
 
 from shapely.geometry import shape as _shp_shape
@@ -14,7 +12,10 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from ..database import AsyncSessionLocal
 from ..models import Project
 from . import ingest_osm, ingest_wikidata
-from .paths import ensure_project_dirs
+from .paths import (
+    _write_geojson_atomic,  # re-export — survives until Plan 07 deletes this file
+    ensure_project_dirs,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -29,12 +30,6 @@ async def _set_status(
         if proj is not None:
             proj.status = status
             await session.commit()
-
-
-def _write_geojson_atomic(path: Path, payload: dict[str, Any]) -> None:
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(json.dumps(payload), encoding="utf-8")
-    tmp.replace(path)
 
 
 async def _backfill_bbox(

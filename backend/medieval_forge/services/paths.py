@@ -6,9 +6,11 @@ resolved path is within DATA_DIR/projects/.
 """
 from __future__ import annotations
 
+import json
 import re
 import uuid as _uuid_mod
 from pathlib import Path
+from typing import Any
 
 from medieval_forge.database import DATA_DIR
 
@@ -62,3 +64,17 @@ def ensure_project_dirs(project_id: str) -> dict[str, Path]:
     for p in subdirs.values():
         p.mkdir(parents=True, exist_ok=True)
     return subdirs
+
+
+def _write_geojson_atomic(path: Path, payload: dict[str, Any]) -> None:
+    """Atomically write `payload` (a GeoJSON-like dict) to `path`.
+
+    Verbatim lift from services/ingest_runner.py (Phase 03 Plan 03-01,
+    Pitfall 2). The helper writes to a sibling .tmp file then renames, which
+    is atomic on POSIX and best-effort on Windows. Does NOT auto-create
+    parent directories — callers must ensure the parent exists (preserves
+    original semantics so existing callsites stay regression-safe).
+    """
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(json.dumps(payload), encoding="utf-8")
+    tmp.replace(path)
