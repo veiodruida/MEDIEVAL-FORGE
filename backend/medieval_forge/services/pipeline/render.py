@@ -193,7 +193,11 @@ def render_mountains(cfg: RegionConfig, land_2x=None):
             target_h=cfg.map_h * cfg.upscale,
         )
 
-    with open(mr_path, 'r') as f:
+    # Windows-port deviation (Rule 3): inicio omits encoding='utf-8',
+    # relying on POSIX UTF-8 default. On Windows cp1252 raises
+    # UnicodeDecodeError on accented mountain names (e.g. "Peña de Francia").
+    # Matches landmask.py:173-176 fix for the same class of bug.
+    with open(mr_path, 'r', encoding='utf-8') as f:
         data = json.load(f)
 
     mountains = data.get('mountains', {})
@@ -230,7 +234,11 @@ def render_rivers(cfg: RegionConfig):
     if not mr_path or not os.path.exists(mr_path):
         return None
 
-    with open(mr_path, 'r') as f:
+    # Windows-port deviation (Rule 3): inicio omits encoding='utf-8',
+    # relying on POSIX UTF-8 default. On Windows cp1252 raises
+    # UnicodeDecodeError on accented river names. Matches landmask.py:173-176
+    # fix for the same class of bug.
+    with open(mr_path, 'r', encoding='utf-8') as f:
         data = json.load(f)
 
     rivers = data.get('rivers', {})
