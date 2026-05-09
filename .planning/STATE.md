@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: + bootstrap v3 infrastructure
 status: executing
-stopped_at: Completed 03-02-PLAN.md (3 v3 endpoints wired)
-last_updated: "2026-05-09T21:01:50.276Z"
+stopped_at: Completed 03-03-PLAN.md (useRunStore + uiStore evolution + v3 URL switch)
+last_updated: "2026-05-09T21:12:26.077Z"
 last_activity: 2026-05-09
 progress:
   total_phases: 9
   completed_phases: 2
   total_plans: 15
-  completed_plans: 9
-  percent: 60
+  completed_plans: 10
+  percent: 67
 ---
 
 # Project State (v3)
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md
 ## Current Position
 
 Phase: 03 (read-only-canvas-redesign) — EXECUTING
-Plan: 3 of 8
+Plan: 4 of 8
 Status: Ready to execute
 Last activity: 2026-05-09
 
@@ -53,6 +53,7 @@ See `.planning/PROJECT.md` Key Decisions table (D-V3-01 through D-V3-07).
 - [Phase 02]: Plan 02-03 closed with Option C (defer + xfail). ROADMAP-02#1 deferred to Phase 02.1 ('Resolve live-ingestion parity contract') — vendored (es-atlas/IGE) and live (raw OSM) are different upstream sources, structural divergence cannot converge under any waiver-loop iteration. test_iberia_868_live.py xfail(strict=False); 6 xfailed + 4 xpassed, suite exit 0; Phase 01 parity 10/10 green. See D-09-LIVE-WAIVER.md.
 - [Phase 03]: Plan 03-01: canvas sidecars emitted from new services/canvas_sidecars.py (NOT v1 territories_geojson.py); cfg.on_stage hook wired with 22 emit points across 11 canonical stages; _write_geojson_atomic lifted to paths.py with re-export stub. Parity 11/11 green.
 - [Phase 03]: Plan 03-02: 3 v3 endpoints (POST /generate + GET /generate/stream + GET /status + GET /artifacts) wired in main.py; ARTIFACT_FILES single-source frozenset (14 files) in artifacts.py; cfg.on_stage threadsafe bridge via loop.call_soon_threadsafe; updated_at bumped explicitly on success (D-19). 24 unit tests green; parity 11/11 stays green.
+- [Phase 03]: Plan 03-03: useRunStore (5-state machine + 11-stage PIPELINE_STAGES + LOG_CAP=500) created; uiStore evolved with selectedTerritoryIds[] + selectIds + selectSelectedTerritoryId selector (mirror selectedTerritoryId kept for backward-compat); useCanvasArtifacts switched to /api/v3/projects/{id}/artifacts/* (5 URLs); orphaned __tests__/uiStore.test.ts deleted; CanvasViewer.tsx hydrate-fetch URL updated in lock-step; 238/238 vitest green; 4 commits (561f999, fcb2ebf, f7a0576, f9e8a55).
 
 ### Blockers/Concerns
 
@@ -72,6 +73,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-09T21:01:45.821Z
-Stopped at: Completed 03-02-PLAN.md (3 v3 endpoints wired)
+Last session: 2026-05-09T21:12:17.498Z
+Stopped at: Completed 03-03-PLAN.md (useRunStore + uiStore evolution + v3 URL switch)
 Resume file: None
