@@ -6,10 +6,6 @@ import { Theme } from '@radix-ui/themes'
 import * as Toast from '@radix-ui/react-toast'
 import App from './App'
 import './index.css'
-import { initPersistence } from './services/persistence'
-
-// D-07: initialize persistence strategy from localStorage on app bootstrap
-initPersistence()
 
 const queryClient = new QueryClient({
   defaultOptions: {

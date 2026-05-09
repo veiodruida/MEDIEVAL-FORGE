@@ -10,8 +10,8 @@ import { create } from 'zustand'
  *
  * - LayerName: 'terrain' removed. Terrain rendering is deferred to Phase 06
  *   (DEM/HydroSHEDS wire-up); the read-only canvas does not toggle a terrain
- *   layer in v3 Phase 03. Other consumers of 'terrain' (TerritoryLayer,
- *   TerrainBadgesLayer, LayerTogglePanel) are scrubbed by Plans 05/06.
+ *   layer in v3 Phase 03. Other consumers of 'terrain' were scrubbed by
+ *   Plans 05/06.
  *
  * - overlayImageUrl + overlayOpacity removed. Reference-image overlay was a v1
  *   Phase 5 feature; not in the v3 Phase 03 read-only contract. Plan 05 deletes

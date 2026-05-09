@@ -37,7 +37,7 @@ export function RunLogPanel({
   errorStage = null,
 }: RunLogPanelProps) {
   return (
-    <Card variant="surface" style={{ width: 280, maxHeight: 300, overflow: 'auto' }} p="3">
+    <Card variant="surface" style={{ width: 280, maxHeight: 300, overflow: 'auto', padding: 'var(--space-3)' }}>
       <Flex direction="column" gap="1">
         {PIPELINE_STAGES.map((stage) => {
           const rs = rowStateFor(stage, completedStages, currentStage, errorStage)

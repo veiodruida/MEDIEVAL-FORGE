@@ -66,25 +66,6 @@ export interface Preset {
   period_example: [number, number]
 }
 
-export interface IngestStatus {
-  has_data: boolean
-  feature_count: number
-  polygon_count: number
-  point_count: number
-  size_bytes: number
-  last_modified: string | null
-  has_polygons: boolean
-}
-
-export function useTerritoryTemplate(region: string | null): UseQueryResult<Record<string, unknown>> {
-  return useQuery({
-    queryKey: ['territory-template', region],
-    queryFn: () => jsonFetch<Record<string, unknown>>(`/api/projects/territory-template/${region}`),
-    enabled: Boolean(region),
-    staleTime: Infinity,
-  })
-}
-
 // ---------- Phase 03 Plan 02: v3 status manifest ----------
 
 export interface StatusManifest {
@@ -109,15 +90,6 @@ export function useStatusManifest(
       jsonFetch<StatusManifest>(`/api/v3/projects/${projectId}/status`),
     enabled: Boolean(projectId),
     staleTime: 5_000,
-  })
-}
-
-export function useIngestStatus(projectId: string | undefined): UseQueryResult<IngestStatus> {
-  return useQuery({
-    queryKey: ['ingest-status', projectId],
-    queryFn: () => jsonFetch<IngestStatus>(`/api/projects/${projectId}/ingest-status`),
-    enabled: Boolean(projectId),
-    staleTime: 10_000,
   })
 }
 
@@ -186,113 +158,6 @@ export function useDeleteProject() {
       jsonFetch<void>(`/api/projects/${id}`, { method: 'DELETE' }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['projects'] }),
   })
-}
-
-export function useRenderModern(projectId: string | undefined) {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: () => jsonFetch<{ map_file: string; colors_file: string }>(
-      `/api/projects/${projectId}/render-modern`,
-      { method: 'POST' },
-    ),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['projects', projectId] }),
-  })
-}
-
-export function useGenerate(projectId: string | undefined) {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: async (territoryData?: Record<string, unknown>) => {
-      const body: Record<string, unknown> = {}
-      if (territoryData) body.territory_data = territoryData
-      return jsonFetch<{ project_id: string; status: string }>(
-        `/api/projects/${projectId}/generate`,
-        { method: 'POST', body: JSON.stringify(body) },
-      )
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['projects', projectId] })
-      qc.invalidateQueries({ queryKey: ['projects'] })
-    },
-  })
-}
-
-// ---------- INGEST-04: SSE streaming hook (D-09) ----------
-
-import { useCallback, useRef, useState } from 'react'
-
-export interface IngestStreamHandle {
-  lines: string[]
-  start: (source: 'wikidata' | 'osm') => Promise<void>
-  stop: () => void
-  isStreaming: boolean
-  error: Error | null
-}
-
-export function useIngestStream(projectId: string | undefined): IngestStreamHandle {
-  const qc = useQueryClient()
-  const [lines, setLines] = useState<string[]>([])
-  const [isStreaming, setStreaming] = useState(false)
-  const [error, setError] = useState<Error | null>(null)
-  const abortRef = useRef<AbortController | null>(null)
-
-  const stop = useCallback(() => {
-    abortRef.current?.abort()
-  }, [])
-
-  const start = useCallback(
-    async (source: 'wikidata' | 'osm') => {
-      if (!projectId) return
-      const controller = new AbortController()
-      abortRef.current = controller
-      setLines([])
-      setError(null)
-      setStreaming(true)
-      try {
-        const res = await fetch(
-          `/api/projects/${projectId}/ingest?source=${source}`,
-          { method: 'POST', signal: controller.signal },
-        )
-        if (!res.ok || !res.body) {
-          throw new Error(`HTTP ${res.status}`)
-        }
-        const reader = res.body.getReader()
-        const decoder = new TextDecoder()
-        let buf = ''
-        while (true) {
-          const { value, done } = await reader.read()
-          if (done) break
-          buf += decoder.decode(value, { stream: true })
-          // SSE events are separated by blank lines (\n\n).
-          let idx
-          while ((idx = buf.indexOf('\n\n')) !== -1) {
-            const eventBlock = buf.slice(0, idx)
-            buf = buf.slice(idx + 2)
-            // Strip the "data: " prefix from each line in the block.
-            const text = eventBlock
-              .split('\n')
-              .map((l) => (l.startsWith('data: ') ? l.slice(6) : l))
-              .join('\n')
-            setLines((prev) => [...prev, text + '\n'])
-          }
-        }
-      } catch (e) {
-        // Filter AbortError — user-initiated stop is not an error condition.
-        const err = e as Error
-        if (err.name !== 'AbortError') {
-          setError(err)
-        }
-      } finally {
-        abortRef.current = null
-        setStreaming(false)
-        qc.invalidateQueries({ queryKey: ['projects', projectId] })
-        qc.invalidateQueries({ queryKey: ['projects'] })
-      }
-    },
-    [projectId, qc],
-  )
-
-  return { lines, start, stop, isStreaming, error }
 }
 
 // ---------- EXPORT-01/02: ZIP export hook ----------

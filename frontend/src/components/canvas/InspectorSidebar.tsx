@@ -1,8 +1,5 @@
-import { useMemo } from 'react'
 import { Badge, Box, Flex, Heading, ScrollArea, Text } from '@radix-ui/themes'
 import { useUIStore } from '../../stores/uiStore'
-import { useResearchStore } from '../../stores/useResearchStore'
-import { useValidationStore } from '../../stores/useValidationStore'
 import { MultiSelectInspector } from './MultiSelectInspector'
 import { pixelsToKm2 as pixelsToKm2Util } from '../../lib/pixelsToKm2'
 import type {
@@ -91,28 +88,9 @@ export function InspectorSidebar({
   if (selectedIds.length >= 2) {
     return <MultiSelectInspector selectedIds={selectedIds} metadata={metadata} />
   }
-  const manualResult = useResearchStore((s) => s.manualResult)
-  // Pull the raw issues array (stable reference from store) then filter with useMemo.
-  // Inline filter in the selector returns a new array every call, triggering the
-  // React useSyncExternalStore "getSnapshot must be cached" infinite loop.
-  const allIssues = useValidationStore((s) => s.issues)
-  const validationIssues = useMemo(
-    () => (selectedId ? allIssues.filter((i) => i.condado_id === selectedId) : []),
-    [allIssues, selectedId],
-  )
 
   const condado: TerritoryMetadataCondado | undefined = selectedId
     ? metadata.condados.find((c) => c.id === selectedId)
-    : undefined
-
-  const researchAssignment = selectedId && manualResult
-    ? manualResult.condados_assignment.find((a) => a.condado_id === selectedId)
-    : undefined
-  const researchKingdomName = researchAssignment
-    ? manualResult!.kingdoms[researchAssignment.kingdom_id] ?? researchAssignment.kingdom_id
-    : undefined
-  const researchDuchyName = researchAssignment
-    ? manualResult!.duchies[researchAssignment.duchy_id]?.[0] ?? researchAssignment.duchy_id
     : undefined
 
   if (!condado) {
@@ -178,14 +156,6 @@ export function InspectorSidebar({
         <Badge color="gray" variant="soft">Baronies: {baronyCount}</Badge>
       </Flex>
 
-      {/* Research-derived Reino/Ducado badges (solid variant, distinct from Group 1 soft badges) */}
-      {researchAssignment && (
-        <Flex gap="2" wrap="wrap">
-          <Badge color="amber" variant="solid">Reino: {researchKingdomName}</Badge>
-          <Badge color="blue" variant="solid">Ducado: {researchDuchyName}</Badge>
-        </Flex>
-      )}
-
       {/* Group 2: identity / geometry */}
       <Box>
         <Text size="1" color="gray" as="p">
@@ -228,27 +198,6 @@ export function InspectorSidebar({
           <Text size="2" color="gray" as="p">{condado.name}</Text>
         )}
       </Box>
-
-      {/* Validation issues (D-06) — shown when condado has errors/warnings */}
-      {validationIssues.length > 0 && (
-        <Box>
-          <Text size="1" weight="bold" color="red" as="p" mb="1">Problemas de Validação</Text>
-          <Flex direction="column" gap="1">
-            {validationIssues.map((issue, idx) => (
-              <Flex key={idx} gap="2" align="center">
-                <Badge
-                  color={issue.severity === 'error' ? 'red' : 'orange'}
-                  variant="soft"
-                  size="1"
-                >
-                  {issue.severity === 'error' ? 'Erro' : 'Aviso'}
-                </Badge>
-                <Text size="1">{issue.message}</Text>
-              </Flex>
-            ))}
-          </Flex>
-        </Box>
-      )}
 
       {/* Group 4: Adjacent territories */}
       <Box>
