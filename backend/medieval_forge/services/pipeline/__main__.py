@@ -5,6 +5,7 @@ Usage:
 """
 
 import argparse
+import pathlib
 
 from . import run_pipeline
 from .regions import REGIONS
@@ -16,5 +17,5 @@ if __name__ == "__main__":
     p.add_argument("--out", required=True)
     args = p.parse_args()
     cfg = REGIONS[args.region]()
-    cfg.output_dir = args.out
+    cfg.output_dir = str(pathlib.Path(args.out).resolve())
     run_pipeline(cfg)
