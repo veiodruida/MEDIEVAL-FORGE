@@ -94,7 +94,7 @@ INIT reported `phase_req_ids = null`. Requirements are derived from `ROADMAP.md`
 
 | ID | Description | Research Support |
 |----|-------------|------------------|
-| SC-1 | v3 user opens Phase-01 project and pans/zooms/clicks territories | §Standard Stack (Konva 10.2.5 + react-konva 19.2.x reused); §Code Examples (CanvasViewer reuse plan + URL switch) |
+| SC-1 | v3 user opens Phase-01 project and pans/zooms/clicks territories | §Standard Stack (Konva 10.2.5 + react-konva 19.2.x reused); §Code Examples (CanvasViewer reuse plan + URL switch); **§Open Questions Q1 + §Common Pitfalls Pitfall 10 (canvas-sidecar gap — BLOCKER without Wave 0 fix)** |
 | SC-2 | Inspector populates on click; layer toggles work | §Architecture Patterns §Multi-select state shape; §Don't Hand-Roll (use existing `InspectorSidebar`) |
 | SC-3 | Old stepper invisible; no console errors | §Don't Hand-Roll (delete graph below); §Common Pitfalls Pitfall 1 (dangling-import sweep) |
 | SC-4 | Runs against Phase 01 artifacts directly | §Architecture Patterns §Artifact-serving route handler; §Validation Architecture (Phase 01 parity 10/10 stays green) |
@@ -126,9 +126,9 @@ INIT reported `phase_req_ids = null`. Requirements are derived from `ROADMAP.md`
 
 ## Summary
 
-Phase 03 is a **read-only frontend rewrite** + **three small backend endpoints** + a **wide v1 deletion sweep**. The mechanical risk is small (Phase 02 already provides the SSE template, Phase 01 already provides `run_pipeline(cfg)`, and the 5-layer Konva stack is read-only-friendly). The cognitive risk concentrates in three places: (1) the **artifact-serving primitive** is misnamed in CONTEXT D-18 — `StaticFiles` cannot rewrite the URL segment `{id}/artifacts/*` to disk path `{id}/output/*`, so a `FileResponse`-based route handler with `is_valid_uuid` + filename allowlist is the correct primitive; (2) the **delete-graph fan-out** is large enough that one missed import breaks SC-3 ("no console errors"), so a **grep-based dangling-import sweep is the gate before merge**; (3) the **`_write_geojson_atomic` lift** is a pre-flight task because both `services/pipeline/adapters/base.py` AND `services/ingest_terrain/runner.py` (3 callsites) import it from the to-be-deleted `services/ingest_runner.py`.
+Phase 03 is a **read-only frontend rewrite** + **three small backend endpoints** + a **wide v1 deletion sweep**. The mechanical risk is small (Phase 02 already provides the SSE template, Phase 01 already provides `run_pipeline(cfg)`, and the 5-layer Konva stack is read-only-friendly). The cognitive risk concentrates in **four** places: (1) the **artifact-serving primitive** is misnamed in CONTEXT D-18 — `StaticFiles` cannot rewrite the URL segment `{id}/artifacts/*` to disk path `{id}/output/*`, so a `FileResponse`-based route handler with `is_valid_uuid` + filename allowlist is the correct primitive; (2) the **delete-graph fan-out** is large enough that one missed import breaks SC-3 ("no console errors"), so a **grep-based dangling-import sweep is the gate before merge**; (3) the **`_write_geojson_atomic` lift** is a pre-flight task because both `services/pipeline/adapters/base.py` AND `services/ingest_terrain/runner.py` (3 callsites) import it from the to-be-deleted `services/ingest_runner.py`; and (4) **the canvas data dependency on `territories.geojson` + `baronies.geojson` + `condado_colors.json` + `barony_colors.json` is unmet by the v3 pipeline** — these four sidecars are post-pipeline derivations of `lookup_condado.png` + `lookup_barony.png` produced today by `services/territories_geojson.py` + `services/baronies_builder.py`, BUT `run_pipeline` never calls those modules. Without a fix, SC-1 fails on canvas hydration (404). See §Open Questions Q1 (now elevated to **BLOCKER**) and §Common Pitfalls Pitfall 10.
 
-**Primary recommendation:** Adopt the 4-wave plan in §Architecture Patterns. Wave 0 lifts `_write_geojson_atomic` and removes the `terrain` LayerName. Wave 1 builds the new endpoints in parallel with the frontend rewrite. Wave 2 deletes v1 (gated on Wave 1 green). Wave 3 ships the Playwright UAT. Use **`FileResponse` route + UUID + filename allowlist**, **uuid4 run-ids**, **structured SSE envelope** (`{stage, event_type, message, progress?}`), **single Zustand `useRunStore`** for run state, and **HTML `<div>` overlay positioned via `Stage.getPointerPosition()`** for hover tooltips. Delete `api/auth.py` + `services/credential_store.py` + `models.LLMCredential` + `models.ResearchCache` + `models.CodexCache` — the entire LLM consumer graph is in the deletion set.
+**Primary recommendation:** Adopt the 4-wave plan in §Architecture Patterns. Wave 0 lifts `_write_geojson_atomic`, removes the `terrain` LayerName, **and resolves the canvas-sidecar gap** (recommendation: keep `services/territories_geojson.py` + `services/baronies_builder.py` as pure helpers and call them from `run_pipeline` as a final step — the four sidecar files land in `projects/{id}/output/` alongside the 10 contract files; they're emit-only and parity-safe because the parity gate only asserts on the 10 Unity contract files). Wave 1 builds the new endpoints in parallel with the frontend rewrite. Wave 2 deletes v1 (gated on Wave 1 green). Wave 3 ships the Playwright UAT. Use **`FileResponse` route + UUID + filename allowlist**, **uuid4 run-ids**, **structured SSE envelope** (`{stage, event_type, message, progress?}`), **single Zustand `useRunStore`** for run state, and **HTML `<div>` overlay positioned via `Stage.getPointerPosition()`** for hover tooltips. Delete `api/auth.py` + `services/credential_store.py` + `models.LLMCredential` + `models.ResearchCache` + `models.CodexCache` — the entire LLM consumer graph is in the deletion set.
 
 ---
 
@@ -424,6 +424,7 @@ if (pos) setTooltipPos({ x: pos.x, y: pos.y })  // offset by container offsetTop
 | Run-id generator | Custom counter + monotonic clock | `uuid4()` (already imported by `models._new_uuid`) | One-line, collision-resistant, validates via `is_valid_uuid` |
 | Cache-busting | Filename hashing + manifest | `?v={project.updated_at}` query string | Already proven in v1 `cacheVersion` prop; CONTEXT D-19 locks this `[VERIFIED: useCanvasArtifacts.ts:111]` |
 | Ingest+generate ordering | A new orchestrator | Two SSE streams (Phase 02 `/ingest` followed by Phase 03 `/generate`) | Each step has its own status transitions and error handling |
+| Canvas-side sidecar files (territories.geojson + baronies.geojson + colors) | A new emitter | Existing `services/territories_geojson.py` + `services/baronies_builder.py` (Wave 0 verifies they survive D-13) called from `run_pipeline` as a final step | Already tested + handles MultiPolygon + neighbors hoist |
 
 **Key insight:** Phase 03 is **assembly, not invention**. Every problem the planner needs to solve has either an existing FastAPI primitive (`FileResponse`, `StreamingResponse`, `Depends`) or an existing intra-repo pattern (`_v3_sse_generator`, `useCanvasArtifacts`, `paths.is_valid_uuid`). The planner's job is to spell out the assembly order — not to design new abstractions.
 
@@ -618,6 +619,18 @@ Note: `selectIds(string[])` replaces `select(string | null)` — both are needed
 3. Or accept the limitation and treat refresh-mid-run as cosmetic: status badge stays "Gerando…" but log panel is empty until next event.
 
 **Recommendation:** option (3) is Karpathy-correct for Phase 03 (~10 s pipeline; refresh-mid-run is rare). Document the rough edge in a comment in `useRunStore`. Phase 04 handles re-mount survival when sliders make runs frequent.
+
+### Pitfall 10: Canvas-sidecar generation gap (BLOCKER without Wave 0 fix)
+
+**What goes wrong:** The new `/api/v3/projects/{id}/artifacts/territories.geojson` request returns 404. `useCanvasArtifacts` resolves with `error: 'MAP_NOT_GENERATED'`, `<CanvasViewer>` hits its early-return error branch, the user sees "No map generated yet. Run the pipeline first." even after a successful `/generate` run. SC-1 fails.
+
+**Why it happens:** v1 produced these sidecars via `services/territories_geojson.py` + `services/baronies_builder.py` called from `api/generate.py` (deleted in Phase 01). The new `run_pipeline` (Phase 01 verbatim port of `inicio/map_generator.py`) emits the 10 Unity contract files, NOT the four canvas-side sidecars — those were never in `inicio/map_generator.py`. The advisor caught this mismatch from §Do not Hand-Roll vs §Code Examples §artifacts.py allowlist.
+
+**How to avoid:** Wave 0 task — extend `run_pipeline` (after Step 14 rivers) to call `territories_geojson.build_territories_geojson_with_colors_sidecar(project_id, cfg)` + the analogous `baronies` emitter. The four files land in `cfg.output_dir` (which Phase 03 sets to `projects/{id}/output/` for live runs). Parity test stays green because the test asserts only on the 10 Unity files (verified by §Open Questions Q1 evidence). Add a unit test `backend/tests/parity/test_iberia_868.py::test_canvas_sidecars_exist` that asserts the 4 sidecar files exist in the parity output (NEW assertion — does not assert byte parity to deployed Reconquista because the sidecars are v3-only).
+
+**Warning signs:** Playwright UAT fails on first canvas mount after generate; backend logs show 4 × 404 in quick succession on `/artifacts/territories.geojson` etc.; the InspectorSidebar permanently renders "No inspector data."
+
+**Open dependency:** Q1 in §Open Questions chooses Option (1) here (the recommendation). If the planner picks Option (3) "v3 wrapper endpoint", Pitfall 10 morphs into "ensure first-fetch latency is acceptable on a 1920×1080 raster".
 
 ---
 
@@ -978,6 +991,7 @@ export function InteractionLayer({ territories }: Props) {
 | `usePipelineStore` orchestrating step state | `useRunStore` for SSE run state machine | Phase 03 | Simpler state — no per-step provider/effort/status fields |
 | `useEditorStore.rubberBandSelectionIds: string[]` | `useUIStore.selectedTerritoryIds: string[]` | Phase 03 | One store owns selection; rubber-band UX gone |
 | `services/ingest_runner.py` `_write_geojson_atomic` | `services/paths.py` `_write_geojson_atomic` | Phase 03 Wave 0 | Lift required to gate D-12 deletion |
+| Canvas sidecars emitted by v1 `api/generate.py` → `services/territories_geojson.py` | Same emitters called as a final step inside `run_pipeline` | Phase 03 Wave 0 | Closes the SC-1 hydration gap; parity-safe (10-file contract unchanged) |
 
 **Deprecated/outdated:**
 - v1 Stepper UI (697-line ProjectDetail) — explicit anti-target per CLAUDE.md.
@@ -1000,30 +1014,39 @@ export function InteractionLayer({ territories }: Props) {
 | A7 | Two callsites of `_write_geojson_atomic` outside Phase 02 (`ingest_terrain/runner.py` is the survivor) — confirmed by grep | §Common Pitfalls Pitfall 2 | Wrong → fewer tasks needed (smaller win). Mitigation: planner re-greps to confirm. |
 | A8 | UI-SPEC's "1 px hover outline + tooltip" can share `InteractionLayer` (gold 3 px) without visual conflict | §Architecture Patterns Pattern 6 | If gold-on-grey looks awful, separate hover layer needed (1 extra Konva Layer; cheap). Mitigation: design call during planning, not blocking research. |
 
+| A9 | `services/baronies_builder.py` can be reused (no LLM contamination) — verify in Wave 0 grep | §Open Questions Q1 + §Common Pitfalls Pitfall 10 | If contaminated (e.g. consumes `MapResearchResult`), Wave 0 task gains a "rewrite as pure helper" sub-task (~30 LOC). Mitigation: confirm in Wave 0 first task. |
+
 If this table is empty: all claims in this research were verified or cited — no user confirmation needed.
 
 ---
 
 ## Open Questions
 
-1. **Does `/api/projects/{id}/export` (v1) read from the new `projects/{id}/output/` layout?**
+1. **[BLOCKER] Where do the post-pipeline canvas sidecars (`territories.geojson`, `baronies.geojson`, `condado_colors.json`, `barony_colors.json`) come from in v3?**
+   - **What we know:** `useCanvasArtifacts.ts` fetches all four (queries [0]-[3]) plus `territory_metadata.json` (query [4]). In v1, `services/territories_geojson.py` reads `lookup_condado.png` + `lookup_condado_colors.json` (post-pipeline) and emits `territories.geojson` + `condado_colors.json` (verified by reading the file docstring lines 1-12 + body lines 84-274). `services/baronies_builder.py` is the analogous emitter for the barony-side files (presumed; planner verifies in Wave 0). `run_pipeline` from `services/pipeline/__init__.py` emits the **10-file Unity contract** but does NOT emit these four canvas sidecars.
+   - **What is unclear:** which of the three options the planner picks, and whether `services/baronies_builder.py` is purely geometric or has v1-LLM contamination.
+   - **Why it is a blocker:** without these four files at `projects/{id}/output/`, SC-1 fails immediately on canvas mount — every fetch 404s and `<CanvasViewer>` renders the "Failed to load territory data" error branch. The Phase 02 ingest path does not write them either (it produces `inputs/` files, not `output/`).
+   - **Recommendation: Option (1) — extend `run_pipeline`** to call `territories_geojson.build_territories_geojson_with_colors_sidecar` + the analogous baronies emitter as a final step (after the existing Step 14 rivers). The four files land in `cfg.output_dir` alongside the 10 contract files. Parity gate is unaffected because `tests/parity/test_iberia_868.py` only asserts on the 10 Unity files (verified by Phase 01 D-12 wording: "Lookup PNGs / Visual PNGs / JSONs" enumerated explicitly — the four canvas sidecars are NOT in that list). The `services/territories_geojson.py` module survives D-13 because it has zero LLM dependencies (verified — only imports `rasterio`, `shapely`, `numpy`, `.paths`); `services/baronies_builder.py` needs a Wave 0 grep audit for the same property.
+   - **Rejected alternatives:** Option (2) "derive client-side" — only solves the colors files (centroids in `territory_metadata.json` cannot reconstruct polygon rings); Option (3) "v3 wrapper endpoint that lazy-runs the helper" — adds runtime cost on every artifacts fetch + breaks Cache-Control immutable contract. Option (1) is canonical.
+
+2. **Does `/api/projects/{id}/export` (v1) read from the new `projects/{id}/output/` layout?**
    - What we know: UI-SPEC mentions a working "Exportar ZIP" button on the toolbar. CONTEXT does not delete `api/export.py`.
-   - What's unclear: whether the v1 export endpoint hard-codes the v1 path layout (`projects/{id}/raw/...`) or already reads from a configurable `output_dir`.
-   - Recommendation: planning-task Wave 0 grep `api/export.py` for path constants. If v1-coupled, ship a v3 wrapper `api/v3/export.py` (~30 LOC, FileResponse on a ZIP built from `output/`). Phase-01 already produces the 12 files; ZIP'ing is trivial.
+   - What is unclear: whether the v1 export endpoint hard-codes the v1 path layout (`projects/{id}/raw/...`) or already reads from a configurable `output_dir`.
+   - Recommendation: planning-task Wave 0 grep `api/export.py` for path constants. If v1-coupled, ship a v3 wrapper `api/v3/export.py` (~30 LOC, FileResponse on a ZIP built from `output/`). Phase-01 already produces the 12 files; ZIP-ing is trivial.
 
-2. **Should we ship the optional Alembic 0004 migration to drop orphan `llm_credentials` / `research_cache` / `codex_cache` tables?**
+3. **Should we ship the optional Alembic 0004 migration to drop orphan `llm_credentials` / `research_cache` / `codex_cache` tables?**
    - What we know: Tables are harmless after their consumer code is gone. v3 is local single-user.
-   - What's unclear: whether downstream Phase 06 export-gate validation has any opinion on schema cleanliness.
-   - Recommendation: defer to Phase 06 unless a user reports the orphan tables. Karpathy: don't build for hypothetical use.
+   - What is unclear: whether downstream Phase 06 export-gate validation has any opinion on schema cleanliness.
+   - Recommendation: defer to Phase 06 unless a user reports the orphan tables. Karpathy: do not build for hypothetical use.
 
-3. **`services/territories_geojson.py`, `services/voronoi.py`, `services/baronies_builder.py`, `services/render_modern.py`, `services/project_meta.py`, `services/territory_builder.py` — are any of them imported by surviving code?**
-   - What we know: They're v1-stack leftovers; their main consumers (`api/generate.py`, `api/edit.py`) are deleted.
-   - What's unclear: whether `api/projects.py:territory_template` (line 35-47) reads `services/territory_iberia.json` — needs a grep audit.
-   - Recommendation: Wave 0 grep + audit. Likely all delete, but confirm before shipping.
+4. **`services/voronoi.py`, `services/render_modern.py`, `services/project_meta.py`, `services/territory_builder.py` — are any imported by surviving code?**
+   - What we know: They are v1-stack leftovers; their main consumers (`api/generate.py`, `api/edit.py`) are deleted. **`services/territories_geojson.py` + `services/baronies_builder.py` are now KEPT (per Q1).**
+   - What is unclear: whether `api/projects.py:territory_template` (line 35-47) reads `services/territory_iberia.json` — needs a grep audit.
+   - Recommendation: Wave 0 grep + audit. Likely all delete (territory_builder consumes LLM research cache, so it goes), but confirm before shipping.
 
-4. **Should `RegionConfig.on_stage` ship in Phase 03 or be skipped (heartbeat-only Phase 03, real per-stage events Phase 04)?**
-   - What we know: D-03 explicitly demands per-stage checkmarks; heartbeat-only doesn't satisfy it.
-   - What's unclear: is the planner okay editing `services/pipeline/__init__.py` for stage hooks while staying parity-safe?
+5. **Should `RegionConfig.on_stage` ship in Phase 03 or be skipped (heartbeat-only Phase 03, real per-stage events Phase 04)?**
+   - What we know: D-03 explicitly demands per-stage checkmarks; heartbeat-only does not satisfy it.
+   - What is unclear: is the planner okay editing `services/pipeline/__init__.py` for stage hooks while staying parity-safe?
    - Recommendation: ship `on_stage` (Pattern 5 + A3). Add one parity unit test that `cfg.on_stage = None` produces byte-identical output to the existing parity baseline.
 
 ---
@@ -1125,12 +1148,13 @@ If this table is empty: all claims in this research were verified or cited — n
 The advisor's sketch confirmed by §Common Pitfalls and §Don't Hand-Roll graph analysis:
 
 **Wave 0 — pre-flight refactors (gates everything else):**
-1. Lift `_write_geojson_atomic` → `services/paths.py`. Update `services/pipeline/adapters/base.py` + `services/ingest_terrain/runner.py` (3 callsites).
-2. Add `cfg.on_stage: Callable[[str, str], None] | None = None` to `RegionConfig`. Sprinkle hook calls in `services/pipeline/__init__.py` Steps 3-12. Add parity unit test.
-3. Audit `Project.generator_config` consumers (Open Q1).
-4. Audit `services/{territories_geojson, voronoi, baronies_builder, render_modern, project_meta, territory_builder}.py` consumers (Open Q3) — set delete list.
-5. Audit `api/export.py` path layout (Open Q1) — decide v3 wrapper vs reuse.
-6. Decide `api/auth.py` + `services/credential_store.py` + ORM cleanup tasks (D-13 audit).
+1. **[BLOCKER FIX]** Extend `run_pipeline` to emit the 4 canvas sidecars (`territories.geojson`, `baronies.geojson`, `condado_colors.json`, `barony_colors.json`) after Step 14. Verify `services/baronies_builder.py` has zero LLM imports first; if contaminated, rewrite the barony-emit logic as a thin helper in a new `services/pipeline/canvas_sidecars.py` module. Add `test_canvas_sidecars_exist` parity assertion (existence, not byte-parity).
+2. Lift `_write_geojson_atomic` → `services/paths.py`. Update `services/pipeline/adapters/base.py` + `services/ingest_terrain/runner.py` (3 callsites).
+3. Add `cfg.on_stage: Callable[[str, str], None] | None = None` to `RegionConfig`. Sprinkle hook calls in `services/pipeline/__init__.py` Steps 3-12. Add parity unit test.
+4. Audit `Project.generator_config` consumers (Open Q1).
+5. Audit `services/{voronoi, render_modern, project_meta, territory_builder}.py` consumers (Open Q3) — set delete list.
+6. Audit `api/export.py` path layout (Open Q1) — decide v3 wrapper vs reuse.
+7. Decide `api/auth.py` + `services/credential_store.py` + ORM cleanup tasks (D-13 audit).
 
 **Wave 1 — backend endpoints || frontend rewrite (run in parallel):**
 - Backend track: `api/v3/{generate,status,artifacts}.py` + register in `main.py` + 4 unit test files.
