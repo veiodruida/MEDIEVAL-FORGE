@@ -18,13 +18,6 @@ def test_canonical_import_path_works():
     assert callable(_write_geojson_atomic)
 
 
-def test_legacy_import_path_still_works_via_reexport():
-    """The old `ingest_runner` import keeps working — Plan 07 will delete it."""
-    from medieval_forge.services.ingest_runner import _write_geojson_atomic as legacy
-    from medieval_forge.services.paths import _write_geojson_atomic as canonical
-    assert legacy is canonical
-
-
 def test_write_creates_valid_json_that_roundtrips(tmp_path):
     """Writing a FeatureCollection produces a file whose JSON content roundtrips."""
     from medieval_forge.services.paths import _write_geojson_atomic

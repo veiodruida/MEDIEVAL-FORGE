@@ -46,7 +46,6 @@ app = FastAPI(
 )
 
 from .api.projects import router as projects_router  # noqa: E402
-from .api.ingest import router as ingest_router  # noqa: E402
 from .api.export import router as export_router  # noqa: E402
 from .api.auth import router as auth_router  # noqa: E402
 from .api.research import router as research_router  # noqa: E402
@@ -60,7 +59,6 @@ from .api.v3.status import router as v3_status_router  # noqa: E402
 from .api.v3.generate import router as v3_generate_router  # noqa: E402
 
 app.include_router(projects_router, prefix="/api")
-app.include_router(ingest_router, prefix="/api")
 app.include_router(export_router, prefix="/api")
 app.include_router(auth_router, prefix="/api")
 app.include_router(research_router, prefix="/api")
