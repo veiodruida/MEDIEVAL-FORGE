@@ -86,3 +86,41 @@ def test_json_deep_equal(pipeline_output: Path, golden_dir: Path, name: str) -> 
         f"{name}: JSON mismatch.\n"
         f"  hint: diff <(jq -S . {golden_dir / name}) <(jq -S . {pipeline_output / name})"
     )
+
+
+# --- Plan 03-01 Pitfall 10 fix: canvas sidecars exist + non-empty ---
+# These four files feed the Phase 03 read-only canvas hydrator
+# (useCanvasArtifacts). They are emit-only and v3-only — no byte-parity
+# vs Reconquista is asserted; the existing 10-file contract is untouched.
+def test_canvas_sidecars_exist(pipeline_output: Path) -> None:
+    sidecars = (
+        "territories.geojson",
+        "baronies.geojson",
+        "condado_colors.json",
+        "barony_colors.json",
+    )
+    for name in sidecars:
+        p = pipeline_output / name
+        assert p.is_file(), f"missing canvas sidecar: {name}"
+        data = json.loads(p.read_text(encoding="utf-8"))
+        assert data, f"empty canvas sidecar: {name}"
+
+    # territories.geojson is a non-empty FeatureCollection.
+    tj = json.loads((pipeline_output / "territories.geojson").read_text(encoding="utf-8"))
+    assert tj["type"] == "FeatureCollection"
+    assert len(tj["features"]) > 0, "territories.geojson has zero features"
+
+    # baronies.geojson is a non-empty FeatureCollection.
+    bj = json.loads((pipeline_output / "baronies.geojson").read_text(encoding="utf-8"))
+    assert bj["type"] == "FeatureCollection"
+    assert len(bj["features"]) > 0, "baronies.geojson has zero features"
+
+    # condado_colors.json: every visible condado in territories.geojson has
+    # a hex color in the colors sidecar (cardinality lower bound — extras OK).
+    colors = json.loads((pipeline_output / "condado_colors.json").read_text(encoding="utf-8"))
+    territory_ids = {f["id"] for f in tj["features"]}
+    missing_colors = territory_ids - set(colors.keys())
+    assert not missing_colors, (
+        f"condado_colors.json missing {len(missing_colors)} entries: "
+        f"{sorted(missing_colors)[:5]}"
+    )

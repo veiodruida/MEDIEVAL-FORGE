@@ -156,8 +156,10 @@ def run_pipeline(cfg: RegionConfig) -> None:
     # 10. Lookup maps
     _emit(cfg, "lookup", "start")
     print("[11] Generating lookup maps...")
+    cmaps: dict[str, dict] = {}  # captured for canvas sidecars (Plan 03-01)
     for label, level_map, n_items in [("barony", result, nb), ("condado", pc, nc)]:
         lk, cmap = generate_lookup_map(result, level_map, n_items, cfg, label)
+        cmaps[label] = cmap
         Image.fromarray(lk).save(f"{cfg.output_dir}/lookup_{label}.png")
         with open(f"{cfg.output_dir}/lookup_{label}_colors.json", 'w') as f:
             json.dump(cmap, f, indent=2)
@@ -212,6 +214,31 @@ def run_pipeline(cfg: RegionConfig) -> None:
     if mr_path and os.path.exists(mr_path):
         shutil.copy2(mr_path,
                      os.path.join(cfg.output_dir, "mountain_river_data.json"))
+
+    # 15. Canvas sidecars (Plan 03-01 BLOCKER fix — Pitfall 10).
+    # Emit-only, parity-safe: the 10-file Unity contract is unaffected; these
+    # four files (territories.geojson + baronies.geojson + condado_colors.json
+    # + barony_colors.json) feed the Phase 03 read-only canvas hydrator.
+    print("[15] Emitting canvas sidecars...")
+    from ..canvas_sidecars import (
+        build_baronies_geojson_sidecar,
+        build_territories_geojson_sidecar,
+    )
+    build_territories_geojson_sidecar(
+        pc=pc,
+        condados=condados,
+        duchies=duchies,
+        cfg=cfg,
+        condado_cmap=cmaps["condado"],
+        out_dir=cfg.output_dir,
+    )
+    build_baronies_geojson_sidecar(
+        result=result,
+        bars=bars,
+        cfg=cfg,
+        barony_cmap=cmaps["barony"],
+        out_dir=cfg.output_dir,
+    )
     _emit(cfg, "export", "done")
 
     print(f"\n{'='*60}")
