@@ -55,6 +55,8 @@ from .api.llm import router as llm_router  # noqa: E402
 from .api import edit as edit_api  # noqa: E402
 from .api import terrain as terrain_api  # noqa: E402
 from .api.v3.ingest import router as v3_ingest_router  # noqa: E402
+from .api.v3.artifacts import router as v3_artifacts_router  # noqa: E402
+from .api.v3.status import router as v3_status_router  # noqa: E402
 
 app.include_router(projects_router, prefix="/api")
 app.include_router(ingest_router, prefix="/api")
@@ -66,6 +68,8 @@ app.include_router(llm_router, prefix="/api")
 app.include_router(edit_api.router, prefix="/api")
 app.include_router(terrain_api.router, prefix="/api")
 app.include_router(v3_ingest_router, prefix="/api")
+app.include_router(v3_artifacts_router, prefix="/api")
+app.include_router(v3_status_router, prefix="/api")
 
 # /assets/* — JS/CSS bundles. Only mount if directory exists (frontend may
 # not be built yet during early development).
