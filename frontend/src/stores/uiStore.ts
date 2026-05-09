@@ -1,44 +1,52 @@
 import { create } from 'zustand'
 
-// Quick-task 260420-hkr rename:
-// - 'terrain' layer added in Phase 05 (plan 5.1); default visibility OFF.
-// - 'baronies' added so the BaronyLayer can be toggled independently of borders.
-// Downstream plans (2.2/2.3/5.2) depend on this shape; do not change without
-// updating all consumers (CanvasViewer, LayerTogglePanel, uiStore.test).
-export type LayerName = 'condados' | 'baronies' | 'borders' | 'capitals' | 'labels' | 'terrain'
+/**
+ * Phase 03 (read-only canvas redesign) evolution:
+ *
+ * - selectedTerritoryId (single string|null) → selectedTerritoryIds (string[])
+ *   to support D-17 shift+click multi-select. Legacy `select(id|null)` is kept
+ *   as a thin convenience that writes [id] or []. Consumers migrate via the
+ *   exported `selectSelectedTerritoryId` selector (returns ids[0] ?? null).
+ *
+ * - LayerName: 'terrain' removed. Terrain rendering is deferred to Phase 06
+ *   (DEM/HydroSHEDS wire-up); the read-only canvas does not toggle a terrain
+ *   layer in v3 Phase 03. Other consumers of 'terrain' (TerritoryLayer,
+ *   TerrainBadgesLayer, LayerTogglePanel) are scrubbed by Plans 05/06.
+ *
+ * - overlayImageUrl + overlayOpacity removed. Reference-image overlay was a v1
+ *   Phase 5 feature; not in the v3 Phase 03 read-only contract. Plan 05 deletes
+ *   any remaining consumers.
+ */
+export type LayerName = 'condados' | 'baronies' | 'borders' | 'capitals' | 'labels'
 
 interface UIState {
-  selectedTerritoryId: string | null
+  selectedTerritoryIds: string[]
   layerVisibility: Record<LayerName, boolean>
-  // Phase 5: reference overlay (client-side ephemeral, D-04)
-  overlayImageUrl: string | null
-  overlayOpacity: number  // 0.0 – 1.0
+  selectIds: (ids: string[]) => void
+  // Legacy convenience: writes [id] or []. Equivalent to selectIds(id ? [id] : []).
+  // Prefer `selectIds` in new code.
   select: (id: string | null) => void
   toggleLayer: (name: LayerName) => void
-  setOverlayImageUrl: (url: string | null) => void
-  setOverlayOpacity: (opacity: number) => void
 }
 
-// Initial visibility: condados/borders/capitals on; baronies/labels/terrain off.
+// Initial visibility: condados/borders/capitals on; baronies/labels off.
 // baronies defaults to off so the denser barony polygons do not obscure the
 // condado colors on first view — the user opts in via the "Baronias" toggle.
-// terrain defaults to off — user opts in via terrain layer toggle (Phase 5).
 const DEFAULT_LAYER_VISIBILITY: Record<LayerName, boolean> = {
   condados: true,
   baronies: false,
   borders: true,
   capitals: true,
   labels: false,
-  terrain: false,
 }
 
 export const useUIStore = create<UIState>((set) => ({
-  selectedTerritoryId: null,
+  selectedTerritoryIds: [],
   layerVisibility: { ...DEFAULT_LAYER_VISIBILITY },
-  overlayImageUrl: null,
-  overlayOpacity: 0.5,
 
-  select: (id) => set({ selectedTerritoryId: id }),
+  selectIds: (ids) => set({ selectedTerritoryIds: ids }),
+
+  select: (id) => set({ selectedTerritoryIds: id ? [id] : [] }),
 
   toggleLayer: (name) =>
     set((state) => ({
@@ -47,14 +55,12 @@ export const useUIStore = create<UIState>((set) => ({
         [name]: !state.layerVisibility[name],
       },
     })),
-
-  setOverlayImageUrl: (url) =>
-    set((state) => {
-      if (state.overlayImageUrl && state.overlayImageUrl !== url) {
-        URL.revokeObjectURL(state.overlayImageUrl)
-      }
-      return { overlayImageUrl: url }
-    }),
-
-  setOverlayOpacity: (opacity) => set({ overlayOpacity: Math.min(1, Math.max(0, opacity)) }),
 }))
+
+/**
+ * Selector returning the first selected territory id, or null.
+ * Use this in place of the removed `selectedTerritoryId` field:
+ *   const id = useUIStore(selectSelectedTerritoryId)
+ */
+export const selectSelectedTerritoryId = (s: UIState): string | null =>
+  s.selectedTerritoryIds[0] ?? null
