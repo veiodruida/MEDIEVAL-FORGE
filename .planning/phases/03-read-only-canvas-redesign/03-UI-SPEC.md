@@ -1,10 +1,11 @@
 ---
 phase: 03
 slug: read-only-canvas-redesign
-status: draft
+status: approved
 shadcn_initialized: false
 preset: none
 created: 2026-05-09
+reviewed_at: 2026-05-09
 ---
 
 # Phase 03 — UI Design Contract
