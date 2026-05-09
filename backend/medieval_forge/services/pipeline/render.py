@@ -127,7 +127,10 @@ def render_map(result, pc, pd, pk, bc, bd, bk, nb, nc, condados, duchies,
         try:
             font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 11)
             font_sm = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 9)
-        except:
+        except (OSError, IOError):
+            # PIL.ImageFont.truetype raises OSError when a font file can't be opened;
+            # narrowing from inicio's bare `except:` (verbatim port deviation) so we
+            # don't swallow KeyboardInterrupt / SystemExit during long renders.
             font = font_sm = ImageFont.load_default()
 
         iv2 = Image.fromarray(vn, "RGB")
