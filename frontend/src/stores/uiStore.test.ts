@@ -8,6 +8,7 @@ import { act } from 'react'
 beforeEach(() => {
   useUIStore.setState({
     selectedTerritoryIds: [],
+    selectedTerritoryId: null,
     layerVisibility: {
       condados: true,
       baronies: false,
@@ -41,6 +42,17 @@ describe('uiStore — multi-select state shape (Phase 03 D-17)', () => {
     act(() => useUIStore.getState().select(null))
     expect(useUIStore.getState().selectedTerritoryIds).toEqual([])
     expect(selectSelectedTerritoryId(useUIStore.getState())).toBeNull()
+  })
+
+  it('test_selectedTerritoryId_mirror_tracks_first_id: backward-compat for unmigrated consumers', () => {
+    // The mirror exists so CanvasViewer's `useUIStore((s) => s.selectedTerritoryId)`
+    // keeps firing on selection changes until Plan 05 migrates it to the selector.
+    act(() => useUIStore.getState().selectIds(['m', 'n']))
+    expect(useUIStore.getState().selectedTerritoryId).toBe('m')
+    act(() => useUIStore.getState().select('z'))
+    expect(useUIStore.getState().selectedTerritoryId).toBe('z')
+    act(() => useUIStore.getState().select(null))
+    expect(useUIStore.getState().selectedTerritoryId).toBeNull()
   })
 })
 

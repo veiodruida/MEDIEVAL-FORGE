@@ -21,6 +21,11 @@ export type LayerName = 'condados' | 'baronies' | 'borders' | 'capitals' | 'labe
 
 interface UIState {
   selectedTerritoryIds: string[]
+  // Mirror of selectedTerritoryIds[0] ?? null. Kept as a real state field (not a
+  // getter) so existing Zustand subscribers like CanvasViewer's
+  // `useUIStore((s) => s.selectedTerritoryId)` keep working without modification.
+  // Plan 05 migrates consumers to `selectSelectedTerritoryId` and drops this mirror.
+  selectedTerritoryId: string | null
   layerVisibility: Record<LayerName, boolean>
   selectIds: (ids: string[]) => void
   // Legacy convenience: writes [id] or []. Equivalent to selectIds(id ? [id] : []).
@@ -42,11 +47,14 @@ const DEFAULT_LAYER_VISIBILITY: Record<LayerName, boolean> = {
 
 export const useUIStore = create<UIState>((set) => ({
   selectedTerritoryIds: [],
+  selectedTerritoryId: null,
   layerVisibility: { ...DEFAULT_LAYER_VISIBILITY },
 
-  selectIds: (ids) => set({ selectedTerritoryIds: ids }),
+  selectIds: (ids) =>
+    set({ selectedTerritoryIds: ids, selectedTerritoryId: ids[0] ?? null }),
 
-  select: (id) => set({ selectedTerritoryIds: id ? [id] : [] }),
+  select: (id) =>
+    set({ selectedTerritoryIds: id ? [id] : [], selectedTerritoryId: id }),
 
   toggleLayer: (name) =>
     set((state) => ({
