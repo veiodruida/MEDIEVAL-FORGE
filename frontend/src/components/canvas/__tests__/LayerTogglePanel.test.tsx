@@ -13,19 +13,16 @@ vi.mock('@radix-ui/themes', () => ({
   Checkbox: ({ checked, onCheckedChange }: { checked?: boolean; onCheckedChange?: (v: boolean) => void }) => (
     <input type="checkbox" checked={checked} onChange={(e) => onCheckedChange?.(e.target.checked)} />
   ),
-  // GAP-08: Tooltip wraps the Labels row. Passthrough mock preserves children
-  // so the existing getByText/getAllByRole assertions continue to work.
   Tooltip: ({ children, content }: React.PropsWithChildren<{ content?: React.ReactNode }>) => (
     <div data-testid="tooltip" data-content={typeof content === 'string' ? content : ''}>{children}</div>
   ),
 }))
 
-// Quick-task 260420-hkr: vocabulary + defaults updated.
-// Phase 05: 'terrain' layer added (default OFF).
+// Phase 03: 'terrain' layer removed (Plan 03-05). 5 layers remain:
+// condados / baronies / borders / capitals / labels.
 const DEFAULT_VISIBILITY = {
   condados: true,
   baronies: false,
-  terrain: false,
   borders: true,
   capitals: true,
   labels: false,
@@ -34,46 +31,42 @@ const DEFAULT_VISIBILITY = {
 describe('LayerTogglePanel', () => {
   beforeEach(() => {
     useUIStore.setState({
+      selectedTerritoryIds: [],
       selectedTerritoryId: null,
       layerVisibility: { ...DEFAULT_VISIBILITY },
-      select: useUIStore.getState().select,
-      toggleLayer: useUIStore.getState().toggleLayer,
     })
   })
 
-  it('renders 6 layer rows in the correct order (Phase 05: terrain added)', () => {
+  it('renders 5 layer rows in the correct order (Phase 03: terrain removed)', () => {
     render(<LayerTogglePanel />)
     expect(screen.getByText('Condados')).toBeTruthy()
     expect(screen.getByText('Baronias')).toBeTruthy()
-    expect(screen.getByText('Terreno')).toBeTruthy()
     expect(screen.getByText('Fronteiras')).toBeTruthy()
     expect(screen.getByText('Capitais')).toBeTruthy()
     expect(screen.getByText('Nomes')).toBeTruthy()
-    expect(screen.getAllByRole('checkbox').length).toBe(6)
+    expect(screen.getAllByRole('checkbox').length).toBe(5)
   })
 
-  it('default state: condados/borders/capitals ON, baronies/terrain/labels OFF', () => {
+  it('does NOT render the Terreno (terrain) row', () => {
+    render(<LayerTogglePanel />)
+    expect(screen.queryByText('Terreno')).toBeNull()
+  })
+
+  it('default state: condados/borders/capitals ON, baronies/labels OFF', () => {
     render(<LayerTogglePanel />)
     const boxes = screen.getAllByRole('checkbox') as HTMLInputElement[]
     expect(boxes[0].checked).toBe(true)  // condados
     expect(boxes[1].checked).toBe(false) // baronies
-    expect(boxes[2].checked).toBe(false) // terrain (Phase 05 — default OFF)
-    expect(boxes[3].checked).toBe(true)  // borders
-    expect(boxes[4].checked).toBe(true)  // capitals
-    expect(boxes[5].checked).toBe(false) // labels
+    expect(boxes[2].checked).toBe(true)  // borders
+    expect(boxes[3].checked).toBe(true)  // capitals
+    expect(boxes[4].checked).toBe(false) // labels
   })
 
   it('clicking Nomes (labels) checkbox toggles store', () => {
     render(<LayerTogglePanel />)
     const boxes = screen.getAllByRole('checkbox') as HTMLInputElement[]
-    act(() => { fireEvent.click(boxes[5]) }) // index 5 after terrain insertion
+    act(() => { fireEvent.click(boxes[4]) })
     expect(useUIStore.getState().layerVisibility.labels).toBe(true)
-  })
-
-  it('Terreno toggle is present and defaults to OFF', () => {
-    render(<LayerTogglePanel />)
-    expect(screen.getByText('Terreno')).toBeTruthy()
-    expect(useUIStore.getState().layerVisibility.terrain).toBe(false)
   })
 
   it('Card has variant="surface" at absolute position top:12 left:12 z-index:10', () => {

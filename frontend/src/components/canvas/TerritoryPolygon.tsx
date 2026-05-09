@@ -8,6 +8,8 @@ interface TerritoryPolygonProps {
   isSelected: boolean
   showBorders: boolean
   onClick: (id: string, shift: boolean) => void
+  onMouseEnter?: (id: string) => void
+  onMouseLeave?: () => void
 }
 
 /**
@@ -24,6 +26,8 @@ function TerritoryPolygonBase({
   isSelected,
   showBorders,
   onClick,
+  onMouseEnter,
+  onMouseLeave,
 }: TerritoryPolygonProps) {
   return (
     <Line
@@ -34,6 +38,8 @@ function TerritoryPolygonBase({
       stroke={showBorders ? "rgba(0, 0, 0, 0.35)" : "transparent"}
       strokeWidth={showBorders ? (isSelected ? 2.5 : 1) : 0}
       onClick={(e) => onClick(territory.id, e.evt.shiftKey === true)}
+      onMouseEnter={onMouseEnter ? () => onMouseEnter(territory.id) : undefined}
+      onMouseLeave={onMouseLeave ? () => onMouseLeave() : undefined}
       listening
     />
   )
@@ -49,7 +55,9 @@ function areEqual(
     prev.fill === next.fill &&
     prev.isSelected === next.isSelected &&
     prev.showBorders === next.showBorders &&
-    prev.onClick === next.onClick
+    prev.onClick === next.onClick &&
+    prev.onMouseEnter === next.onMouseEnter &&
+    prev.onMouseLeave === next.onMouseLeave
   )
 }
 

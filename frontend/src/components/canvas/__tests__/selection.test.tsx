@@ -35,7 +35,7 @@ const TERRITORIES: TerritoryRender[] = [
 
 describe('InteractionLayer — gold selection outline', () => {
   beforeEach(() => {
-    useUIStore.setState({ selectedTerritoryId: null })
+    useUIStore.setState({ selectedTerritoryIds: [], selectedTerritoryId: null })
   })
 
   it('renders 0 Line children when selectedTerritoryId is null', () => {
@@ -44,7 +44,7 @@ describe('InteractionLayer — gold selection outline', () => {
   })
 
   it('renders exactly 1 gold Line (#f0c040, width 3, listening=false) for the selected territory', () => {
-    useUIStore.setState({ selectedTerritoryId: 'C_A' })
+    useUIStore.setState({ selectedTerritoryIds: ['C_A'], selectedTerritoryId: 'C_A' })
     render(<InteractionLayer territories={TERRITORIES} />)
     const lines = screen.getAllByTestId('interaction-line')
     expect(lines.length).toBe(1)
@@ -58,13 +58,13 @@ describe('InteractionLayer — gold selection outline', () => {
   })
 
   it('renders nothing when selectedTerritoryId points at an unknown id', () => {
-    useUIStore.setState({ selectedTerritoryId: 'C_NONEXISTENT' })
+    useUIStore.setState({ selectedTerritoryIds: ['C_NONEXISTENT'], selectedTerritoryId: 'C_NONEXISTENT' })
     render(<InteractionLayer territories={TERRITORIES} />)
     expect(screen.queryAllByTestId('interaction-line').length).toBe(0)
   })
 
   it('Layer is listening=false (selection visual only, no events)', () => {
-    useUIStore.setState({ selectedTerritoryId: 'C_A' })
+    useUIStore.setState({ selectedTerritoryIds: ['C_A'], selectedTerritoryId: 'C_A' })
     render(<InteractionLayer territories={TERRITORIES} />)
     const layer = screen.getByTestId('konva-layer')
     expect(layer.getAttribute('data-listening')).toBe('false')
@@ -76,7 +76,7 @@ describe('Selection integration — TerritoryLayer click → InteractionLayer ou
     // This mirrors TerritoryLayer's integration with the store.
     // TerritoryLayer tests cover the click dispatch; here we just assert the
     // full integration path: store.select → InteractionLayer re-renders with outline.
-    useUIStore.setState({ selectedTerritoryId: null })
+    useUIStore.setState({ selectedTerritoryIds: [], selectedTerritoryId: null })
     const { rerender } = render(<InteractionLayer territories={TERRITORIES} />)
     expect(screen.queryAllByTestId('interaction-line').length).toBe(0)
 

@@ -119,6 +119,9 @@ vi.mock('../LayerTogglePanel', () => ({
 vi.mock('../BackgroundLayer', () => ({
   BackgroundLayer: () => <div data-testid="background-layer" />,
 }))
+vi.mock('../HoverTooltip', () => ({
+  HoverTooltip: () => <div data-testid="hover-tooltip" />,
+}))
 
 // ---------------------------------------------------------------------------
 // Capturing ResizeObserver fake — retains history across mount/unmount cycles

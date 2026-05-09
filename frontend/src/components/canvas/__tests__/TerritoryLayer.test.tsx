@@ -3,7 +3,6 @@ import { render, screen } from '@testing-library/react'
 import { act } from 'react'
 import { TerritoryLayer } from '../TerritoryLayer'
 import type { TerritoryRender } from '../../../hooks/useCanvasArtifacts'
-import type { TerrainType } from '../../../types/editing'
 
 // Mock react-konva — Konva requires a real DOM canvas context not available in jsdom
 vi.mock('react-konva', () => ({
@@ -31,32 +30,27 @@ vi.mock('react-konva', () => ({
   ),
 }))
 
-// Mock useUIStore so tests can control selectedTerritoryId and layerVisibility.terrain
+// Mock useUIStore so tests can control selectedTerritoryId.
 const mockUIStore = {
+  selectedTerritoryIds: [] as string[],
   selectedTerritoryId: null as string | null,
   layerVisibility: {
     condados: true,
     baronies: false,
-    terrain: false,
     borders: true,
     capitals: true,
     labels: false,
   },
+  selectIds: vi.fn(),
 }
 
 vi.mock('../../../stores/uiStore', () => ({
-  useUIStore: (selector: (s: typeof mockUIStore) => unknown) => selector(mockUIStore),
-}))
-
-// Mock useProjectStore so tests can control terrain_types
-const mockProjectStore = {
-  terrain_types: {} as Record<string, TerrainType>,
-}
-
-vi.mock('../../../stores/useProjectStore', () => ({
-  useProjectStore: (selector: (s: typeof mockProjectStore) => unknown) => selector(mockProjectStore),
-  beginTransaction: vi.fn(),
-  endTransaction: vi.fn(),
+  useUIStore: Object.assign(
+    (selector: (s: typeof mockUIStore) => unknown) => selector(mockUIStore),
+    {
+      getState: () => mockUIStore,
+    },
+  ),
 }))
 
 const T: TerritoryRender[] = [
@@ -74,8 +68,7 @@ const COLORS: Record<string, string> = {
 describe('TerritoryLayer', () => {
   beforeEach(() => {
     mockUIStore.selectedTerritoryId = null
-    mockUIStore.layerVisibility.terrain = false
-    mockProjectStore.terrain_types = {}
+    mockUIStore.selectedTerritoryIds = []
   })
 
   it('renders exactly 3 Line elements with correct fills and stroke', () => {
@@ -84,7 +77,6 @@ describe('TerritoryLayer', () => {
     expect(lines.length).toBe(3)
     expect(lines[0].getAttribute('data-fill')).toBe('#ff0000')
     expect(lines[1].getAttribute('data-fill')).toBe('#00ff00')
-    // stroke
     lines.forEach((l) => {
       expect(l.getAttribute('data-stroke')).toBe('rgba(0, 0, 0, 0.35)')
       expect(l.getAttribute('data-stroke-width')).toBe('1')
@@ -95,13 +87,10 @@ describe('TerritoryLayer', () => {
   it('falls back to #666666 for missing color id', () => {
     render(<TerritoryLayer territories={T} condadoColors={COLORS} visible showBorders />)
     const lines = screen.getAllByTestId('territory-line')
-    // C_C is at index 2 (missing from COLORS)
     expect(lines[2].getAttribute('data-fill')).toBe('#666666')
   })
 
   it('subscribes to selectedTerritoryId (only matching polygon gets isSelected)', async () => {
-    // TerritoryPolygon passes isSelected down; the test verifies via a data attr
-    // We just verify render doesn't crash when selection changes
     const { rerender } = render(
       <TerritoryLayer territories={T} condadoColors={COLORS} visible showBorders />,
     )
@@ -109,52 +98,6 @@ describe('TerritoryLayer', () => {
       mockUIStore.selectedTerritoryId = 'C_A'
     })
     rerender(<TerritoryLayer territories={T} condadoColors={COLORS} visible showBorders />)
-    // Still 3 lines rendered after selection change
     expect(screen.getAllByTestId('territory-line').length).toBe(3)
-  })
-})
-
-describe('TerritoryLayer — terrain color mode (Phase 05)', () => {
-  beforeEach(() => {
-    mockUIStore.selectedTerritoryId = null
-    mockUIStore.layerVisibility.terrain = false
-    mockProjectStore.terrain_types = {}
-  })
-
-  it('terrain layer OFF: uses kingdom colors (existing behavior)', () => {
-    mockUIStore.layerVisibility.terrain = false
-    render(<TerritoryLayer territories={T} condadoColors={COLORS} visible showBorders />)
-    const lines = screen.getAllByTestId('territory-line')
-    expect(lines[0].getAttribute('data-fill')).toBe('#ff0000') // C_A kingdom color
-    expect(lines[1].getAttribute('data-fill')).toBe('#00ff00') // C_B kingdom color
-  })
-
-  it('terrain layer ON + painted territory: uses TERRAIN_HEX color', () => {
-    mockUIStore.layerVisibility.terrain = true
-    mockProjectStore.terrain_types = { C_A: 'forest' }
-    render(<TerritoryLayer territories={T} condadoColors={COLORS} visible showBorders />)
-    const lines = screen.getAllByTestId('territory-line')
-    // C_A painted forest → #2d6a2d
-    expect(lines[0].getAttribute('data-fill')).toBe('#2d6a2d')
-  })
-
-  it('terrain layer ON + unpainted territory: uses TERRAIN_UNPAINTED_HEX (#d4d4d4)', () => {
-    mockUIStore.layerVisibility.terrain = true
-    mockProjectStore.terrain_types = {} // no painted territories
-    render(<TerritoryLayer territories={T} condadoColors={COLORS} visible showBorders />)
-    const lines = screen.getAllByTestId('territory-line')
-    lines.forEach((l) => {
-      expect(l.getAttribute('data-fill')).toBe('#d4d4d4')
-    })
-  })
-
-  it('terrain layer ON + mixed painted/unpainted: correct fills per territory', () => {
-    mockUIStore.layerVisibility.terrain = true
-    mockProjectStore.terrain_types = { C_A: 'mountain', C_B: 'plains' }
-    render(<TerritoryLayer territories={T} condadoColors={COLORS} visible showBorders />)
-    const lines = screen.getAllByTestId('territory-line')
-    expect(lines[0].getAttribute('data-fill')).toBe('#9e9e9e') // mountain
-    expect(lines[1].getAttribute('data-fill')).toBe('#c8b870') // plains
-    expect(lines[2].getAttribute('data-fill')).toBe('#d4d4d4') // unpainted C_C
   })
 })

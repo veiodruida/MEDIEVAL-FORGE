@@ -102,6 +102,9 @@ vi.mock('../FitToViewButton', () => ({
     <button data-testid="fit-to-view" onClick={onFit}>fit</button>
   ),
 }))
+vi.mock('../HoverTooltip', () => ({
+  HoverTooltip: () => <div data-testid="hover-tooltip" />,
+}))
 
 const META = {
   region: 'iberia',

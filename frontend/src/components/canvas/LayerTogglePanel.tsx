@@ -8,8 +8,6 @@ import { useUIStore, type LayerName } from '../../stores/uiStore'
 const LAYERS: { key: LayerName; label: string; hint?: string }[] = [
   { key: 'condados', label: 'Condados' },
   { key: 'baronies', label: 'Baronias' },
-  // Phase 05: terrain layer toggle — placed after baronies, before borders (default OFF)
-  { key: 'terrain', label: 'Terreno' },
   { key: 'borders', label: 'Fronteiras' },
   { key: 'capitals', label: 'Capitais' },
   { key: 'labels', label: 'Nomes', hint: 'Zoom in 1.5× to show labels' },

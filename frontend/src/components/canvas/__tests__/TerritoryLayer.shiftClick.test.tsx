@@ -2,7 +2,6 @@ import React from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render } from '@testing-library/react'
 import { useUIStore } from '../../../stores/uiStore'
-import { useEditorStore } from '../../../stores/useEditorStore'
 import type { TerritoryRender } from '../../../hooks/useCanvasArtifacts'
 
 // ---------------------------------------------------------------------------
@@ -25,10 +24,6 @@ vi.mock('react-konva', () => ({
 // Import after mocks
 import { TerritoryLayer } from '../TerritoryLayer'
 
-// ---------------------------------------------------------------------------
-// Fixtures
-// ---------------------------------------------------------------------------
-
 const TERRITORIES: TerritoryRender[] = [
   { id: 'a', name: 'A', points: [0, 0, 10, 0, 10, 10], neighbors: [] },
   { id: 'b', name: 'B', points: [20, 0, 30, 0, 30, 10], neighbors: [] },
@@ -36,31 +31,17 @@ const TERRITORIES: TerritoryRender[] = [
 ]
 const COLORS: Record<string, string> = { a: '#f00', b: '#0f0', c: '#00f' }
 
-// Simulate a Konva click on territory at index i with the given shiftKey state.
 function click(index: number, shift: boolean) {
   capturedHandlers.items[index]?.({ evt: { shiftKey: shift } })
 }
 
-// ---------------------------------------------------------------------------
-// Setup
-// ---------------------------------------------------------------------------
-
 beforeEach(() => {
   capturedHandlers.items.length = 0
-  useUIStore.setState({ selectedTerritoryId: null })
-  useEditorStore.setState({
-    editMode: false,
-    rubberBandSelectionIds: [],
-    activeTool: 'none',
-  })
+  useUIStore.setState({ selectedTerritoryIds: [], selectedTerritoryId: null })
 })
 
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
-
-describe('TerritoryLayer — shift-click multi-select (04-12)', () => {
-  it('Test 1: plain click sets single selection; rubberBandSelectionIds unchanged', () => {
+describe('TerritoryLayer — shift-click multi-select (Phase 03 D-17)', () => {
+  it('plain click on territory "x" sets selectedTerritoryIds to [x]', () => {
     render(
       <TerritoryLayer
         territories={TERRITORIES}
@@ -72,68 +53,12 @@ describe('TerritoryLayer — shift-click multi-select (04-12)', () => {
 
     click(0, false) // plain click on 'a'
 
+    expect(useUIStore.getState().selectedTerritoryIds).toEqual(['a'])
     expect(useUIStore.getState().selectedTerritoryId).toBe('a')
-    expect(useEditorStore.getState().rubberBandSelectionIds).toEqual([])
   })
 
-  it('Test 2: shift-click in edit mode adds id to rubberBandSelectionIds', () => {
-    useEditorStore.setState({ editMode: true })
-
-    render(
-      <TerritoryLayer
-        territories={TERRITORIES}
-        condadoColors={COLORS}
-        visible
-        showBorders
-      />,
-    )
-
-    click(0, true) // shift-click on 'a'
-
-    expect(useEditorStore.getState().rubberBandSelectionIds).toEqual(['a'])
-  })
-
-  it('Test 3: shift-click accumulates; shift-click same id again toggles it off', () => {
-    useEditorStore.setState({ editMode: true })
-
-    render(
-      <TerritoryLayer
-        territories={TERRITORIES}
-        condadoColors={COLORS}
-        visible
-        showBorders
-      />,
-    )
-
-    click(0, true) // add 'a'
-    expect(useEditorStore.getState().rubberBandSelectionIds).toEqual(['a'])
-
-    click(1, true) // add 'b'
-    expect(useEditorStore.getState().rubberBandSelectionIds).toEqual(['a', 'b'])
-
-    click(0, true) // toggle 'a' off
-    expect(useEditorStore.getState().rubberBandSelectionIds).toEqual(['b'])
-  })
-
-  it('Test 4: shift-click outside edit mode falls through to single-select', () => {
-    // editMode=false (default from beforeEach)
-    render(
-      <TerritoryLayer
-        territories={TERRITORIES}
-        condadoColors={COLORS}
-        visible
-        showBorders
-      />,
-    )
-
-    click(0, true) // shift-click, but editMode=false
-
-    expect(useUIStore.getState().selectedTerritoryId).toBe('a')
-    expect(useEditorStore.getState().rubberBandSelectionIds).toEqual([])
-  })
-
-  it('Test 5: plain click clears existing multi-select before setting single selection', () => {
-    useEditorStore.setState({ editMode: true, rubberBandSelectionIds: ['a', 'b'] })
+  it('plain click replaces existing multi-select with single id', () => {
+    useUIStore.setState({ selectedTerritoryIds: ['a', 'b'], selectedTerritoryId: 'a' })
 
     render(
       <TerritoryLayer
@@ -146,13 +71,59 @@ describe('TerritoryLayer — shift-click multi-select (04-12)', () => {
 
     click(2, false) // plain click on 'c'
 
-    expect(useEditorStore.getState().rubberBandSelectionIds).toEqual([])
-    expect(useUIStore.getState().selectedTerritoryId).toBe('c')
+    expect(useUIStore.getState().selectedTerritoryIds).toEqual(['c'])
   })
 
-  it('Test 6: handleClick reference is stable across shift-click mutations (perf guard)', () => {
-    useEditorStore.setState({ editMode: true })
+  it('shift+click on "x" with prior ids ["a"] yields ["a","x"]', () => {
+    useUIStore.setState({ selectedTerritoryIds: ['a'], selectedTerritoryId: 'a' })
 
+    render(
+      <TerritoryLayer
+        territories={TERRITORIES}
+        condadoColors={COLORS}
+        visible
+        showBorders
+      />,
+    )
+
+    click(1, true) // shift-click on 'b'
+
+    expect(useUIStore.getState().selectedTerritoryIds).toEqual(['a', 'b'])
+  })
+
+  it('shift+click on "a" when ids was ["a","b"] toggles "a" off → ["b"]', () => {
+    useUIStore.setState({ selectedTerritoryIds: ['a', 'b'], selectedTerritoryId: 'a' })
+
+    render(
+      <TerritoryLayer
+        territories={TERRITORIES}
+        condadoColors={COLORS}
+        visible
+        showBorders
+      />,
+    )
+
+    click(0, true) // shift-click on 'a' (already selected)
+
+    expect(useUIStore.getState().selectedTerritoryIds).toEqual(['b'])
+  })
+
+  it('shift+click on "a" with empty selection yields ["a"]', () => {
+    render(
+      <TerritoryLayer
+        territories={TERRITORIES}
+        condadoColors={COLORS}
+        visible
+        showBorders
+      />,
+    )
+
+    click(0, true) // shift-click on 'a' from empty selection
+
+    expect(useUIStore.getState().selectedTerritoryIds).toEqual(['a'])
+  })
+
+  it('handleClick reference is stable across shift-click mutations (perf guard)', () => {
     const { rerender } = render(
       <TerritoryLayer
         territories={TERRITORIES}
@@ -162,17 +133,13 @@ describe('TerritoryLayer — shift-click multi-select (04-12)', () => {
       />,
     )
 
-    // First render pushes one handler per territory (3 total)
     const countAfterFirstRender = capturedHandlers.items.length
     expect(countAfterFirstRender).toBe(TERRITORIES.length)
 
-    // Trigger a shift-click — this mutates rubberBandSelectionIds in the store
-    click(0, true) // 'a' added to selection
+    click(0, true) // shift-click → mutates store
 
-    // Reset captured count AFTER the first render (don't clear items — just record the baseline)
-    const baselineCount = capturedHandlers.items.length // still 3
+    const baselineCount = capturedHandlers.items.length
 
-    // Force TerritoryLayer to re-render (store state changed → parent re-renders)
     rerender(
       <TerritoryLayer
         territories={TERRITORIES}
@@ -182,11 +149,10 @@ describe('TerritoryLayer — shift-click multi-select (04-12)', () => {
       />,
     )
 
-    // If handleClick reference is STABLE (useCallback with empty deps), React.memo on
-    // TerritoryPolygon sees onClick===onClick → skips re-render → Line mock is NOT
-    // called again → capturedHandlers.items count stays at the baseline.
-    // If reference were unstable, each TerritoryPolygon would re-render and push 3
-    // more handlers, making the count 6.
-    expect(capturedHandlers.items.length).toBe(baselineCount)
+    // handleClick is stable (useCallback with []), so React.memo on
+    // TerritoryPolygon skips re-render for sibling polygons. Only the polygon
+    // whose isSelected flipped (because selectedTerritoryId mirror updated)
+    // re-renders. We expect at most 1 extra handler push, never N.
+    expect(capturedHandlers.items.length).toBeLessThanOrEqual(baselineCount + 1)
   })
 })

@@ -2,9 +2,6 @@ import { useCallback } from 'react'
 import { Layer } from 'react-konva'
 import { TerritoryPolygon } from './TerritoryPolygon'
 import { useUIStore } from '../../stores/uiStore'
-import { useEditorStore } from '../../stores/useEditorStore'
-import { useProjectStore } from '../../stores/useProjectStore'
-import { TERRAIN_HEX, TERRAIN_UNPAINTED_HEX } from '../../types/editing'
 import type { TerritoryRender } from '../../hooks/useCanvasArtifacts'
 
 const FALLBACK_FILL = '#666666'
@@ -14,13 +11,22 @@ interface TerritoryLayerProps {
   condadoColors: Record<string, string>
   visible: boolean
   showBorders: boolean
+  onHoverEnter?: (id: string) => void
+  onHoverLeave?: () => void
 }
 
 /**
  * Konva Layer rendering all condado polygons with fills from condado_colors.json sidecar.
  *
- * Narrow Zustand selector (§Pattern 3) — only selectedTerritoryId is subscribed so
- * changing a different store slice does NOT re-render this layer.
+ * Phase 03 read-only contract:
+ *   - Plain click       → uiStore.selectIds([id])
+ *   - Shift+click       → toggle id in/out of uiStore.selectedTerritoryIds (D-17)
+ *   - mouseover         → onHoverEnter(id) callback (D-15 hover tooltip)
+ *   - mouseout          → onHoverLeave() callback
+ *
+ * Narrow Zustand selector (Pattern 3) — only the first selected id is read so
+ * a multi-select set change does NOT re-render the entire layer; the gold
+ * outline is painted on InteractionLayer instead.
  *
  * FALLBACK_FILL: '#666666' for any condado id not present in the colors map.
  */
@@ -29,49 +35,29 @@ export function TerritoryLayer({
   condadoColors,
   visible,
   showBorders,
+  onHoverEnter,
+  onHoverLeave,
 }: TerritoryLayerProps) {
   const selectedTerritoryId = useUIStore((s) => s.selectedTerritoryId)
-  // Phase 05: terrain color mode — when 'terrain' layer is ON, fill uses terrain hex
-  const terrainLayerOn = useUIStore((s) => s.layerVisibility.terrain)
-  const terrainTypes = useProjectStore((s) => s.terrain_types)
 
   // Stable across shift-click mutations: handleClick has NO state deps.
   // Reading via getState() inside the body sees fresh values on each call but
   // keeps the callback reference === so React.memo on TerritoryPolygon does
-  // not invalidate. Essential at 800 territories (checker MINOR 6, <500ms target).
+  // not invalidate. Essential at 800 territories (<500ms target).
   const handleClick = useCallback((id: string, shift: boolean) => {
-    const editor = useEditorStore.getState()
     const ui = useUIStore.getState()
-
-    // Shift-click only engages multi-select in edit mode (gap-closure 04-12).
-    // Outside edit mode, fall through to plain single-select.
-    if (shift && editor.editMode) {
-      // Toggle membership in the existing rubber-band selection set.
-      // SelectionFloatingToolbar renders Fundir when length >= 2.
-      const current = editor.rubberBandSelectionIds
-      const next = current.includes(id)
-        ? current.filter((x) => x !== id)
-        : [...current, id]
-      editor.setRubberBandSelectionIds(next)
-      return
+    const current = ui.selectedTerritoryIds
+    if (shift) {
+      ui.selectIds(current.includes(id) ? current.filter((x) => x !== id) : [...current, id])
+    } else {
+      ui.selectIds([id])
     }
-
-    // Plain click: clear any multi-select from a prior shift-click/rubber-band
-    // and set a single selection.
-    if (editor.rubberBandSelectionIds.length > 0) {
-      editor.clearRubberBandSelection()
-    }
-    ui.select(id)
-  }, [])  // intentionally empty: all reads are via getState() above
+  }, []) // intentionally empty: all reads are via getState() above
 
   return (
     <Layer visible={visible}>
       {territories.map((t, i) => {
-        // Phase 05: when terrain layer is ON, fill uses terrain hex (or unpainted hex);
-        // when terrain layer is OFF, use kingdom color (existing behavior).
-        const fill = terrainLayerOn
-          ? (terrainTypes[t.id] ? TERRAIN_HEX[terrainTypes[t.id]] : TERRAIN_UNPAINTED_HEX)
-          : (condadoColors[t.id] ?? FALLBACK_FILL)
+        const fill = condadoColors[t.id] ?? FALLBACK_FILL
         return (
           <TerritoryPolygon
             key={`${t.id}-${i}`}
@@ -80,6 +66,8 @@ export function TerritoryLayer({
             isSelected={selectedTerritoryId === t.id}
             showBorders={showBorders}
             onClick={handleClick}
+            onMouseEnter={onHoverEnter}
+            onMouseLeave={onHoverLeave}
           />
         )
       })}
