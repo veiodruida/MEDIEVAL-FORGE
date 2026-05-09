@@ -21,7 +21,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Callable, List, Optional, Tuple
 
 
 @dataclass
@@ -114,6 +114,14 @@ class RegionConfig:
 
     # D-03 + PREFLIGHT.md Q10: deployed visual_condado.png has no labels.
     draw_names: bool = False
+
+    # Plan 03-01: optional fire-and-forget pipeline-stage callback. Invoked as
+    # `cfg.on_stage("voronoi", "start")` / `("voronoi", "done")` for each of
+    # the 11 canonical stages: landmask, border, voronoi, cleanup, smooth,
+    # merge, hierarchy, render, lookup, metadata, export. Default `None`
+    # preserves Phase 01 parity exactly. Plan 02 wires the SSE producer
+    # against this slot so per-stage progress can stream to the canvas.
+    on_stage: Optional[Callable[[str, str], None]] = field(default=None)
 
     def __post_init__(self):
         if self.lon_scale is None:
