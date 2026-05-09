@@ -3,6 +3,8 @@ import { Badge, Box, Flex, Heading, ScrollArea, Text } from '@radix-ui/themes'
 import { useUIStore } from '../../stores/uiStore'
 import { useResearchStore } from '../../stores/useResearchStore'
 import { useValidationStore } from '../../stores/useValidationStore'
+import { MultiSelectInspector } from './MultiSelectInspector'
+import { pixelsToKm2 as pixelsToKm2Util } from '../../lib/pixelsToKm2'
 import type {
   TerritoryMetadata,
   TerritoryMetadataCondado,
@@ -10,15 +12,14 @@ import type {
 } from '../../hooks/useCanvasArtifacts'
 
 function pixelsToKm2(pixelCount: number, metadata: TerritoryMetadata): number {
-  const { bounds, map_size } = metadata
-  const centerLat = (bounds.lat_min + bounds.lat_max) / 2
-  const lonScale = Math.cos((centerLat * Math.PI) / 180)
-  const latKm = (bounds.lat_max - bounds.lat_min) * 111.32
-  const lonKm = (bounds.lon_max - bounds.lon_min) * lonScale * 111.32
-  const totalKm2 = latKm * lonKm
-  const totalPixels = map_size[0] * map_size[1]
-  return (pixelCount * totalKm2) / totalPixels
+  return pixelsToKm2Util(pixelCount, metadata)
 }
+
+/**
+ * D-16 placeholder shown when no territory is selected. PT-BR per UI-SPEC
+ * §Copywriting Contract.
+ */
+const PLACEHOLDER_PT = 'Clique num território para ver detalhes'
 
 /**
  * UI-SPEC Copywriting Contract — exact strings the inspector MUST render.
@@ -71,8 +72,25 @@ export function InspectorSidebar({
   territories,
   project,
 }: InspectorSidebarProps) {
+  const selectedIds = useUIStore((s) => s.selectedTerritoryIds)
   const selectedId = useUIStore((s) => s.selectedTerritoryId)
   const select = useUIStore((s) => s.select)
+
+  // D-17 dispatcher: 3 modes driven by selectedTerritoryIds.length.
+  //   0 → PT-BR placeholder (D-16)
+  //   1 → existing single-select detail view (D-14, English COPY locked)
+  //   ≥2 → MultiSelectInspector aggregate
+  if (selectedIds.length === 0) {
+    return (
+      <Flex direction="column" gap="3">
+        <Text size="2" color="gray" as="p">{PLACEHOLDER_PT}</Text>
+      </Flex>
+    )
+  }
+
+  if (selectedIds.length >= 2) {
+    return <MultiSelectInspector selectedIds={selectedIds} metadata={metadata} />
+  }
   const manualResult = useResearchStore((s) => s.manualResult)
   // Pull the raw issues array (stable reference from store) then filter with useMemo.
   // Inline filter in the selector returns a new array every call, triggering the

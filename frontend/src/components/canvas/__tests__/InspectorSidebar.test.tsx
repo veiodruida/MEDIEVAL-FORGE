@@ -73,9 +73,10 @@ function wrap(node: React.ReactNode) {
   return <Theme>{node}</Theme>
 }
 
-describe('InspectorSidebar — project overview (no selection)', () => {
+describe('InspectorSidebar — placeholder (D-16, no selection)', () => {
   beforeEach(() => {
     useUIStore.setState({
+      selectedTerritoryIds: [],
       selectedTerritoryId: null,
       layerVisibility: {
         condados: true,
@@ -87,30 +88,52 @@ describe('InspectorSidebar — project overview (no selection)', () => {
     })
   })
 
-  it('renders "Project overview" heading and 4 hierarchy stat labels', () => {
+  it('renders the PT-BR placeholder when selection is empty', () => {
     render(
       wrap(<InspectorSidebar metadata={META} territories={TERRITORIES} project={PROJECT} />),
     )
-    expect(screen.getByText('Project overview')).toBeInTheDocument()
-    expect(screen.getByText('Kingdoms')).toBeInTheDocument()
-    expect(screen.getByText('Duchies')).toBeInTheDocument()
-    expect(screen.getByText('Condados')).toBeInTheDocument()
-    expect(screen.getByText('Baronies')).toBeInTheDocument()
+    expect(screen.getByText('Clique num território para ver detalhes')).toBeInTheDocument()
   })
 
-  it('renders project name, country, and period in summary state', () => {
+  it('does NOT render the project-overview hierarchy when selection is empty (replaced by D-16)', () => {
     render(
       wrap(<InspectorSidebar metadata={META} territories={TERRITORIES} project={PROJECT} />),
     )
-    expect(screen.getByText('Reconquista 868')).toBeInTheDocument()
-    // Country + period line contains Q29 and the full "868–900 AD" range
-    expect(screen.getByText(/Q29 · 868.+900 AD/)).toBeInTheDocument()
+    expect(screen.queryByText('Project overview')).toBeNull()
+    expect(screen.queryByText('Kingdoms')).toBeNull()
+  })
+})
+
+describe('InspectorSidebar — multi-select (D-17, length >= 2)', () => {
+  beforeEach(() => {
+    useUIStore.setState({
+      selectedTerritoryIds: ['C_CORUNA', 'C_LUGO'],
+      selectedTerritoryId: 'C_CORUNA',
+      layerVisibility: {
+        condados: true,
+        baronies: false,
+        borders: true,
+        capitals: true,
+        labels: false,
+      },
+    })
+  })
+
+  it('dispatches MultiSelectInspector when 2+ territories are selected', () => {
+    render(
+      wrap(<InspectorSidebar metadata={META} territories={TERRITORIES} project={PROJECT} />),
+    )
+    expect(screen.getByText('2 condados selecionados')).toBeInTheDocument()
+    // Single-select copy must NOT appear
+    expect(screen.queryByText('Path:')).toBeNull()
+    expect(screen.queryByText('Centroid')).toBeNull()
   })
 })
 
 describe('InspectorSidebar — territory detail (D-06.3 capital sentinel)', () => {
   beforeEach(() => {
     useUIStore.setState({
+      selectedTerritoryIds: ['C_CORUNA'],
       selectedTerritoryId: 'C_CORUNA',
       layerVisibility: {
         condados: true,
@@ -182,6 +205,7 @@ describe('InspectorSidebar — territory detail (D-06.3 capital sentinel)', () =
 describe('InspectorSidebar — neighbor chips', () => {
   beforeEach(() => {
     useUIStore.setState({
+      selectedTerritoryIds: ['C_CORUNA'],
       selectedTerritoryId: 'C_CORUNA',
       layerVisibility: {
         condados: true,
