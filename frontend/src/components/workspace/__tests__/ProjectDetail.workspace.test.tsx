@@ -362,4 +362,146 @@ describe('ProjectDetail workspace shell', () => {
   it('PIPELINE_STAGES has 11 entries', () => {
     expect(PIPELINE_STAGES).toHaveLength(11)
   })
+
+  // -----------------------------------------------------------------------
+  // Task 3: state machine transitions + status badge expansion
+  // -----------------------------------------------------------------------
+
+  it('clicking GenerateStatusBadge toggles RunLogPanel mount/unmount', async () => {
+    installFetchMock({ status: STATUS_EMPTY })
+    const Wrapper = makeWrapper()
+    render(
+      <Wrapper>
+        <ProjectDetail />
+      </Wrapper>,
+    )
+    await waitFor(() => screen.getByTestId('empty-canvas-state'))
+
+    // Initially the log panel is collapsed: zero stage rows in the DOM
+    expect(screen.queryAllByTestId(/stage-row-/)).toHaveLength(0)
+
+    // Open
+    fireEvent.click(screen.getByTestId('generate-status-badge'))
+    await waitFor(() => {
+      expect(screen.getAllByTestId(/stage-row-/)).toHaveLength(11)
+    })
+
+    // Close
+    fireEvent.click(screen.getByTestId('generate-status-badge'))
+    await waitFor(() => {
+      expect(screen.queryAllByTestId(/stage-row-/)).toHaveLength(0)
+    })
+  })
+
+  it('badge color is amber + copy is "Gerando: voronoi" during generating state', async () => {
+    installFetchMock({ status: STATUS_EMPTY })
+    const Wrapper = makeWrapper()
+    render(
+      <Wrapper>
+        <ProjectDetail />
+      </Wrapper>,
+    )
+    await waitFor(() => screen.getByTestId('empty-canvas-state'))
+    fireEvent.click(within(screen.getByTestId('workspace-toolbar')).getByRole('button', { name: 'Gerar Mapa' }))
+    await waitFor(() => expect(FakeEventSource.instances.length).toBeGreaterThan(0))
+    const es = FakeEventSource.instances[0]
+
+    act(() => {
+      es.emit({ event_type: 'stage_start', stage: 'voronoi', message: '' })
+    })
+    await waitFor(() => {
+      const badge = screen.getByTestId('generate-status-badge')
+      expect(badge).toHaveTextContent('Gerando: voronoi')
+      expect(badge.getAttribute('data-color')).toBe('amber')
+    })
+  })
+
+  it('full SSE flow: 11 stage_start + 11 stage_done -> 11 done rows in RunLogPanel', async () => {
+    installFetchMock({ status: STATUS_EMPTY })
+    const Wrapper = makeWrapper()
+    render(
+      <Wrapper>
+        <ProjectDetail />
+      </Wrapper>,
+    )
+    await waitFor(() => screen.getByTestId('empty-canvas-state'))
+    fireEvent.click(within(screen.getByTestId('workspace-toolbar')).getByRole('button', { name: 'Gerar Mapa' }))
+    await waitFor(() => expect(FakeEventSource.instances.length).toBeGreaterThan(0))
+    const es = FakeEventSource.instances[0]
+
+    // Do NOT open the floating log panel — assert against the inline
+    // RunLogPanel rendered by GeneratingCanvasState (single instance).
+
+    act(() => {
+      for (const stage of PIPELINE_STAGES) {
+        es.emit({ event_type: 'stage_start', stage, message: '' })
+        es.emit({ event_type: 'stage_done', stage, message: '' })
+      }
+    })
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId('stage-row-done')).toHaveLength(11)
+    })
+    expect(useRunStore.getState().completedStages).toHaveLength(11)
+  })
+
+  it('garbage SSE event is logged and ignored (T-03-FE-WORKSPACE-01)', async () => {
+    installFetchMock({ status: STATUS_EMPTY })
+    const Wrapper = makeWrapper()
+    render(
+      <Wrapper>
+        <ProjectDetail />
+      </Wrapper>,
+    )
+    await waitFor(() => screen.getByTestId('empty-canvas-state'))
+    fireEvent.click(within(screen.getByTestId('workspace-toolbar')).getByRole('button', { name: 'Gerar Mapa' }))
+    await waitFor(() => expect(FakeEventSource.instances.length).toBeGreaterThan(0))
+    const es = FakeEventSource.instances[0]
+
+    const before = useRunStore.getState()
+    act(() => {
+      es.emitRaw('this is not json {{{')
+    })
+    const after = useRunStore.getState()
+    // No state transition (still generating, no completed stages)
+    expect(after.state).toBe(before.state)
+    expect(after.completedStages).toEqual(before.completedStages)
+    // But the parse-error log line was appended
+    expect(after.logLines.some((l) => l.startsWith('[parse-error]'))).toBe(true)
+  })
+
+  it('renders disabled Regenerar button while generating', async () => {
+    installFetchMock({ status: STATUS_EMPTY })
+    const Wrapper = makeWrapper()
+    render(
+      <Wrapper>
+        <ProjectDetail />
+      </Wrapper>,
+    )
+    await waitFor(() => screen.getByTestId('empty-canvas-state'))
+    fireEvent.click(within(screen.getByTestId('workspace-toolbar')).getByRole('button', { name: 'Gerar Mapa' }))
+
+    await waitFor(() => {
+      expect(useRunStore.getState().state).toBe('generating')
+    })
+    const btn = within(screen.getByTestId('workspace-toolbar')).getByRole('button', { name: 'Regenerar' })
+    expect(btn).toBeDisabled()
+  })
+
+  it('POST /generate failure (500) transitions to error state', async () => {
+    installFetchMock({ status: STATUS_EMPTY, generateOk: false, generateStatus: 500 })
+    const Wrapper = makeWrapper()
+    render(
+      <Wrapper>
+        <ProjectDetail />
+      </Wrapper>,
+    )
+    await waitFor(() => screen.getByTestId('empty-canvas-state'))
+    fireEvent.click(within(screen.getByTestId('workspace-toolbar')).getByRole('button', { name: 'Gerar Mapa' }))
+
+    await waitFor(() => {
+      expect(useRunStore.getState().state).toBe('error')
+    })
+    expect(screen.getByTestId('error-canvas-callout')).toBeInTheDocument()
+  })
 })
