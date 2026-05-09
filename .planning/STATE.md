@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: + bootstrap v3 infrastructure
 status: executing
-stopped_at: Completed 03-05-PLAN.md
-last_updated: "2026-05-09T21:41:52.774Z"
+stopped_at: Completed 03-06-PLAN.md
+last_updated: "2026-05-09T21:51:39.670Z"
 last_activity: 2026-05-09
 progress:
   total_phases: 9
   completed_phases: 2
   total_plans: 15
-  completed_plans: 12
-  percent: 80
+  completed_plans: 13
+  percent: 87
 ---
 
 # Project State (v3)
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md
 ## Current Position
 
 Phase: 03 (read-only-canvas-redesign) — EXECUTING
-Plan: 6 of 8
+Plan: 7 of 8
 Status: Ready to execute
 Last activity: 2026-05-09
 
@@ -55,6 +55,7 @@ See `.planning/PROJECT.md` Key Decisions table (D-V3-01 through D-V3-07).
 - [Phase 03]: Plan 03-02: 3 v3 endpoints (POST /generate + GET /generate/stream + GET /status + GET /artifacts) wired in main.py; ARTIFACT_FILES single-source frozenset (14 files) in artifacts.py; cfg.on_stage threadsafe bridge via loop.call_soon_threadsafe; updated_at bumped explicitly on success (D-19). 24 unit tests green; parity 11/11 stays green.
 - [Phase 03]: Plan 03-03: useRunStore (5-state machine + 11-stage PIPELINE_STAGES + LOG_CAP=500) created; uiStore evolved with selectedTerritoryIds[] + selectIds + selectSelectedTerritoryId selector (mirror selectedTerritoryId kept for backward-compat); useCanvasArtifacts switched to /api/v3/projects/{id}/artifacts/* (5 URLs); orphaned __tests__/uiStore.test.ts deleted; CanvasViewer.tsx hydrate-fetch URL updated in lock-step; 238/238 vitest green; 4 commits (561f999, fcb2ebf, f7a0576, f9e8a55).
 - [Phase 03]: Plan 03-05: CanvasViewer stripped 697->361 LOC (zero v1-deleted-module imports); InteractionLayer multi-id rendering via uiStore.selectedTerritoryIds; TerritoryLayer read-only click (plain=selectIds([id]); shift=toggle); HoverTooltip DOM overlay via Stage.getPointerPosition (D-15); MultiSelectInspector aggregate view (D-17); InspectorSidebar 3-mode dispatcher with English COPY locked + PT-BR placeholder; LayerTogglePanel 5 layers (terrain row removed); pixelsToKm2 extracted to src/lib/. 8 deviations all advisor-confirmed (orphan deletions, contract rebaselines). 2 commits (e146b23, 730648d); full suite 268/268 green.
+- [Phase 03]: Plan 03-06: Combined D-10+D-11+D-13 frontend purge in one atomic commit (63 files, -8764 LOC). InspectorSidebar.tsx stripped of useResearchStore + useValidationStore (Plan 05's Wave 3 handoff). api/client.ts trimmed to 8 hooks. Pre-existing RunLogPanel Card 'p' prop fix to unblock typecheck gate. Pitfall-1 grep clean; tsc + vitest 154/154 + vite build all green.
 
 ### Blockers/Concerns
 
@@ -74,6 +75,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-09T21:41:52.771Z
-Stopped at: Completed 03-05-PLAN.md
+Last session: 2026-05-09T21:51:39.668Z
+Stopped at: Completed 03-06-PLAN.md
 Resume file: None
