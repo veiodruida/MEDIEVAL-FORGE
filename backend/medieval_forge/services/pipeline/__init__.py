@@ -39,7 +39,9 @@ from .contracts import RegionConfig
 from .landmask import load_municipalities, build_land_mask
 from .border import build_border_mask
 from .voronoi import setup_baronies, rasterize_baronies, build_hierarchy_maps
-from .cleanup import cleanup_and_smooth
+from .cleanup import (
+    apply_median, remove_fragments, smooth_per_territory, merge_small_blobs,
+)
 from .render import render_map, render_mountains, render_rivers
 from .lookup import generate_lookup_map
 from .export import export_metadata
@@ -117,18 +119,27 @@ def run_pipeline(cfg: RegionConfig) -> None:
                              pi, ei, tp, te, land, border_mask, cfg)
     _emit(cfg, "voronoi", "done")
 
-    # 7. Cleanup & smooth
-    # Plan 03-01: cleanup_and_smooth covers cleanup + per-territory Gaussian
-    # smooth + small-blob merge in one call. We emit three rapid start/done
-    # markers around the single call so the SSE checklist can light up the
-    # corresponding rows; finer-grained timing is Phase 04 territory.
-    _emit(cfg, "cleanup", "start")
-    print("[8] Cleanup & smoothing...")
-    _emit(cfg, "cleanup", "done")
+    # 7. Cleanup & smooth — 4 separately cacheable stages (Plan 04-01 D-01).
+    # Each split function emits a real start/done pair; PIPELINE_STAGES on the
+    # frontend has 12 entries to match (research finding #7).
+    _emit(cfg, "median", "start")
+    print("[8a] Median filter passes...")
+    med = apply_median(raw, land, nb, cfg)
+    _emit(cfg, "median", "done")
+
+    _emit(cfg, "fragment", "start")
+    print("[8b] Fragment removal...")
+    frag = remove_fragments(med, land, nb, cfg)
+    _emit(cfg, "fragment", "done")
+
     _emit(cfg, "smooth", "start")
+    print("[8c] Per-territory Gaussian smoothing...")
+    sm = smooth_per_territory(frag, land, cfg)
     _emit(cfg, "smooth", "done")
+
     _emit(cfg, "merge", "start")
-    result = cleanup_and_smooth(raw, land, nb, cfg)
+    print("[8d] Merging small blobs...")
+    result = merge_small_blobs(sm, land, nb, cfg)
     _emit(cfg, "merge", "done")
 
     # 8. Hierarchy

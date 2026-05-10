@@ -1,22 +1,16 @@
-"""Verbatim port of inicio/map_generator.py §7 (CLEANUP & SMOOTHING).
+"""Phase 04 D-01: 4 separately cacheable cleanup stages.
 
-Single function `cleanup_and_smooth(raw, land, nb, cfg)` with four sub-stages
-(per RESEARCH §1 — keep all four in one file mirroring inicio §7; do NOT split):
+Replaces the monolith `cleanup_and_smooth` from Phase 01. The 4 functions, called
+in order with the previous output as input, produce byte-equal output to the
+monolith at default cfg (D-17 parity guarantee).
 
-  Stage 1 — Median filter (8 passes, kernel sequence 11/11/9/9/7/7/5/5)
-            P-7 sentinels: ocean=-1, ignore=9999.
-            P-8 kernel sequence inlined as `11 if i<2 else 9 if i<4 ...`.
-            Sequence is NOT promoted to a cfg field (D-01 verbatim).
-  Stage 2 — Fragment removal (drop barony fragments < cfg.fragment_min_px).
-  Stage 3 — Per-territory Gaussian smoothing
-            P-5: σ reduces for tiny territories (npx <= 400) so small
-            baronies are not erased: `s = cfg.smooth_sigma if npx > 400
-            else max(1.2, cfg.smooth_sigma * (npx / 400))`.
-            CLAUDE.md rule #2: smooth_sigma stays inside [3.0, 4.5].
-            Winner-takes-all final assignment.
-  Stage 4 — Final merge (merge final blobs < cfg.blob_merge_px).
+Each function:
+  - Takes its predecessor's array as `input_array` and never mutates it (.copy() at top)
+  - Checks cfg.stop_event between heavy work blocks for cooperative cancel (D-14)
+  - Returns a fresh np.ndarray for the next stage
+
+Stage reads declarations (D-02) live in dag.py.
 """
-
 from __future__ import annotations
 
 import numpy as np
@@ -30,26 +24,54 @@ from scipy.ndimage import (
 from .contracts import RegionConfig
 
 
-def cleanup_and_smooth(raw: np.ndarray, land: np.ndarray,
-                       nb: int, cfg: RegionConfig) -> np.ndarray:
-    """Apply median filter, fragment removal, and Gaussian smoothing.
+class StageCancelled(Exception):
+    """Raised by a split cleanup function when cfg.stop_event is set.
 
-    Verbatim port of inicio/map_generator.py:436-497 (D-01).
+    Plan 04-02's render producer catches this and emits stage_cancel SSE events.
     """
-    # Median filter passes (progressively smaller kernel)
+    def __init__(self, stage_name: str):
+        super().__init__(f"stage cancelled: {stage_name}")
+        self.stage_name = stage_name
+
+
+def _check_cancel(cfg: RegionConfig, stage_name: str) -> None:
+    if cfg.stop_event is not None and cfg.stop_event.is_set():
+        raise StageCancelled(stage_name)
+
+
+def apply_median(raw: np.ndarray, land: np.ndarray,
+                 nb: int, cfg: RegionConfig) -> np.ndarray:
+    """Stage 1: 8 median filter passes (kernels 11/11/9/9/7/7/5/5).
+
+    Verbatim semantics from Phase 01 cleanup.py:40-48.
+    Returns a copy — does NOT mutate `raw`.
+    """
+    _check_cancel(cfg, "median")
+    med = raw.copy()  # CRITICAL: copy to preserve cached prior_array (Pitfall 1)
     for i in range(cfg.median_passes):
-        ri = raw.astype(np.int32)
+        _check_cancel(cfg, "median")  # cancel between passes (D-14 < 2 s)
+        ri = med.astype(np.int32)
         ri[~land] = 9999
         sz = 11 if i < 2 else 9 if i < 4 else 7 if i < 6 else 5
         cl = median_filter(ri, size=sz).astype(np.int16)
         cl[~land] = -1
-        v = (raw >= 0) & (cl >= 0) & (cl < nb)
-        raw[v] = cl[v]
-        raw[~land] = -1
+        v = (med >= 0) & (cl >= 0) & (cl < nb)
+        med[v] = cl[v]
+        med[~land] = -1
+    return med
 
-    # Remove disconnected fragments per barony
+
+def remove_fragments(med: np.ndarray, land: np.ndarray,
+                     nb: int, cfg: RegionConfig) -> np.ndarray:
+    """Stage 2: drop barony fragments < cfg.fragment_min_px.
+
+    Verbatim semantics from Phase 01 cleanup.py:51-67.
+    Returns a copy — does NOT mutate `med`.
+    """
+    _check_cancel(cfg, "fragment")
+    frag = med.copy()  # CRITICAL: copy
     for bi in range(nb):
-        mask = raw == bi
+        mask = frag == bi
         if not np.any(mask):
             continue
         labeled, n = nd_label(mask)
@@ -59,19 +81,29 @@ def cleanup_and_smooth(raw: np.ndarray, land: np.ndarray,
         ml = np.argmax(sizes[1:]) + 1
         for lbl in range(1, n + 1):
             if lbl != ml and sizes[lbl] < cfg.fragment_min_px:
-                frag = labeled == lbl
-                dil = binary_dilation(frag, iterations=5)
-                bord = dil & ~frag & (raw >= 0) & (raw != bi)
+                fr = labeled == lbl
+                dil = binary_dilation(fr, iterations=5)
+                bord = dil & ~fr & (frag >= 0) & (frag != bi)
                 if np.any(bord):
-                    nb_arr = raw[bord]
-                    raw[frag] = np.bincount(nb_arr[nb_arr >= 0].astype(int)).argmax()
+                    nb_arr = frag[bord]
+                    frag[fr] = np.bincount(nb_arr[nb_arr >= 0].astype(int)).argmax()
+    return frag
 
-    # Gaussian smoothing
-    h, w = raw.shape
+
+def smooth_per_territory(frag: np.ndarray, land: np.ndarray,
+                         cfg: RegionConfig) -> np.ndarray:
+    """Stage 3: per-territory Gaussian smoothing, winner-takes-all.
+
+    Verbatim semantics from Phase 01 cleanup.py:70-83. P-5 sigma-attenuation
+    for tiny territories (npx <= 400) preserved verbatim.
+    Allocates fresh result; does NOT need .copy() of `frag`.
+    """
+    _check_cancel(cfg, "smooth")
+    h, w = frag.shape
     best = np.zeros((h, w), dtype=np.float32)
     result = np.full((h, w), -1, dtype=np.int16)
-    for cid in np.unique(raw[raw >= 0]):
-        mask = (raw == cid).astype(np.float32)
+    for cid in np.unique(frag[frag >= 0]):
+        mask = (frag == cid).astype(np.float32)
         mask[~land] = 0
         npx = mask.sum()
         s = cfg.smooth_sigma if npx > 400 else max(1.2, cfg.smooth_sigma * (npx / 400))
@@ -81,20 +113,35 @@ def cleanup_and_smooth(raw: np.ndarray, land: np.ndarray,
         result[bt] = cid
         best[bt] = blurred[bt]
     result[~land] = -1
-
-    # Merge tiny baronies
-    for bi in range(nb):
-        npx = np.sum(result == bi)
-        if npx == 0 or npx >= cfg.blob_merge_px:
-            continue
-        mask = result == bi
-        dil = binary_dilation(mask, iterations=5)
-        bord = dil & ~mask & (result >= 0) & (result != bi)
-        if np.any(bord):
-            nb_arr = result[bord]
-            result[mask] = np.bincount(nb_arr[nb_arr >= 0].astype(int)).argmax()
-
     return result
 
 
-__all__ = ["cleanup_and_smooth"]
+def merge_small_blobs(sm: np.ndarray, land: np.ndarray,
+                      nb: int, cfg: RegionConfig) -> np.ndarray:
+    """Stage 4: merge final baronies < cfg.blob_merge_px into the largest neighbor.
+
+    Verbatim semantics from Phase 01 cleanup.py:86-95.
+    Returns a copy — does NOT mutate `sm`.
+    """
+    _check_cancel(cfg, "merge")
+    merged = sm.copy()  # CRITICAL: copy to preserve sm as cached 'smooth' stage output
+    for bi in range(nb):
+        npx = np.sum(merged == bi)
+        if npx == 0 or npx >= cfg.blob_merge_px:
+            continue
+        mask = merged == bi
+        dil = binary_dilation(mask, iterations=5)
+        bord = dil & ~mask & (merged >= 0) & (merged != bi)
+        if np.any(bord):
+            nb_arr = merged[bord]
+            merged[mask] = np.bincount(nb_arr[nb_arr >= 0].astype(int)).argmax()
+    return merged
+
+
+__all__ = [
+    "apply_median",
+    "remove_fragments",
+    "smooth_per_territory",
+    "merge_small_blobs",
+    "StageCancelled",
+]

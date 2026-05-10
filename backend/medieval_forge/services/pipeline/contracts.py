@@ -19,6 +19,7 @@ The 5 NEW fields the port adds (per RESEARCH §2.a "New fields"):
 from __future__ import annotations
 
 import math
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, List, Optional, Tuple
@@ -122,6 +123,12 @@ class RegionConfig:
     # preserves Phase 01 parity exactly. Plan 02 wires the SSE producer
     # against this slot so per-stage progress can stream to the canvas.
     on_stage: Optional[Callable[[str, str], None]] = field(default=None)
+
+    # Phase 04 D-14: cooperative cancel signal. Set by /render/cancel endpoint
+    # before a slider triggers a new render; the split cleanup functions check
+    # .is_set() at top + between median passes to raise StageCancelled. None
+    # in Phase 01-03 paths preserves byte-equal parity (no .is_set() call when None).
+    stop_event: Optional[threading.Event] = field(default=None)
 
     def __post_init__(self):
         if self.lon_scale is None:
