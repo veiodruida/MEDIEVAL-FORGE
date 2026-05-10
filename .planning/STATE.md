@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: + bootstrap v3 infrastructure
-status: Phase 03 closed; 03-08 visual sign-off approved by user
-stopped_at: Phase 04 context gathered
-last_updated: "2026-05-10T14:03:15.471Z"
+status: executing
+stopped_at: Completed 04-00-PLAN.md (Wave 0 stub bootstrap)
+last_updated: "2026-05-10T16:02:37.617Z"
 last_activity: 2026-05-10
 progress:
   total_phases: 9
   completed_phases: 3
-  total_plans: 15
-  completed_plans: 15
-  percent: 100
+  total_plans: 22
+  completed_plans: 16
+  percent: 73
 ---
 
 # Project State (v3)
@@ -21,13 +21,13 @@ progress:
 See: .planning/PROJECT.md
 
 **Core value:** A Game Designer goes from "country + historical period" to a validated, Unity-ready map package — driven by geometry, with LLM as opt-in metadata.
-**Current focus:** Phase 03 complete — ready for Phase 04 planning (parameter studio)
+**Current focus:** Phase 04 — parameter-studio-live-re-render
 
 ## Current Position
 
-Phase: 03 (read-only-canvas-redesign) — COMPLETE
-Plan: 8 of 8 (all green)
-Status: Phase 03 closed; 03-08 visual sign-off approved by user
+Phase: 04 (parameter-studio-live-re-render) — EXECUTING
+Plan: 2 of 7
+Status: Ready to execute
 Last activity: 2026-05-10
 
 Progress: [███░░░░░░░] 33% (3 of 9 phases complete)
@@ -57,6 +57,7 @@ See `.planning/PROJECT.md` Key Decisions table (D-V3-01 through D-V3-07).
 - [Phase 03]: Plan 03-05: CanvasViewer stripped 697->361 LOC (zero v1-deleted-module imports); InteractionLayer multi-id rendering via uiStore.selectedTerritoryIds; TerritoryLayer read-only click (plain=selectIds([id]); shift=toggle); HoverTooltip DOM overlay via Stage.getPointerPosition (D-15); MultiSelectInspector aggregate view (D-17); InspectorSidebar 3-mode dispatcher with English COPY locked + PT-BR placeholder; LayerTogglePanel 5 layers (terrain row removed); pixelsToKm2 extracted to src/lib/. 8 deviations all advisor-confirmed (orphan deletions, contract rebaselines). 2 commits (e146b23, 730648d); full suite 268/268 green.
 - [Phase 03]: Plan 03-06: Combined D-10+D-11+D-13 frontend purge in one atomic commit (63 files, -8764 LOC). InspectorSidebar.tsx stripped of useResearchStore + useValidationStore (Plan 05's Wave 3 handoff). api/client.ts trimmed to 8 hooks. Pre-existing RunLogPanel Card 'p' prop fix to unblock typecheck gate. Pitfall-1 grep clean; tsc + vitest 154/154 + vite build all green.
 - [Phase 03]: Plan 03-07: D-12 + D-13 backend purge in 2 atomic commits. api/edit.py added (plan-permitted; orphan via 4 LLM imports). services/territories_geojson.py kept (not in plan list; voronoi lazy-imports it). models.py + main.py shrunk; smoke import 25 routes; parity 11/11.
+- [Phase 04]: Register pytest.mark.unit in pyproject.toml; expand Playwright testDir to ./tests to discover both uat/ and e2e/ directories
 
 ### Blockers/Concerns
 
@@ -76,6 +77,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-10T14:03:15.468Z
-Stopped at: Phase 04 context gathered
-Resume file: .planning/phases/04-parameter-studio-live-re-render/04-CONTEXT.md
+Last session: 2026-05-10T16:02:37.615Z
+Stopped at: Completed 04-00-PLAN.md (Wave 0 stub bootstrap)
+Resume file: None

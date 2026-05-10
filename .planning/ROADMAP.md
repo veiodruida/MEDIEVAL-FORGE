@@ -88,7 +88,7 @@ Plans:
 4. Cancel restores prior state; Konva `clearCache()` after every geometric mutation
 **Plans:** 7 plans
 Plans:
-- [ ] 04-00-PLAN.md — Wave 0 stub bootstrap (14 test stub files; pytest/vitest/Playwright suite stays green)
+- [x] 04-00-PLAN.md — Wave 0 stub bootstrap (14 test stub files; pytest/vitest/Playwright suite stays green)
 - [ ] 04-01-PLAN.md — Wave 1: cleanup.py split into 4 cacheable functions + cache.py + dag.py + 12-stage PIPELINE_STAGES sync (D-01/D-02/D-03/D-17/D-18)
 - [ ] 04-02-PLAN.md — Wave 2: api/v3/_run_state.py extract + render.py POST/GET/cancel + run_pipeline_incremental + stage raster endpoint + parity (D-04/D-13/D-14/D-17/D-18)
 - [ ] 04-03-PLAN.md — Wave 3: ParameterSidebar + 4 SliderCards + StageViewToggle + usePipelineParams + useRenderStream + WorkspaceToolbar Cancel (D-05..D-08, D-10/D-11, D-16)
