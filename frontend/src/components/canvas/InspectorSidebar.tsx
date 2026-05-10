@@ -71,12 +71,53 @@ export function InspectorSidebar({
 }: InspectorSidebarProps) {
   const selectedIds = useUIStore((s) => s.selectedTerritoryIds)
   const selectedId = useUIStore((s) => s.selectedTerritoryId)
+  const selectedBaronyId = useUIStore((s) => s.selectedBaronyId)
   const select = useUIStore((s) => s.select)
 
-  // D-17 dispatcher: 3 modes driven by selectedTerritoryIds.length.
-  //   0 → PT-BR placeholder (D-16)
-  //   1 → existing single-select detail view (D-14, English COPY locked)
-  //   ≥2 → MultiSelectInspector aggregate
+  // Plan 03-08 follow-up adds a 4th mode: barony detail (Phase 04 will
+  // build vertex-edit affordances on top of this). Order matters:
+  //   selectedBaronyId set → barony detail (precedence over placeholder)
+  //   else selectedIds.length === 0 → PT-BR placeholder (D-16)
+  //   else selectedIds.length >= 2 → MultiSelectInspector aggregate
+  //   else → single condado detail (D-14, English COPY locked)
+  if (selectedBaronyId) {
+    const barony = metadata.baronies.find((b) => b.name === selectedBaronyId)
+    if (!barony) {
+      return (
+        <Flex direction="column" gap="3" data-testid="inspector-barony-missing">
+          <Text size="2" color="gray" as="p">
+            Baronia "{selectedBaronyId}" não encontrada nos metadados.
+          </Text>
+        </Flex>
+      )
+    }
+    const parent = metadata.condados[barony.condado_idx]
+    const duchyName = metadata.duchies[barony.duchy]?.name ?? barony.duchy
+    const kingdomId = metadata.duchies[barony.duchy]?.kingdom ?? ''
+    const kingdomName = metadata.kingdoms[kingdomId] ?? kingdomId
+    return (
+      <Flex direction="column" gap="3" data-testid="inspector-barony">
+        <Heading size="3">{barony.name}</Heading>
+        <Flex gap="2" wrap="wrap">
+          <Badge color="amber" variant="soft">Kingdom: {kingdomName}</Badge>
+          <Badge color="blue" variant="soft">Duchy: {duchyName}</Badge>
+          <Badge color="grass" variant="soft">
+            Condado: {parent?.name ?? barony.condado_idx}
+          </Badge>
+          <Badge color="gray" variant="soft">Barony</Badge>
+        </Flex>
+        <Box>
+          <Flex justify="between" align="center">
+            <Text size="1" color="gray">Area</Text>
+            <Text size="2">
+              {`~${Math.round(pixelsToKm2(barony.pixel_count, metadata)).toLocaleString()} km²`}
+            </Text>
+          </Flex>
+        </Box>
+      </Flex>
+    )
+  }
+
   if (selectedIds.length === 0) {
     return (
       <Flex direction="column" gap="3" data-testid="inspector-placeholder">

@@ -55,15 +55,24 @@ describe('BaronyLayer', () => {
     expect(lines[1].getAttribute('data-fill')).toBe('#00ff00')
     lines.forEach((l) => {
       expect(l.getAttribute('data-closed')).toBe('true')
-      expect(l.getAttribute('data-listening')).toBe('false')
+      // Listening is gated on `visible`. When the layer is on, individual
+      // Lines are click-targets so the user can pick a barony for the
+      // Phase 03 follow-up barony detail mode.
+      expect(l.getAttribute('data-listening')).toBe('true')
     })
   })
 
-  it('Layer has listening=false and opacity=0.85', () => {
+  it('Layer is interactive (listening=true) when visible and opacity stays 0.85', () => {
     render(<BaronyLayer baronies={B} baronyColors={COLORS} visible />)
     const layer = screen.getByTestId('layer')
-    expect(layer.getAttribute('data-listening')).toBe('false')
+    expect(layer.getAttribute('data-listening')).toBe('true')
     expect(layer.getAttribute('data-opacity')).toBe('0.85')
+  })
+
+  it('Layer becomes inert (listening=false) when visible=false', () => {
+    render(<BaronyLayer baronies={B} baronyColors={COLORS} visible={false} />)
+    const layer = screen.getByTestId('layer')
+    expect(layer.getAttribute('data-listening')).toBe('false')
   })
 
   it('respects visible prop', () => {

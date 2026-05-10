@@ -58,9 +58,12 @@ function CenteredLabel(props: { x: number; y: number; text: string; scale: numbe
 
   const safeScale = props.scale > 0 ? props.scale : 1
   const fontSize = TARGET_LABEL_SCREEN_PX / safeScale
-  // Keep the white halo/outline thickness ~1 screen px regardless of zoom.
-  const strokeWidth = 1.5 / safeScale
-  // Bump the label slightly above the capital pin (offset is ~ glyph height).
+  // Halo built from a soft shadow rather than Konva's stroke. Stroke on
+  // bold glyphs produces the "double outline" look the user reported because
+  // Konva paints the stroke on the glyph perimeter and bold strokes overlap
+  // the inner fill. shadowBlur gives a clean readable halo without touching
+  // the glyph silhouette.
+  const shadowBlur = 6 / safeScale
   const offsetY = fontSize + 4 / safeScale
 
   return (
@@ -72,9 +75,15 @@ function CenteredLabel(props: { x: number; y: number; text: string; scale: numbe
       fontFamily="system-ui, sans-serif"
       fontSize={fontSize}
       fontStyle="bold"
-      fill="#1a1a1a"
-      stroke="rgba(255,255,255,0.85)"
-      strokeWidth={strokeWidth}
+      fill="#ffffff"
+      stroke="#000000"
+      strokeWidth={2 / safeScale}
+      fillAfterStrokeEnabled
+      shadowColor="#000000"
+      shadowBlur={shadowBlur}
+      shadowOpacity={0.85}
+      shadowOffsetX={0}
+      shadowOffsetY={0}
       listening={false}
       offsetY={offsetY}
     />

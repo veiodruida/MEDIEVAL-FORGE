@@ -247,7 +247,11 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
   const handleStageClick = useCallback(
     (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
       if (e.target === e.target.getStage()) {
-        useUIStore.getState().selectIds([])
+        // Clear both selection tiers at once — empty-stage click should land
+        // on the placeholder regardless of which mode the inspector was in.
+        const s = useUIStore.getState()
+        s.selectIds([])
+        s.selectBarony(null)
       }
     },
     [],

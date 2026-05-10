@@ -219,12 +219,12 @@ describe('DecorationsLayer — label gating (D-04 + zoom threshold)', () => {
     // At currentScale=0.51 → 16/0.51 ≈ 31.37 in map units, which renders at
     // ~16 CSS px on screen regardless of zoom.
     const expectedFontSize = (16 / 0.51).toString()
-    const expectedStrokeWidth = (1.5 / 0.51).toString()
+    const expectedStrokeWidth = (2 / 0.51).toString()
     texts.forEach((t) => {
       expect(t.getAttribute('data-font-family')).toBe('system-ui, sans-serif')
       expect(t.getAttribute('data-font-size')).toBe(expectedFontSize)
-      expect(t.getAttribute('data-fill')).toBe('#1a1a1a')
-      expect(t.getAttribute('data-stroke')).toBe('rgba(255,255,255,0.85)')
+      expect(t.getAttribute('data-fill')).toBe('#ffffff')
+      expect(t.getAttribute('data-stroke')).toBe('#000000')
       expect(t.getAttribute('data-stroke-width')).toBe(expectedStrokeWidth)
       expect(t.getAttribute('data-listening')).toBe('false')
     })

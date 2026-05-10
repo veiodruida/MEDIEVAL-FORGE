@@ -26,11 +26,17 @@ interface UIState {
   // `useUIStore((s) => s.selectedTerritoryId)` keep working without modification.
   // Plan 05 migrates consumers to `selectSelectedTerritoryId` and drops this mirror.
   selectedTerritoryId: string | null
+  // Plan 03-08 follow-up: barony-level selection. Mutually exclusive with
+  // `selectedTerritoryIds` — calling `selectBarony` clears the condado
+  // selection, and any condado select clears the barony. Phase 04 will lift
+  // both to a richer selection model with vertex-edit affordances.
+  selectedBaronyId: string | null
   layerVisibility: Record<LayerName, boolean>
   selectIds: (ids: string[]) => void
   // Legacy convenience: writes [id] or []. Equivalent to selectIds(id ? [id] : []).
   // Prefer `selectIds` in new code.
   select: (id: string | null) => void
+  selectBarony: (id: string | null) => void
   toggleLayer: (name: LayerName) => void
 }
 
@@ -48,13 +54,32 @@ const DEFAULT_LAYER_VISIBILITY: Record<LayerName, boolean> = {
 export const useUIStore = create<UIState>((set) => ({
   selectedTerritoryIds: [],
   selectedTerritoryId: null,
+  selectedBaronyId: null,
   layerVisibility: { ...DEFAULT_LAYER_VISIBILITY },
 
   selectIds: (ids) =>
-    set({ selectedTerritoryIds: ids, selectedTerritoryId: ids[0] ?? null }),
+    set({
+      selectedTerritoryIds: ids,
+      selectedTerritoryId: ids[0] ?? null,
+      // Selecting any condado(s) clears any barony selection — single-tier
+      // selection at a time keeps the inspector dispatcher unambiguous.
+      selectedBaronyId: ids.length > 0 ? null : null,
+    }),
 
   select: (id) =>
-    set({ selectedTerritoryIds: id ? [id] : [], selectedTerritoryId: id }),
+    set({
+      selectedTerritoryIds: id ? [id] : [],
+      selectedTerritoryId: id,
+      selectedBaronyId: null,
+    }),
+
+  selectBarony: (id) =>
+    set({
+      selectedBaronyId: id,
+      // Mutually exclusive with condado selection.
+      selectedTerritoryIds: [],
+      selectedTerritoryId: null,
+    }),
 
   toggleLayer: (name) =>
     set((state) => ({
