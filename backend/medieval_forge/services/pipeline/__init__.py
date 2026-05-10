@@ -87,6 +87,8 @@ def _write_outputs_to_disk(
     condados: list,
     duchies: dict,
     kingdoms: dict,
+    *,
+    affected: Optional[list] = None,
 ) -> dict[str, dict]:
     """Write the 10 Unity contract files + canvas sidecars to cfg.output_dir.
 
@@ -94,108 +96,172 @@ def _write_outputs_to_disk(
     lines 145-258 of this module). Called from BOTH run_pipeline and
     run_pipeline_incremental so D-17 byte-equal is guaranteed by construction.
 
-    Returns cmaps dict (needed by canvas sidecars caller).
+    Option A (selective writes): when `affected` is provided (non-None), each
+    write block is gated on whether its upstream stages appear in `affected`.
+    Empty `affected` list → no writes (warm no-change baseline ~0s I/O).
+    When `affected` is None (full generate path), all blocks always run.
+
+    Stop-event interleaving: each gate checks cfg.stop_event between blocks to
+    give SC-4 cancel a sub-second exit from a long write sequence.
+
+    Stage → write-block membership:
+      - 'render' block (visual PNGs): triggered by any of smooth/merge/hierarchy
+      - 'lookup' block (lookup PNGs + JSON): same as render
+      - 'metadata' block (territory_metadata.json): same as render
+      - 'export' block (mountains, rivers, sidecars): mountains+rivers only if
+        landmask or voronoi recomputed; canvas sidecars if hierarchy recomputed
+
+    Returns cmaps dict (needed by canvas sidecars caller; {} when fully skipped).
     """
+    # ---------------------------------------------------------------------------
+    # Helper: should we run this block?
+    # ---------------------------------------------------------------------------
+    def _needs_write(stages: list[str]) -> bool:
+        """True when any of `stages` appears in `affected` (or affected=None → always)."""
+        if affected is None:
+            return True
+        return any(s in affected for s in stages)
+
+    def _check_cancel() -> None:
+        """Raise StageCancelled (a pseudo-cancel) if stop_event is set mid-write."""
+        if cfg.stop_event is not None and cfg.stop_event.is_set():
+            from .cleanup import StageCancelled
+            raise StageCancelled("write", "write_outputs")
+
     W2, H2 = cfg.map_w * cfg.upscale, cfg.map_h * cfg.upscale
     os.makedirs(cfg.output_dir, exist_ok=True)
 
+    cmaps: dict[str, dict] = {}  # captured for canvas sidecars (Plan 03-01)
+
+    # Stages that, when dirty, require the render/lookup/metadata blocks to re-run.
+    # σ change → smooth+merge+hierarchy dirty → render block runs.
+    _RENDER_TRIGGERS = ["smooth", "merge", "hierarchy"]
+    # Mountains/rivers only change if the land mask or voronoi changed.
+    _MASK_TRIGGERS = ["landmask", "voronoi"]
+
     # 9. Render visual maps (D-03: draw_names from cfg.draw_names inside render_map)
-    _emit(cfg, "render", "start")
-    print("[10] Rendering visual maps...")
-    for mt in ["condado", "barony"]:
-        print(f"     {mt}...")
-        img = render_map(result, pc, pd, pk, bc, bd, bk, nb, nc,
-                        condados, duchies, kingdoms, land, cfg,
-                        map_type=mt, land_2x=land_2x)
-        Image.fromarray(img).save(f"{cfg.output_dir}/visual_{mt}.png")
-    _emit(cfg, "render", "done")
+    if _needs_write(_RENDER_TRIGGERS):
+        _check_cancel()
+        _emit(cfg, "render", "start")
+        print("[10] Rendering visual maps...")
+        for mt in ["condado", "barony"]:
+            print(f"     {mt}...")
+            img = render_map(result, pc, pd, pk, bc, bd, bk, nb, nc,
+                            condados, duchies, kingdoms, land, cfg,
+                            map_type=mt, land_2x=land_2x)
+            Image.fromarray(img).save(f"{cfg.output_dir}/visual_{mt}.png")
+        _emit(cfg, "render", "done")
+    else:
+        print("[10] Skipping visual maps (not dirty)")
 
     # 10. Lookup maps
-    _emit(cfg, "lookup", "start")
-    print("[11] Generating lookup maps...")
-    cmaps: dict[str, dict] = {}  # captured for canvas sidecars (Plan 03-01)
-    for label, level_map, n_items in [("barony", result, nb), ("condado", pc, nc)]:
-        lk, cmap = generate_lookup_map(result, level_map, n_items, cfg, label)
-        cmaps[label] = cmap
-        Image.fromarray(lk).save(f"{cfg.output_dir}/lookup_{label}.png")
-        with open(f"{cfg.output_dir}/lookup_{label}_colors.json", 'w') as f:
-            json.dump(cmap, f, indent=2)
-    _emit(cfg, "lookup", "done")
+    if _needs_write(_RENDER_TRIGGERS):
+        _check_cancel()
+        _emit(cfg, "lookup", "start")
+        print("[11] Generating lookup maps...")
+        for label, level_map, n_items in [("barony", result, nb), ("condado", pc, nc)]:
+            lk, cmap = generate_lookup_map(result, level_map, n_items, cfg, label)
+            cmaps[label] = cmap
+            Image.fromarray(lk).save(f"{cfg.output_dir}/lookup_{label}.png")
+            with open(f"{cfg.output_dir}/lookup_{label}_colors.json", 'w') as f:
+                json.dump(cmap, f, indent=2)
+        _emit(cfg, "lookup", "done")
+    else:
+        print("[11] Skipping lookup maps (not dirty)")
 
     # 11. Metadata
-    _emit(cfg, "metadata", "start")
-    print("[12] Exporting metadata...")
-    metadata = export_metadata(condados, duchies, kingdoms, bars, result, pc, cfg)
-    with open(f"{cfg.output_dir}/territory_metadata.json", 'w', encoding='utf-8') as f:
-        json.dump(metadata, f, indent=2, ensure_ascii=False)
-    _emit(cfg, "metadata", "done")
+    if _needs_write(_RENDER_TRIGGERS):
+        _check_cancel()
+        _emit(cfg, "metadata", "start")
+        print("[12] Exporting metadata...")
+        metadata = export_metadata(condados, duchies, kingdoms, bars, result, pc, cfg)
+        with open(f"{cfg.output_dir}/territory_metadata.json", 'w', encoding='utf-8') as f:
+            json.dump(metadata, f, indent=2, ensure_ascii=False)
+        _emit(cfg, "metadata", "done")
+    else:
+        print("[12] Skipping metadata (not dirty)")
 
     # 12. Mountains (rule #6 + P-4: independent 2x render — pass land_2x in)
+    # Mountains/rivers only need re-rendering if the land mask or voronoi changed.
     _emit(cfg, "export", "start")
-    print("[13] Mountains...")
-    mtn_mask = render_mountains(cfg, land_2x)
-    if mtn_mask is not None:
-        # Save as white-on-black mask (white = impassable)
-        mtn_img = np.zeros((H2, W2), dtype=np.uint8)
-        mtn_img[mtn_mask] = 255
-        Image.fromarray(mtn_img).save(f"{cfg.output_dir}/mountains_mask.png")
-        print(f"    Mountain pixels: {np.sum(mtn_mask):,}")
+    if _needs_write(_MASK_TRIGGERS):
+        _check_cancel()
+        print("[13] Mountains...")
+        mtn_mask = render_mountains(cfg, land_2x)
+        if mtn_mask is not None:
+            # Save as white-on-black mask (white = impassable)
+            mtn_img = np.zeros((H2, W2), dtype=np.uint8)
+            mtn_img[mtn_mask] = 255
+            Image.fromarray(mtn_img).save(f"{cfg.output_dir}/mountains_mask.png")
+            print(f"    Mountain pixels: {np.sum(mtn_mask):,}")
 
-        # Also apply mountains to visual maps (P-9 + rule #7: cfg.rng_seed)
-        for mt in ["condado", "barony"]:
-            vis = np.array(Image.open(f"{cfg.output_dir}/visual_{mt}.png"))
-            mc = cfg.mountain_color_visual
-            noise = np.random.default_rng(cfg.rng_seed).integers(
-                -cfg.mountain_noise, cfg.mountain_noise, (H2, W2))
-            for ch in range(3):
-                vis[:,:,ch][mtn_mask] = np.clip(
-                    mc[ch] + noise[mtn_mask], 30, 220).astype(np.uint8)
-            Image.fromarray(vis).save(f"{cfg.output_dir}/visual_{mt}.png")
+            # Also apply mountains to visual maps (P-9 + rule #7: cfg.rng_seed)
+            # Only valid when render block already ran (both triggered by _RENDER_TRIGGERS);
+            # if render skipped but mask recomputed (shouldn't happen in practice —
+            # mask triggers ⊆ render triggers when upstream changes propagate), skip.
+            if _needs_write(_RENDER_TRIGGERS):
+                for mt in ["condado", "barony"]:
+                    vis = np.array(Image.open(f"{cfg.output_dir}/visual_{mt}.png"))
+                    mc = cfg.mountain_color_visual
+                    noise = np.random.default_rng(cfg.rng_seed).integers(
+                        -cfg.mountain_noise, cfg.mountain_noise, (H2, W2))
+                    for ch in range(3):
+                        vis[:,:,ch][mtn_mask] = np.clip(
+                            mc[ch] + noise[mtn_mask], 30, 220).astype(np.uint8)
+                    Image.fromarray(vis).save(f"{cfg.output_dir}/visual_{mt}.png")
 
-    # 13. Rivers
-    print("[14] Rivers...")
-    rivers_img = render_rivers(cfg)
-    if rivers_img is not None:
-        rivers_img.save(f"{cfg.output_dir}/rivers_overlay.png")
+        # 13. Rivers
+        _check_cancel()
+        print("[14] Rivers...")
+        rivers_img = render_rivers(cfg)
+        if rivers_img is not None:
+            rivers_img.save(f"{cfg.output_dir}/rivers_overlay.png")
 
-        # Also composite rivers on visual maps
-        for mt in ["condado", "barony"]:
-            vis = Image.open(f"{cfg.output_dir}/visual_{mt}.png").convert("RGBA")
-            vis.paste(rivers_img, (0, 0), rivers_img)
-            vis.convert("RGB").save(f"{cfg.output_dir}/visual_{mt}.png")
+            # Also composite rivers on visual maps (only if render block ran)
+            if _needs_write(_RENDER_TRIGGERS):
+                for mt in ["condado", "barony"]:
+                    vis = Image.open(f"{cfg.output_dir}/visual_{mt}.png").convert("RGBA")
+                    vis.paste(rivers_img, (0, 0), rivers_img)
+                    vis.convert("RGB").save(f"{cfg.output_dir}/visual_{mt}.png")
 
-    # 14. Copy mountain_river_data.json into output (10th contract file).
-    # The deployed Reconquista folder ships this file alongside the others; it
-    # is the same bytes as the input. Plan 03's parity test reads it from output.
-    mr_path = cfg.dataset.mountain_river_json if cfg.dataset is not None else None
-    if mr_path and os.path.exists(mr_path):
-        shutil.copy2(mr_path,
-                     os.path.join(cfg.output_dir, "mountain_river_data.json"))
+        # 14. Copy mountain_river_data.json into output (10th contract file).
+        mr_path = cfg.dataset.mountain_river_json if cfg.dataset is not None else None
+        if mr_path and os.path.exists(mr_path):
+            shutil.copy2(mr_path,
+                         os.path.join(cfg.output_dir, "mountain_river_data.json"))
+    else:
+        print("[13] Skipping mountains/rivers (not dirty)")
 
     # 15. Canvas sidecars (Plan 03-01 BLOCKER fix — Pitfall 10).
     # Emit-only, parity-safe: the 10-file Unity contract is unaffected; these
     # four files (territories.geojson + baronies.geojson + condado_colors.json
     # + barony_colors.json) feed the Phase 03 read-only canvas hydrator.
-    print("[15] Emitting canvas sidecars...")
-    from ..canvas_sidecars import (
-        build_baronies_geojson_sidecar,
-        build_territories_geojson_sidecar,
-    )
-    build_territories_geojson_sidecar(
-        pc=pc,
-        condados=condados,
-        duchies=duchies,
-        cfg=cfg,
-        condado_cmap=cmaps["condado"],
-        out_dir=cfg.output_dir,
-    )
-    build_baronies_geojson_sidecar(
-        result=result,
-        bars=bars,
-        cfg=cfg,
-        barony_cmap=cmaps["barony"],
-        out_dir=cfg.output_dir,
-    )
+    if _needs_write(_RENDER_TRIGGERS):
+        _check_cancel()
+        print("[15] Emitting canvas sidecars...")
+        from ..canvas_sidecars import (
+            build_baronies_geojson_sidecar,
+            build_territories_geojson_sidecar,
+        )
+        # cmaps must have been populated by the lookup block above
+        if cmaps:
+            build_territories_geojson_sidecar(
+                pc=pc,
+                condados=condados,
+                duchies=duchies,
+                cfg=cfg,
+                condado_cmap=cmaps["condado"],
+                out_dir=cfg.output_dir,
+            )
+            build_baronies_geojson_sidecar(
+                result=result,
+                bars=bars,
+                cfg=cfg,
+                barony_cmap=cmaps["barony"],
+                out_dir=cfg.output_dir,
+            )
+    else:
+        print("[15] Skipping canvas sidecars (not dirty)")
     _emit(cfg, "export", "done")
 
     return cmaps
@@ -550,7 +616,10 @@ def run_pipeline_incremental(cfg: RegionConfig, project_id: str) -> list[str]:
     nc_active = sum(1 for i in range(nc) if np.sum(pc == i) > 0)
     print(f"    [INC] Active: {na} baronies, {nc_active} condados; affected={affected}")
 
-    # Write all output files (shared helper guarantees D-17 byte-equal)
+    # Write output files (Option A selective writes).
+    # affected list gates each write block — empty list skips all I/O (warm no-change
+    # baseline drops from 6.8s to ~0s). Full generate path passes affected=None
+    # (run_pipeline) to always write everything (D-17 parity preserved).
     _write_outputs_to_disk(
         cfg=cfg,
         result=result,
@@ -568,6 +637,7 @@ def run_pipeline_incremental(cfg: RegionConfig, project_id: str) -> list[str]:
         condados=condados,
         duchies=duchies,
         kingdoms=kingdoms,
+        affected=affected,
     )
 
     print(f"\n[INC] DONE — affected={affected}")
