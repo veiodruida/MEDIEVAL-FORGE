@@ -1,6 +1,6 @@
+import Konva from 'konva'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Stage } from 'react-konva'
-import type Konva from 'konva'
 import { BackgroundLayer } from './BackgroundLayer'
 import { TerritoryLayer } from './TerritoryLayer'
 import { BaronyLayer } from './BaronyLayer'
@@ -27,6 +27,8 @@ import {
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts'
 import { useCanvasArtifacts } from '../../hooks/useCanvasArtifacts'
 import { useUIStore } from '../../stores/uiStore'
+import { usePipelineParams } from '../../stores/usePipelineParams'
+import { useRunStore } from '../../stores/useRunStore'
 
 interface CanvasViewerProps {
   projectId: string
@@ -50,12 +52,17 @@ const PADDING_PCT = 0.05
  * Read-only canvas viewer for Phase 03 (read-only canvas redesign).
  *
  * Composition (5 Konva layers in z-order):
- *   BackgroundLayer  → terrain PNG
- *   TerritoryLayer   → condado polygons
- *   BaronyLayer      → barony polygons
- *   DecorationsLayer → capitals dual-ring + labels (listening=false)
+ *   BackgroundLayer  → terrain PNG (or stage raster when stageView !== 'render-final')
+ *   TerritoryLayer   → condado polygons (hidden in stage-overlay views)
+ *   BaronyLayer      → barony polygons (hidden in stage-overlay views)
+ *   DecorationsLayer → capitals dual-ring + labels (hidden in stage-overlay views)
  *   InteractionLayer → gold selection outline (listening=false)
  * Sibling absolute-positioned overlays: LayerTogglePanel, FitToViewButton, HoverTooltip.
+ *
+ * Phase 04 additions:
+ *   - stageView from usePipelineParams gates layer visibility (UI-SPEC §StageViewToggle)
+ *   - priorTokens from useRunStore enables D-13 cancel revert via effectiveCacheVersion
+ *   - Centralized Konva.clearCache() per layer fires AFTER hydration completes (Pitfall 6)
  *
  * Interaction behavior (Phase 03 read-only):
  *   - draggable Stage with pan-clamp (makeDragBoundFunc)
@@ -135,11 +142,25 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
     y: 0,
   })
 
-  const [territoriesQ, baroniesQ, condadoColorsQ, baronyColorsQ, metaQ] = useCanvasArtifacts(
-    projectId,
-    projection,
-    cacheVersion,
-  )
+  // Phase 04: stageView from usePipelineParams (UI-SPEC §StageViewToggle)
+  const stageView = usePipelineParams((s) => s.stageView)
+
+  // Phase 04 D-13: priorTokens populated by useRunStore.revertStage (04-03 Task 4)
+  // When a stage_cancel SSE fires, revertStage sets priorTokens[stage] = prior_token.
+  // Using priorTokens.render as effectiveCacheVersion forces CanvasViewer to
+  // re-fetch artifacts at the prior token's URL (?v=<prior_token>) so the canvas
+  // reverts to the state before the cancelled render.
+  const priorTokens = useRunStore((s) => s.priorTokens)
+
+  // D-13: effectiveCacheVersion folds priorTokens.render. When cancel fires and
+  // revertStage('render', prior_token) sets priorTokens.render, the queryKey changes
+  // (TanStack invalidates its in-memory cache) and the fetch URL changes
+  // (?v=<prior_token> vs ?v=<cacheVersion>) — browser HTTP cache also misses.
+  const effectiveCacheVersion =
+    priorTokens.render !== undefined ? priorTokens.render : cacheVersion
+
+  const [territoriesQ, baroniesQ, condadoColorsQ, baronyColorsQ, metaQ, stageRasterUrl] =
+    useCanvasArtifacts(projectId, projection, effectiveCacheVersion, stageView)
 
   // Build projection once metadata loads
   useEffect(() => {
@@ -209,6 +230,29 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
     stage.batchDraw()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId, projection, metaQ.data])
+
+  // CLAUDE.md non-negotiable: Konva.clearCache() after every geometric mutation.
+  // Phase 04: cacheVersion or stageView change = geometric mutation. Pitfall 6:
+  // fire AFTER hydration completes — guard inside the effect on stageRef.current
+  // and on all query data being present. By the time this effect runs with all
+  // queries resolved, the early-return branches below have already been bypassed,
+  // and all Konva layers are mounted (stageRef.current is the live Konva.Stage).
+  useEffect(() => {
+    const stage = stageRef.current
+    if (!stage) return
+    // Guard: only clear cache after data is fully hydrated (Pitfall 6).
+    // territoriesQ/baroniesQ/metaQ are all loaded by the time stageRef.current
+    // is populated, but we add explicit guards for safety.
+    if (!territoriesQ.data || !baroniesQ.data || !metaQ.data) return
+    // getLayers() returns every Konva.Layer in the stage in z-order.
+    stage.getLayers().forEach((layer) => {
+      layer.clearCache()
+      layer.batchDraw()
+    })
+    // Dependencies: effectiveCacheVersion + stageView.
+    // effectiveCacheVersion folds priorTokens.render so cancel triggers a
+    // re-cache bust per D-13 + D-14.
+  }, [effectiveCacheVersion, stageView]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const wheelHandler = useMemo(
     () =>
@@ -313,8 +357,11 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
     )
   }
 
-  const vSuffix = cacheVersion ? `?v=${encodeURIComponent(cacheVersion)}` : ''
-  const terrainSrc = `/api/v3/projects/${projectId}/artifacts/terrain.png${vSuffix}`
+  // UI-SPEC §StageViewToggle: hide territory/barony/decoration layers when
+  // displaying an intermediate stage raster (non-final stage views show a
+  // raw colorized raster in BackgroundLayer; overlaying vector data would
+  // be misleading).
+  const isStageOverlay = stageView !== 'render-final'
 
   const canvasPane = (
     <div
@@ -337,8 +384,10 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
         onClick={handleStageClick}
         onTap={handleStageClick}
       >
+        {/* BackgroundLayer always shows the raster — either visual_condado.png
+            (render-final) or /stage/{name}.png (intermediate stage view). */}
         <BackgroundLayer
-          src={terrainSrc}
+          src={stageRasterUrl}
           mapW={projection.mapW}
           mapH={projection.mapH}
           visible={layerVisibility.condados}
@@ -346,7 +395,7 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
         <TerritoryLayer
           territories={territoriesQ.data}
           condadoColors={condadoColorsQ.data}
-          visible={layerVisibility.condados}
+          visible={!isStageOverlay && layerVisibility.condados}
           showBorders={layerVisibility.borders}
           onHoverEnter={handleHoverEnter}
           onHoverLeave={handleHoverLeave}
@@ -354,14 +403,14 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
         <BaronyLayer
           baronies={baroniesQ.data}
           baronyColors={baronyColorsQ.data}
-          visible={layerVisibility.baronies}
+          visible={!isStageOverlay && layerVisibility.baronies}
         />
         <DecorationsLayer
           condados={metaQ.data.condados}
           condadoColors={condadoColorsQ.data}
           layerVisibility={{
-            capitals: layerVisibility.capitals,
-            labels: layerVisibility.labels,
+            capitals: !isStageOverlay && layerVisibility.capitals,
+            labels: !isStageOverlay && layerVisibility.labels,
           }}
           currentScale={currentScale}
           minScale={minScale}
