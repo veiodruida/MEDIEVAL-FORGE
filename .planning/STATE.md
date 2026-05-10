@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: + bootstrap v3 infrastructure
-status: executing
-stopped_at: Completed 04-04-PLAN.md
-last_updated: "2026-05-10T17:19:27.989Z"
+status: verifying
+stopped_at: Completed 04-05-PLAN.md
+last_updated: "2026-05-10T17:29:34.261Z"
 last_activity: 2026-05-10
 progress:
   total_phases: 9
   completed_phases: 3
   total_plans: 22
-  completed_plans: 20
-  percent: 91
+  completed_plans: 21
+  percent: 95
 ---
 
 # Project State (v3)
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md
 
 Phase: 04 (parameter-studio-live-re-render) — EXECUTING
 Plan: 7 of 7
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-05-10
 
 Progress: [███░░░░░░░] 33% (3 of 9 phases complete)
@@ -69,6 +69,8 @@ See `.planning/PROJECT.md` Key Decisions table (D-V3-01 through D-V3-07).
 - [Phase 04]: useParameterStudioDispatch extracted to hooks/ to isolate projectId; showCancel=rendering only (not generating) per UI-SPEC; useRenderStore absorbed into useRunStore in Task 4 for Wave 3 parallel safety; FakeEventSource shim pattern for jsdom
 - [Phase 04]: getLayers() used instead of findAll('Layer') — findAll not in Konva TypeScript types; getLayers() is the typed Stage method returning Layer[] (Rule 1 deviation from plan implementation detail, same behavior)
 - [Phase 04]: useCanvasArtifacts 6-tuple backward-compatible at indices [0]..[4]; index [5] is new stageRasterUrl string; stageView in all 5 queryKeys; effectiveCacheVersion = priorTokens.render ?? cacheVersion (D-13 cancel revert)
+- [Phase 04]: Vertex-average centroid (not area-weighted) sufficient for D-12 — baronies roughly convex, 1-2px off-center invisible at 10px font
+- [Phase 04]: Approximate text width (char × 6px) avoids post-mount Konva ref complexity for a 10px decorative label
 
 ### Blockers/Concerns
 
@@ -88,6 +90,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-10T17:19:27.986Z
-Stopped at: Completed 04-04-PLAN.md
+Last session: 2026-05-10T17:29:34.258Z
+Stopped at: Completed 04-05-PLAN.md
 Resume file: None
