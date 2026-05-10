@@ -146,7 +146,30 @@ PT-BR labels are defaults from the researcher. Executor may refine phrasing; the
 ### WorkspaceToolbar Extensions (modifications to existing)
 
 1. **Left zone addition:** `IconButton` to toggle ParameterSidebar (e.g. `MixerHorizontalIcon`). Sits left of the "← Projetos" back link.
-2. **Cancel state:** When `runState ∈ { generating, rendering }`, `GenerateStatusBadge` re-purposes to a Radix `Button color="red" variant="solid"` labeled "Cancelar". On click, fires `POST /render/cancel` (or `DELETE /render`). When state returns to idle/generated, badge restores to its normal shape per Phase 03 contract.
+2. **Cancel state:** When `runState ∈ { generating, rendering }`, `GenerateStatusBadge` re-purposes to a Radix `Button color="red" variant="solid"` labeled "Cancelar". On click, fires the cancel endpoint (planner picks `POST /render/cancel` vs `DELETE /render`). When state returns to idle/generated, badge restores to its normal shape per Phase 03 contract.
+
+### BaronyLabel (visual layer inside `components/canvas/BaronyLayer.tsx` or `DecorationsLayer.tsx`)
+
+Renders the name of each barony centered on its centroid. Added per CONTEXT D-12 ("when Baronies toggle is on").
+
+**Trigger condition:** Visible when `layerVisibility.baronies === true` (the existing LayerTogglePanel "Baronias" checkbox). NOT zoom-gated independently — follows the Baronies layer toggle, not the "Nomes" (condado labels) toggle which gates at zoom ≥ 1.5×. Executor confirms via `uiStore.layerVisibility` read in `BaronyLayer`.
+
+**Implementation options** (planner picks one per CONTEXT D-12):
+- Konva `Text` node inside `BaronyLayer` positioned at barony centroid `cfg.condados[i].baronies[j]`
+- DOM overlay using the same pattern as `HoverTooltip` (DOM precedent in the codebase)
+
+**Visual contract (applies regardless of implementation):**
+
+| Property | Value | Source |
+|----------|-------|--------|
+| Font size | 10px (Konva px) or `size="1"` equivalent | Below hierarchy label size to avoid competing with condado names |
+| Color | white (`#FFFFFF`) | Readable on colored territory fills |
+| Halo / stroke | black shadow, 1px spread | Matches existing label halo convention seen in Phase 03 visual sign-off (`phase03-final.png`) |
+| Font weight | regular (400) | Labels, not headings |
+| Text anchor | center-center on barony centroid | Standard centroid positioning |
+| Truncation | Truncate at 12 characters with "…" if label overflows barony bounding box | Prevents label overlap on small baronies |
+| Zoom gate | None — visible whenever Baronies toggle is on, at any zoom level | Per CONTEXT D-12 "Baronies toggle is on" |
+| Update on re-render | Re-hydrate on every `cacheVersion` change that affects the barony tier (i.e., `smooth` or `merge` slider changes) | Centroids may shift when merge reshapes baronies |
 
 ---
 
@@ -167,7 +190,7 @@ PT-BR labels are defaults from the researcher. Executor may refine phrasing; the
 ### Cancel Flow
 
 1. User clicks "Cancelar" in the toolbar.
-2. `POST /render/cancel` sent immediately.
+2. Cancel endpoint fires immediately (planner picks `POST /render/cancel` vs `DELETE /render`).
 3. Backend sets `stop_event`, emits `stage_cancel` SSE event per affected stage carrying prior tokens.
 4. Frontend: slider values revert to the values that produced `prior_token`; `Konva.clearCache()` per layer; `runState` → `generated` (reverted state).
 5. Latency target: <50ms end-to-end (O(1) cache swap per CONTEXT D-13).
@@ -176,7 +199,7 @@ PT-BR labels are defaults from the researcher. Executor may refine phrasing; the
 
 1. User selects a radio option in StageViewToggle.
 2. `stage_view` local state updates.
-3. `useCanvasArtifacts` re-keys its TanStack Query on `(stage_view, token)` and fetches the appropriate raster from `GET /api/v3/projects/{id}/stage/{name}.png` (or equivalent).
+3. `useCanvasArtifacts` re-keys its TanStack Query on `(stage_view, token)` to re-fetch the raster for the selected stage. The planner picks the endpoint shape (new `GET /stage/{name}.png` endpoint, or expanded `/artifacts/*` semantics — CONTEXT Claude's Discretion).
 4. BaronyLayer / DecorationsLayer / RiversOverlay visibility set by `stage_view === 'render-final'`.
 5. No pipeline re-run triggered by a stage-view switch alone.
 
@@ -185,6 +208,12 @@ PT-BR labels are defaults from the researcher. Executor may refine phrasing; the
 1. User clicks the reset `IconButton` on a SliderCard.
 2. That slider reverts to its `RegionConfig` default (per table above).
 3. The standard re-render debounce fires immediately (not debounced — reset is intentional, not a drag gesture).
+
+### Barony Label Display
+
+1. When `layerVisibility.baronies` flips to `true`, BaronyLabels render on top of BaronyLayer polygons.
+2. Labels re-position on every `cacheVersion` change (merge or smooth slider updates may shift barony centroids).
+3. `Konva.clearCache()` is called on the label layer alongside all other layers on hydration.
 
 ---
 
@@ -275,6 +304,7 @@ idle → generated → rendering → generated | error
 - Stage-view radios: `RadioGroup.Root` has `aria-label="Vista do estágio"`.
 - Default-tick markers are `aria-hidden="true"` (decorative).
 - Color-only status differentiation: the Cancel button is also labeled "Cancelar" (not just red) — no color-only communication.
+- Barony labels: Konva `Text` nodes are canvas-rendered (not in the DOM accessibility tree). This is acceptable — barony names are already surfaced in the Inspector when the user clicks a territory.
 
 ---
 
@@ -293,12 +323,12 @@ No third-party component registries. All UI is built from @radix-ui/themes 3.3.0
 
 | Source | Decisions Used |
 |--------|---------------|
-| CONTEXT.md (04-CONTEXT.md) | 18 — slider bounds (D-05), sidebar slot (D-06), debounce 250ms (D-07), slider component shape (D-08), stage-view semantics (D-09, D-10, D-11), cancel mechanic (D-13, D-14, D-16), undo deferral (D-15), barony labels (D-12), rendering state extension |
+| CONTEXT.md (04-CONTEXT.md) | 19 — slider bounds (D-05), sidebar slot (D-06), debounce 250ms (D-07), slider component shape (D-08), stage-view semantics (D-09, D-10, D-11), cancel mechanic (D-13, D-14, D-16), undo deferral (D-15), barony labels (D-12) including visual contract, rendering state extension |
 | ROADMAP.md | 4 — Phase 04 success criteria SC-1..SC-4 drive state machine and cancel copy |
 | STATE.md | 1 — Phase 03 complete; canvas + sidecars infrastructure confirmed |
 | REQUIREMENTS.md | 0 — file not found |
 | Codebase scan | 12 — Radix Themes color tokens (amber/blue/grass/gray/red), toolbar 48px, InspectorSidebar patterns, WorkspaceToolbar structure, GenerateStatusBadge state map, LayerTogglePanel absolute positioning, PT-BR chrome convention, PIPELINE_STAGES, useRunStore 5-state machine |
-| Researcher defaults | 5 — PT-BR slider labels, PT-BR stage-view labels, stage-view layer hide behavior, error copy, default-tick affordance |
+| Researcher defaults | 6 — PT-BR slider labels, PT-BR stage-view labels, stage-view layer hide behavior, error copy, default-tick affordance, barony label font/halo spec |
 
 ---
 
