@@ -35,16 +35,12 @@ from ...database import AsyncSessionLocal, get_db
 from ...models import Project
 from ...services.paths import is_valid_uuid, project_dir
 from ...services.pipeline import run_pipeline
+from ...services.pipeline.cache import cache_clear_project
 from ...services.pipeline.regions import iberia_config
+from ._run_state import _RUN_QUEUES, _RUN_TASKS, _RUN_KIND, is_run_alive  # noqa: F401
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/v3/projects", tags=["v3-generate"])
-
-# Per-project queue of SSE events. Single in-flight run per project enforced
-# via the 409 gate in trigger_generate. T-03-02: keyed by project_id so events
-# never leak across projects.
-_RUN_QUEUES: dict[str, asyncio.Queue[str | None]] = {}
-_RUN_TASKS: dict[str, asyncio.Task] = {}
 
 
 def _emit(
@@ -135,6 +131,10 @@ async def _generate_producer(
         cfg.output_dir = str(project_dir(project_id) / "output")
         cfg.on_stage = _make_on_stage(queue, asyncio.get_running_loop())
 
+        # D-03: fresh /generate always starts from a clean cache so stale
+        # intermediate arrays from a previous /render don't bleed into the new run.
+        cache_clear_project(project_id)
+
         await asyncio.to_thread(run_pipeline, cfg)
 
         # Success: flip status + bump updated_at (D-19 cache-bust).
@@ -168,15 +168,12 @@ async def trigger_generate(
     if project is None:
         raise HTTPException(status_code=404, detail="project not found")
 
-    existing = _RUN_TASKS.get(project_id)
-    if (
-        project.status == "generating"
-        and existing is not None
-        and not existing.done()
-    ):
+    # Cross-router single-flight gate (D-04): rejects if /generate OR /render is alive.
+    alive_kind = is_run_alive(project_id)
+    if alive_kind is not None:
         raise HTTPException(
             status_code=409,
-            detail="project is already generating; subscribe to /generate/stream",
+            detail=f"project is already {alive_kind}; subscribe to /{alive_kind}/stream",
         )
 
     # Commit status='generating' BEFORE scheduling the producer so a
@@ -187,6 +184,7 @@ async def trigger_generate(
 
     queue: asyncio.Queue[str | None] = asyncio.Queue()
     _RUN_QUEUES[project_id] = queue
+    _RUN_KIND[project_id] = "generate"  # must be set before task creation (D-04 race guard)
     task = asyncio.create_task(
         _generate_producer(project_id, queue, AsyncSessionLocal)
     )

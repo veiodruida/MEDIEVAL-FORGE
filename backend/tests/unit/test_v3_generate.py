@@ -54,8 +54,11 @@ async def client(in_memory_db, monkeypatch, tmp_path):
     monkeypatch.setattr(v3_generate_mod, "AsyncSessionLocal", in_memory_db)
 
     # Reset the module-level run-tracking state between tests.
+    # These dicts now live in _run_state.py and are re-imported by generate.py;
+    # clearing via v3_generate_mod works because Python import binds the same dict.
     v3_generate_mod._RUN_QUEUES.clear()
     v3_generate_mod._RUN_TASKS.clear()
+    v3_generate_mod._RUN_KIND.clear()
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         yield c
@@ -63,6 +66,7 @@ async def client(in_memory_db, monkeypatch, tmp_path):
     app.dependency_overrides.clear()
     v3_generate_mod._RUN_QUEUES.clear()
     v3_generate_mod._RUN_TASKS.clear()
+    v3_generate_mod._RUN_KIND.clear()
 
 
 async def _make_project(
@@ -118,11 +122,12 @@ async def test_generate_returns_409_when_run_already_alive(
     parked = asyncio.create_task(_hang())
     v3_generate_mod._RUN_TASKS[pid] = parked
     v3_generate_mod._RUN_QUEUES[pid] = asyncio.Queue()
+    v3_generate_mod._RUN_KIND[pid] = "generate"  # required for is_run_alive to report kind
 
     try:
         r = await client.post(f"/api/v3/projects/{pid}/generate")
         assert r.status_code == 409
-        assert "already generating" in r.json()["detail"]
+        assert "already generate" in r.json()["detail"]
     finally:
         never_event.set()
         parked.cancel()
