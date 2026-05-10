@@ -2,9 +2,9 @@
 
 T-01-04 mitigation: stop_events are scoped by (project_id, step) tuple, not global.
 
-Deviation from plan spec: db_session_factory parameter added (mirrors ingest_runner.run_ingest)
-so tests can inject an in-memory DB session. Rule 3 auto-fix — without it, _resolve_bbox
-always uses production AsyncSessionLocal and cannot be unit-tested.
+Deviation from plan spec: db_session_factory parameter added so tests can inject an
+in-memory DB session. Rule 3 auto-fix — without it, _resolve_bbox always uses production
+AsyncSessionLocal and cannot be unit-tested.
 """
 from __future__ import annotations
 
@@ -102,8 +102,8 @@ async def run_terrain_overpass(
 ) -> None:
     """Producer task. ALWAYS puts None sentinel before returning.
 
-    db_session_factory: injected for testing (mirrors ingest_runner.run_ingest).
-    Defaults to production AsyncSessionLocal when None.
+    db_session_factory: injected for testing. Defaults to production
+    AsyncSessionLocal when None.
     """
     factory = db_session_factory or AsyncSessionLocal
     if stop_event is None:

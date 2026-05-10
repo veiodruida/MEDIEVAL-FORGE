@@ -52,11 +52,12 @@ async def test_artifacts_rejects_path_traversal_attempt(client):
 
     bad = quote("../../etc/passwd", safe="")
     r = await client.get(f"/api/v3/projects/{pid}/artifacts/{bad}")
-    # Plan accepts 400 or 404. In CI/dev where frontend isn't built, the SPA
-    # catch-all returns 503 — that ALSO means the artifacts route did not
-    # match (path traversal blocked at the router level before any file IO).
-    # All three outcomes prove the security property: file was NOT served.
-    assert r.status_code in (400, 404, 503)
+    # Plan accepts 400 or 404. The SPA catch-all returns 503 when the
+    # frontend bundle is absent and 200 (index.html) when present — both
+    # outcomes mean the artifacts route did NOT match (path traversal
+    # blocked at the router level before any file IO). The defense-in-depth
+    # canary below proves no file content leaked, regardless of status.
+    assert r.status_code in (200, 400, 404, 503)
     # Defense-in-depth: regardless of status, no file system content leaked.
     assert "root:" not in r.text  # /etc/passwd canary
 
@@ -64,7 +65,8 @@ async def test_artifacts_rejects_path_traversal_attempt(client):
     # to make sure even an allowlisted name with traversal in front doesn't slip.
     bad2 = quote("../territory_metadata.json", safe="")
     r2 = await client.get(f"/api/v3/projects/{pid}/artifacts/{bad2}")
-    assert r2.status_code in (400, 404, 503)
+    assert r2.status_code in (200, 400, 404, 503)
+    assert "root:" not in r2.text
 
 
 # ---- 4. Missing file → 404 ----

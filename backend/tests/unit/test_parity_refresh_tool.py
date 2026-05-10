@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 from pathlib import Path
 
 import numpy as np
@@ -226,8 +227,15 @@ def test_plugin_dry_run_vs_confirm(tmp_path: Path, with_confirm: bool) -> None:
             "--override-ini=addopts=", "-o", "markers=parity: parity tests"]
     if with_confirm:
         args.append("--confirm")
+    # The scratch conftest imports `tests.parity.conftest`. The subprocess pytest
+    # walks up from the scratch test file to find rootdir and never reaches the
+    # workspace pyproject (different drive root on Windows tmp), so pythonpath
+    # from the workspace pyproject does not apply. Force the import path via
+    # PYTHONPATH so `tests.parity` resolves under `backend/`.
+    backend_dir = Path(__file__).resolve().parents[2]
+    env = {**os.environ, "PYTHONPATH": str(backend_dir)}
     result = subprocess.run(args, capture_output=True, text=True, timeout=60,
-                            cwd=Path(__file__).resolve().parents[3])
+                            cwd=backend_dir, env=env)
 
     assert result.returncode == 0, (
         f"plugin smoke test failed:\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"

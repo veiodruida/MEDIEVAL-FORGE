@@ -69,8 +69,7 @@ def ensure_project_dirs(project_id: str) -> dict[str, Path]:
 def _write_geojson_atomic(path: Path, payload: dict[str, Any]) -> None:
     """Atomically write `payload` (a GeoJSON-like dict) to `path`.
 
-    Verbatim lift from services/ingest_runner.py (Phase 03 Plan 03-01,
-    Pitfall 2). The helper writes to a sibling .tmp file then renames, which
+    The helper writes to a sibling .tmp file then renames, which
     is atomic on POSIX and best-effort on Windows. Does NOT auto-create
     parent directories — callers must ensure the parent exists (preserves
     original semantics so existing callsites stay regression-safe).

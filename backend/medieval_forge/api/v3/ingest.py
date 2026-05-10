@@ -49,7 +49,7 @@ async def _set_status(
     status: str,
     session_factory: async_sessionmaker,
 ) -> None:
-    """Mirror of services/ingest_runner._set_status."""
+    """Persist a project status transition in its own DB session."""
     async with session_factory() as session:
         proj = await session.get(Project, project_id)
         if proj is not None:
@@ -179,7 +179,7 @@ async def trigger_v3_ingest(
     # runs in asyncio.create_task and creates a race window — the handler-side
     # commit completes synchronously before StreamingResponse returns.
     # On success/failure the producer transitions this to "ingested" /
-    # "error_ingesting" via _set_status (mirrors v1 ingest_runner pattern).
+    # "error_ingesting" via _set_status.
     project.status = "generating"
     await db.commit()
 
