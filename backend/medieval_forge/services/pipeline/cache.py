@@ -31,6 +31,12 @@ class StageEntry:
 _STAGE_CACHE: dict[str, dict[str, StageEntry]] = {}
 _CACHE_LOCK = threading.RLock()
 
+# Side-table for non-array voronoi intermediates (Voronoi object, index arrays,
+# points, clipped polygons) that cannot be stored in StageEntry.array (np.ndarray
+# typed). Cleared together with _STAGE_CACHE on cache_clear_project so a fresh
+# POST /generate always cold-starts voronoi (D-03).
+_VORONOI_CACHE: dict[str, dict] = {}
+
 
 def cache_get(project_id: str, stage_name: str) -> Optional[StageEntry]:
     """Return the StageEntry for (project, stage) or None if absent."""
@@ -61,14 +67,20 @@ def cache_put(project_id: str, stage_name: str, token: str,
 
 
 def cache_clear_project(project_id: str) -> None:
-    """Drop all stage entries for a project. Called on fresh POST /generate (D-03)."""
+    """Drop all stage entries for a project. Called on fresh POST /generate (D-03).
+
+    Also clears _VORONOI_CACHE so the voronoi side-table stays consistent with
+    the main cache — a fresh generate always cold-starts voronoi.
+    """
     with _CACHE_LOCK:
         _STAGE_CACHE.pop(project_id, None)
+        _VORONOI_CACHE.pop(project_id, None)
 
 
 __all__ = [
     "StageEntry",
     "_STAGE_CACHE",
+    "_VORONOI_CACHE",
     "cache_get",
     "cache_put",
     "cache_clear_project",

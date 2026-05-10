@@ -55,15 +55,7 @@ from .cleanup import (
 from .render import render_map, render_mountains, render_rivers
 from .lookup import generate_lookup_map
 from .export import export_metadata
-
-
-# Non-array voronoi intermediates per project.
-# Layout: { project_id: { "bars": ..., "bpx": ..., "bc": ..., "bd": ...,
-#           "bk": ..., "nb": int, "nc": int, "land_2x": np.ndarray,
-#           "pt_data": ..., "es_municipalities": ... } }
-# Populated by run_pipeline (when project_id given) and re-used by
-# run_pipeline_incremental when the voronoi token is unchanged.
-_VORONOI_CACHE: dict[str, dict] = {}
+from .cache import _VORONOI_CACHE, cache_get, cache_put  # noqa: F401
 
 
 def _emit(cfg: RegionConfig, stage: str, evt: str) -> None:
