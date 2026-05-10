@@ -70,6 +70,7 @@ testpaths = ["backend/tests"]
 pythonpath = ["backend"]
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "unit: fast isolated unit tests (no DB, no HTTP, no filesystem)",
     "parity: parity tests against Reconquista exports (non-skippable from Phase 01)",
     "integration: integration tests across services",
     "uat: user acceptance tests via Playwright",
