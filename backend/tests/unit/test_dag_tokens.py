@@ -1,28 +1,76 @@
-"""Wave 0 stub for Plan 04-01 — DO NOT remove imports.
+"""Tests for Plan 04-01 D-02: version_token determinism + isolation.
 
-Each test is `pytest.skip`-marked; Plan 04-01 implementation removes the skip
-and fills the body. Keeping the skipped functions present lets `pytest --collect-only`
-catch typos in test names referenced by 04-VALIDATION.md and lets <verify>
-commands in implementation plans return exit 0 (skipped, not errored).
+Verifies:
+  - compute_version_token is stable across two calls with identical args
+  - smooth_sigma change does NOT invalidate median token (reads-scoped)
+  - median_passes change DOES invalidate median token
+  - upstream token change cascades (smooth token changes when median token changes)
 """
 from __future__ import annotations
 
 import pytest
 
+from medieval_forge.services.pipeline.dag import (
+    compute_version_token,
+    STAGE_READS,
+    DAG_ORDER,
+)
+from medieval_forge.services.pipeline.regions import iberia_config
+
 pytestmark = pytest.mark.unit
 
 
 def test_token_stable_across_runs() -> None:
-    pytest.skip("Wave 0 stub — Plan 04-01 implements")
+    """Same inputs produce the same 16-char token every call."""
+    cfg = iberia_config()
+    tok1 = compute_version_token("median", STAGE_READS["median"], cfg, [])
+    tok2 = compute_version_token("median", STAGE_READS["median"], cfg, [])
+    assert tok1 == tok2
+    assert len(tok1) == 16
 
 
 def test_sigma_change_does_not_invalidate_median() -> None:
-    pytest.skip("Wave 0 stub — Plan 04-01 implements")
+    """smooth_sigma is not in STAGE_READS['median'] — median token must be identical."""
+    cfg_a = iberia_config()
+    cfg_a.smooth_sigma = 3.0
+    cfg_b = iberia_config()
+    cfg_b.smooth_sigma = 4.5
+
+    tok_a = compute_version_token("median", STAGE_READS["median"], cfg_a, [])
+    tok_b = compute_version_token("median", STAGE_READS["median"], cfg_b, [])
+    assert tok_a == tok_b, (
+        "smooth_sigma change must NOT invalidate the median token "
+        "(median reads only median_passes)"
+    )
 
 
 def test_median_passes_change_invalidates_median() -> None:
-    pytest.skip("Wave 0 stub — Plan 04-01 implements")
+    """median_passes IS in STAGE_READS['median'] — changing it must change the token."""
+    cfg_a = iberia_config()
+    cfg_a.median_passes = 8
+    cfg_b = iberia_config()
+    cfg_b.median_passes = 4
+
+    tok_a = compute_version_token("median", STAGE_READS["median"], cfg_a, [])
+    tok_b = compute_version_token("median", STAGE_READS["median"], cfg_b, [])
+    assert tok_a != tok_b, (
+        "changing median_passes must produce a different median token"
+    )
 
 
 def test_upstream_token_change_cascades() -> None:
-    pytest.skip("Wave 0 stub — Plan 04-01 implements")
+    """When the upstream (median) token changes, the smooth token must also change."""
+    cfg = iberia_config()
+    upstream_tok_a = "deadbeef12345678"
+    upstream_tok_b = "cafebabe87654321"
+
+    smooth_tok_a = compute_version_token(
+        "smooth", STAGE_READS["smooth"], cfg, [upstream_tok_a]
+    )
+    smooth_tok_b = compute_version_token(
+        "smooth", STAGE_READS["smooth"], cfg, [upstream_tok_b]
+    )
+    assert smooth_tok_a != smooth_tok_b, (
+        "upstream token change must cascade: smooth token must differ "
+        "when its upstream (median) token differs"
+    )
