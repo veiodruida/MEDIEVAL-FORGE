@@ -218,6 +218,14 @@ Out of scope for Phase 04:
   flips back to `idle | generated` the badge restores to status text.
   Reuses Phase 03 D-03 status-badge shell; no new chrome component.
 
+- **D-19 (Playwright SC-4 timing tolerance):** D-13's <50 ms cancel-restore
+  target is for production runtime (no compute, just cache swap). Playwright
+  SC-4 assertion uses a 500 ms timeout in CI to absorb headless-browser
+  init jitter; the 50 ms target is verified independently by the unit test
+  in `useCanvasArtifacts.test.ts` that exercises the swap path without a
+  real browser. CI assertion staying at 500 ms does NOT relax the runtime
+  contract.
+
 ### Determinism + parity
 
 - **D-17 (parity stays green at default cfg):** When all 4 sliders sit
@@ -233,7 +241,7 @@ Out of scope for Phase 04:
 - **D-18 (slider mutates a per-render copy of cfg):** `POST /render`
   builds `cfg = iberia_config(); cfg.dataset = ...; cfg.<override>`
   for each call — the project's persisted cfg is not mutated until a
-  full `POST /generate` runs (or until D-19 is decided). This keeps
+  full `POST /generate` runs (or until a persistence policy is decided). This keeps
   `cfg` the single mutable input (D-V3-05) without the persisted
   project state drifting on every slider drag.
 

@@ -54,7 +54,9 @@ created: 2026-05-10
 | 04-03-01 | 03 | 3 | D-05..D-08 | — | N/A | unit | `cd frontend && npm run test:unit -- ParameterSidebar SliderCard --run` | ❌ W0 | ⬜ pending |
 | 04-03-02 | 03 | 3 | D-04, D-07 | — | N/A | unit | `cd frontend && npm run test:unit -- useRenderStream usePipelineParams --run` | ❌ W0 | ⬜ pending |
 | 04-03-03 | 03 | 3 | D-09..D-11 | — | N/A | unit | `cd frontend && npm run test:unit -- StageViewToggle --run` | ❌ W0 | ⬜ pending |
-| 04-04-01 | 04 | 3 | D-13, D-16 | — | Cancel button visible only during `state ∈ {generating, rendering}` | unit | `cd frontend && npm run test:unit -- WorkspaceToolbar.cancel --run` | ❌ W0 | ⬜ pending |
+| 04-03-04 | 03 | 3 | D-13, D-16 | — | useRenderStore -> useRunStore migration absorbed (per checker B1); Cancel button visible only during `state ∈ {generating, rendering}` | unit | `cd frontend && npm run test:unit -- useRunStore WorkspaceToolbar.cancel --run` | ❌ W0 | ⬜ pending |
+| 04-04-01 | 04 | 3 | D-09, D-10, D-11 | — | useCanvasArtifacts queries re-key on stageView (no cross-stage data leak across radio toggles) | unit | `cd frontend && npm run test:unit -- useCanvasArtifacts --run` | ❌ W0 | ⬜ pending |
+| 04-04-02 | 04 | 3 | SC-4 (CLAUDE.md non-negotiable rule) | — | Konva.clearCache called on every cacheVersion change after hydration completes (Pitfall 6) | unit | `cd frontend && npm run test:unit -- CanvasViewer.clearCache --run` | ❌ W0 | ⬜ pending |
 | 04-05-01 | 05 | 3 | D-12 | — | N/A | unit | `cd frontend && npm run test:unit -- BaronyLabels --run` | ❌ W0 | ⬜ pending |
 | 04-06-01 | 06 | 4 | SC-3 | — | σ 3.0→4.5 produces visible canvas pixel diff in <500 ms | uat | `cd frontend && npm run test:e2e -- parameter-studio-sc3.spec.ts` | ❌ W0 | ⬜ pending |
 | 04-06-02 | 06 | 4 | SC-4 | — | Cancel restores prior cfg + canvas swap <50 ms | uat | `cd frontend && npm run test:e2e -- parameter-studio-cancel.spec.ts` | ❌ W0 | ⬜ pending |
@@ -97,6 +99,8 @@ created: 2026-05-10
 - [ ] `frontend/src/components/canvas/__tests__/ParameterSidebar.test.tsx` — stubs for D-05/D-06 sidebar layout
 - [ ] `frontend/src/components/canvas/__tests__/SliderCard.test.tsx` — stubs for D-08 slider+input+reset
 - [ ] `frontend/src/components/canvas/__tests__/StageViewToggle.test.tsx` — stubs for D-10/D-11 radio group
+- [ ] `frontend/src/components/canvas/__tests__/CanvasViewer.clearCache.test.tsx` — stubs for SC-4 (clearCache discipline)
+- [ ] `frontend/src/components/canvas/__tests__/BaronyLabels.test.tsx` — stubs for D-12 barony name labels
 - [ ] `frontend/src/api/__tests__/useRenderStream.test.ts` — stubs for SSE consumer + `stage_cancel` event
 - [ ] `frontend/src/stores/__tests__/usePipelineParams.test.ts` — stubs for slider state + debounce + latest-wins
 - [ ] `frontend/src/components/workspace/__tests__/WorkspaceToolbar.cancel.test.tsx` — stubs for status-badge → cancel-button switch
