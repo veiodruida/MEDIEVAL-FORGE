@@ -113,7 +113,13 @@ export function ProjectDetail() {
       )
     }
     if (hasMap && project) {
-      return <CanvasViewer projectId={project.id} cacheVersion={project.updated_at} />
+      return (
+        <CanvasViewer
+          projectId={project.id}
+          cacheVersion={project.updated_at}
+          project={project}
+        />
+      )
     }
     return (
       <EmptyCanvasState

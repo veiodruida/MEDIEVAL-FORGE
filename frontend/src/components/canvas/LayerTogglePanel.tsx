@@ -19,6 +19,7 @@ export function LayerTogglePanel() {
 
   return (
     <Card
+      data-testid="layer-toggle-panel"
       variant="surface"
       style={{ position: 'absolute', top: 12, left: 12, zIndex: 10, width: 160 }}
     >
@@ -29,7 +30,7 @@ export function LayerTogglePanel() {
           // inline suffix (e.g. "(zoom ≥ 1.5×)") so the gate is discoverable
           // even for users who never hover for the Tooltip to appear.
           const rowContent = (
-            <Flex align="center" gap="2">
+            <Flex align="center" gap="2" data-testid={`layer-toggle-${key}`}>
               <Checkbox
                 checked={layerVisibility[key]}
                 onCheckedChange={() => toggleLayer(key)}
@@ -45,7 +46,7 @@ export function LayerTogglePanel() {
               {rowContent}
             </Tooltip>
           ) : (
-            <Flex key={key} align="center" gap="2">
+            <Flex key={key} align="center" gap="2" data-testid={`layer-toggle-${key}`}>
               <Checkbox
                 checked={layerVisibility[key]}
                 onCheckedChange={() => toggleLayer(key)}

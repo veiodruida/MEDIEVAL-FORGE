@@ -79,14 +79,18 @@ export function InspectorSidebar({
   //   ≥2 → MultiSelectInspector aggregate
   if (selectedIds.length === 0) {
     return (
-      <Flex direction="column" gap="3">
+      <Flex direction="column" gap="3" data-testid="inspector-placeholder">
         <Text size="2" color="gray" as="p">{PLACEHOLDER_PT}</Text>
       </Flex>
     )
   }
 
   if (selectedIds.length >= 2) {
-    return <MultiSelectInspector selectedIds={selectedIds} metadata={metadata} />
+    return (
+      <Box data-testid="inspector-multi">
+        <MultiSelectInspector selectedIds={selectedIds} metadata={metadata} />
+      </Box>
+    )
   }
 
   const condado: TerritoryMetadataCondado | undefined = selectedId
@@ -145,7 +149,7 @@ export function InspectorSidebar({
     condado.capital_name.trim().length > 0
 
   return (
-    <Flex direction="column" gap="3">
+    <Flex direction="column" gap="3" data-testid="inspector-single">
       <Heading size="3">{condado.name}</Heading>
 
       {/* Group 1: Hierarchy badges — amber / blue / grass / gray */}

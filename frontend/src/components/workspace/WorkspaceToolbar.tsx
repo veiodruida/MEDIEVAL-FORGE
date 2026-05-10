@@ -59,7 +59,7 @@ export function WorkspaceToolbar({
             </Flex>
           </Link>
           {project && (
-            <Text size="2" weight="bold">
+            <Text size="2" weight="bold" data-testid="project-name">
               {project.name}
             </Text>
           )}

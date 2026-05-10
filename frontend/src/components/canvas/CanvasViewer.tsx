@@ -9,7 +9,9 @@ import { DecorationsLayer } from './DecorationsLayer'
 import { InteractionLayer } from './InteractionLayer'
 import { FitToViewButton } from './FitToViewButton'
 import { HoverTooltip } from './HoverTooltip'
+import { InspectorSidebar } from './InspectorSidebar'
 import { ProjectionProvider } from '../../context/ProjectionContext'
+import type { Project } from '../../api/client'
 import {
   buildProjectionConfig,
   computeFitToView,
@@ -34,6 +36,11 @@ interface CanvasViewerProps {
   // change — forcing both the in-memory cache and the browser HTTP cache to
   // miss.
   cacheVersion?: string
+  // When set, the right-docked InspectorSidebar (320px) renders alongside
+  // the canvas. UI-SPEC §Layout Contract requires the sidebar in the
+  // workspace shell; legacy unit tests that mount CanvasViewer in
+  // isolation omit this prop and render canvas-only.
+  project?: Project
 }
 
 const PADDING_PCT = 0.05
@@ -68,7 +75,7 @@ const PADDING_PCT = 0.05
  * NOTE: Stage is NOT passed scaleX/scaleY props — scale is managed imperatively
  * via stage.scale() so wheel-zoom doesn't get reset on every React re-render.
  */
-export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersion }: CanvasViewerProps) {
+export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersion, project }: CanvasViewerProps) {
   const stageRef = useRef<Konva.Stage | null>(null)
 
   // --- B-1 callback-ref ResizeObserver (verbatim from Pitfall 4) ----------
@@ -303,58 +310,96 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
   const vSuffix = cacheVersion ? `?v=${encodeURIComponent(cacheVersion)}` : ''
   const terrainSrc = `/api/v3/projects/${projectId}/artifacts/terrain.png${vSuffix}`
 
+  const canvasPane = (
+    <div
+      ref={setContainerRef}
+      data-testid="canvas-stage"
+      style={{
+        position: 'relative',
+        flex: 1,
+        height: '100%',
+        overflow: 'hidden',
+      }}
+    >
+      <Stage
+        ref={stageRef}
+        width={viewportW}
+        height={viewportH}
+        draggable
+        dragBoundFunc={dragBound}
+        onWheel={handleWheel}
+        onClick={handleStageClick}
+        onTap={handleStageClick}
+      >
+        <BackgroundLayer
+          src={terrainSrc}
+          mapW={projection.mapW}
+          mapH={projection.mapH}
+          visible={layerVisibility.condados}
+        />
+        <TerritoryLayer
+          territories={territoriesQ.data}
+          condadoColors={condadoColorsQ.data}
+          visible={layerVisibility.condados}
+          showBorders={layerVisibility.borders}
+          onHoverEnter={handleHoverEnter}
+          onHoverLeave={handleHoverLeave}
+        />
+        <BaronyLayer baronies={baroniesQ.data} visible={layerVisibility.baronies} />
+        <DecorationsLayer
+          condados={metaQ.data.condados}
+          condadoColors={condadoColorsQ.data}
+          layerVisibility={{
+            capitals: layerVisibility.capitals,
+            labels: layerVisibility.labels,
+          }}
+          currentScale={currentScale}
+          minScale={minScale}
+          isEditMode={false}
+        />
+        <InteractionLayer territories={territoriesQ.data} />
+      </Stage>
+      <LayerTogglePanel />
+      <FitToViewButton onFit={fitToView} />
+      <HoverTooltip name={hover.name} x={hover.x} y={hover.y} />
+      <span data-testid="territory-layer-ready" hidden />
+    </div>
+  )
+
   return (
     <ProjectionProvider value={projection}>
       <div
-        ref={setContainerRef}
         style={{
-          position: 'relative',
+          display: 'flex',
           width: '100%',
           height: '100%',
-          overflow: 'hidden',
         }}
       >
-        <Stage
-          ref={stageRef}
-          width={viewportW}
-          height={viewportH}
-          draggable
-          dragBoundFunc={dragBound}
-          onWheel={handleWheel}
-          onClick={handleStageClick}
-          onTap={handleStageClick}
-        >
-          <BackgroundLayer
-            src={terrainSrc}
-            mapW={projection.mapW}
-            mapH={projection.mapH}
-            visible={layerVisibility.condados}
-          />
-          <TerritoryLayer
-            territories={territoriesQ.data}
-            condadoColors={condadoColorsQ.data}
-            visible={layerVisibility.condados}
-            showBorders={layerVisibility.borders}
-            onHoverEnter={handleHoverEnter}
-            onHoverLeave={handleHoverLeave}
-          />
-          <BaronyLayer baronies={baroniesQ.data} visible={layerVisibility.baronies} />
-          <DecorationsLayer
-            condados={metaQ.data.condados}
-            condadoColors={condadoColorsQ.data}
-            layerVisibility={{
-              capitals: layerVisibility.capitals,
-              labels: layerVisibility.labels,
+        {canvasPane}
+        {project && (
+          <aside
+            data-testid="inspector-sidebar"
+            style={{
+              width: 320,
+              height: '100%',
+              overflow: 'auto',
+              borderLeft: '1px solid var(--gray-6)',
+              background: 'var(--color-panel-solid)',
+              padding: 16,
             }}
-            currentScale={currentScale}
-            minScale={minScale}
-            isEditMode={false}
-          />
-          <InteractionLayer territories={territoriesQ.data} />
-        </Stage>
-        <LayerTogglePanel />
-        <FitToViewButton onFit={fitToView} />
-        <HoverTooltip name={hover.name} x={hover.x} y={hover.y} />
+          >
+            <InspectorSidebar
+              metadata={metaQ.data}
+              territories={territoriesQ.data}
+              project={{
+                name: project.name,
+                country_qid: project.country_qid,
+                period_start: project.period_start,
+                period_end: project.period_end,
+              }}
+            />
+          </aside>
+        )}
       </div>
     </ProjectionProvider>
   )
