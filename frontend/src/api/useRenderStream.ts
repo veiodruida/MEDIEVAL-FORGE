@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react'
 import { useRunStore, PIPELINE_STAGES, type PipelineStage } from '../stores/useRunStore'
+import { usePipelineParams } from '../stores/usePipelineParams'
 
 const STAGE_SET = new Set<string>(PIPELINE_STAGES)
 function isPipelineStage(s: unknown): s is PipelineStage {
@@ -74,6 +75,9 @@ export function useRenderStream(): RenderStreamHandle {
           return
         case 'done':
           if (cancelled) {
+            // SC-4 D-13: revert slider UI to pre-render values so user sees
+            // the state that matches the canvas (prior artifacts re-displayed).
+            usePipelineParams.getState().revertValues()
             run.cancelRender()
           } else {
             run.finish('generated')

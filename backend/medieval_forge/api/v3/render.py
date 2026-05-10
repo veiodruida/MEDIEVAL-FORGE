@@ -23,6 +23,7 @@ import json
 import logging
 import threading
 import uuid
+from datetime import datetime, timezone
 from typing import AsyncIterator, Optional
 
 import numpy as np
@@ -146,6 +147,16 @@ async def _render_producer(
         affected = await asyncio.to_thread(
             run_pipeline_incremental, cfg, project_id,
         )
+
+        # D-19 cache-bust: bump updated_at so CanvasViewer's cacheVersion changes
+        # and the browser fetches the newly written visual_condado.png.
+        # Mirror of _set_status_and_bump_updated_at in generate.py.
+        async with AsyncSessionLocal() as session:
+            proj = await session.get(Project, project_id)
+            if proj is not None:
+                proj.updated_at = datetime.now(timezone.utc)
+                await session.commit()
+
         _emit(queue, "done", None, f"OK affected={','.join(affected)}", 1.0)
 
     except StageCancelled as exc:
