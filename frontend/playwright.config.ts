@@ -23,7 +23,7 @@ const BACKEND_DIR = path.join(REPO_ROOT, 'backend')
  * Vite dev server on :5173. Vite proxies `/api` to the backend.
  */
 export default defineConfig({
-  testDir: './tests/uat/playwright',
+  testDir: './tests',
   testMatch: /.*\.spec\.ts$/,
   timeout: 60_000,
   fullyParallel: false,
