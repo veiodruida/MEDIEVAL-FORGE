@@ -57,7 +57,9 @@ vi.mock('../../../hooks/useCanvasArtifacts', () => {
       const metaQ = ready
         ? { data: META_FIXTURE, isPending: false, error: null }
         : { data: undefined, isPending: true, error: null }
-      return [territoriesQ, baroniesQ, condadoColorsQ, baronyColorsQ, metaQ]
+      // 6-tuple: [territoriesQ, baroniesQ, condadoColorsQ, baronyColorsQ, metaQ, stageRasterUrl]
+      const stageRasterUrl = '/api/v3/projects/p1/artifacts/visual_condado.png'
+      return [territoriesQ, baroniesQ, condadoColorsQ, baronyColorsQ, metaQ, stageRasterUrl]
     },
   }
 })

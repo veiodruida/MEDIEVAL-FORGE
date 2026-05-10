@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { useQueries } from '@tanstack/react-query'
 import { geoRingToKonvaPoints, type ProjectionConfig } from '../lib/projection'
+import type { StageView } from '../api/render'
 
 export interface TerritoryRender {
   id: string
@@ -86,12 +87,18 @@ function firstOuterRing(
 }
 
 /**
- * Returns a 5-tuple of query results:
+ * Returns a 6-tuple: 5 query results + stageRasterUrl string.
  * [0] territories.geojson → TerritoryRender[]
  * [1] baronies.geojson → BaronyRender[]
  * [2] condado_colors.json → Record<condado_id, '#rrggbb'> (sidecar from plan 02-04)
  * [3] barony_colors.json  → Record<barony_name, '#rrggbb'> (sidecar from plan 02-04)
  * [4] territory_metadata.json → TerritoryMetadata
+ * [5] stageRasterUrl: string — URL of the raster to display in BackgroundLayer:
+ *     - stageView === 'render-final' → /artifacts/visual_condado.png
+ *     - otherwise → /stage/{stageView}.png (Plan 04-02 endpoint)
+ *
+ * queryKeys are re-keyed on stageView so a stage-view switch invalidates the
+ * TanStack in-memory cache and forces re-fetch (D-09/D-10/D-11 visualization).
  *
  * Consumer migration note: plans 2.2 and 2.3 destructure by index.
  * The original lookup_*_colors.json files on disk keep their Unity-consumed
@@ -107,13 +114,27 @@ export function useCanvasArtifacts(
   // the browser HTTP cache. Without this, staleTime: Infinity would hold the
   // prior map forever until a hard-refresh.
   cacheVersion?: string,
+  // stageView differentiates which stage raster to show in BackgroundLayer.
+  // Defaults to 'render-final' to preserve existing behavior for callers that
+  // don't pass stageView. All 5 queryKeys include stageView so a stage-view
+  // radio switch invalidates the TanStack cache (D-09/D-10/D-11).
+  stageView: StageView = 'render-final',
 ) {
   const v = cacheVersion ? `?v=${encodeURIComponent(cacheVersion)}` : ''
+
+  // 6th return value: URL of the raster that BackgroundLayer should display.
+  // When stageView === 'render-final': use existing visual_condado.png path.
+  // Otherwise: use the /stage/{name}.png endpoint added by Plan 04-02.
+  const stageRasterUrl =
+    stageView === 'render-final'
+      ? `/api/v3/projects/${projectId}/artifacts/visual_condado.png${v}`
+      : `/api/v3/projects/${projectId}/stage/${stageView}.png${v}`
+
   const results = useQueries({
     queries: [
       {
         // [0] territories.geojson → TerritoryRender[]
-        queryKey: ['territories-geojson', projectId, cacheVersion] as const,
+        queryKey: ['territories-geojson', projectId, cacheVersion, stageView] as const,
         queryFn: () =>
           fetchJson<FC<CondadoFeature>>(
             `/api/v3/projects/${projectId}/artifacts/territories.geojson${v}`,
@@ -143,7 +164,7 @@ export function useCanvasArtifacts(
       },
       {
         // [1] baronies.geojson → BaronyRender[]
-        queryKey: ['baronies-geojson', projectId, cacheVersion] as const,
+        queryKey: ['baronies-geojson', projectId, cacheVersion, stageView] as const,
         queryFn: () =>
           fetchJson<FC<BaronyFeature>>(
             `/api/v3/projects/${projectId}/artifacts/baronies.geojson${v}`,
@@ -164,7 +185,7 @@ export function useCanvasArtifacts(
       },
       {
         // [2] condado_colors.json sidecar — {condado_id: '#rrggbb'}
-        queryKey: ['condado-colors', projectId, cacheVersion] as const,
+        queryKey: ['condado-colors', projectId, cacheVersion, stageView] as const,
         queryFn: () =>
           fetchJson<Record<string, string>>(
             `/api/v3/projects/${projectId}/artifacts/condado_colors.json${v}`,
@@ -175,7 +196,7 @@ export function useCanvasArtifacts(
       },
       {
         // [3] barony_colors.json sidecar — {barony_name: '#rrggbb'}
-        queryKey: ['barony-colors', projectId, cacheVersion] as const,
+        queryKey: ['barony-colors', projectId, cacheVersion, stageView] as const,
         queryFn: () =>
           fetchJson<Record<string, string>>(
             `/api/v3/projects/${projectId}/artifacts/barony_colors.json${v}`,
@@ -186,7 +207,7 @@ export function useCanvasArtifacts(
       },
       {
         // [4] territory_metadata.json
-        queryKey: ['territory-metadata', projectId, cacheVersion] as const,
+        queryKey: ['territory-metadata', projectId, cacheVersion, stageView] as const,
         queryFn: () =>
           fetchJson<TerritoryMetadata>(
             `/api/v3/projects/${projectId}/artifacts/territory_metadata.json${v}`,
@@ -227,14 +248,15 @@ export function useCanvasArtifacts(
     }
   }, [territoriesData, metaData])
 
-  // Preserve the 5-tuple shape so consumers destructuring by index keep
-  // working (CanvasViewer.tsx, ProjectDetail.tsx). Use `as const` on the
-  // final tuple so TanStack's typed result shape survives.
+  // 6-tuple return: 5 query results + stageRasterUrl (string, not a query).
+  // Consumers destructuring by index are backward-compatible up to index [4].
+  // Index [5] is new for Phase 04: CanvasViewer reads it as BackgroundLayer src.
   return [
     results[0],
     results[1],
     results[2],
     results[3],
     { ...results[4], data: mergedMeta },
+    stageRasterUrl,
   ] as const
 }
