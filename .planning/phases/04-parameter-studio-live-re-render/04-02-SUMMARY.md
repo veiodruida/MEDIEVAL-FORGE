@@ -174,8 +174,17 @@ All 10 Unity contract files (lookup PNGs, visual PNGs, JSON sidecars, mountain/r
 
 ---
 
-**Total deviations:** 5 auto-fixed (2 Rule 2 missing critical, 2 Rule 1 bugs, 1 Rule 2 missing critical)
-**Impact on plan:** All fixes essential for correctness. No scope creep. D-17 and D-13 would have been broken without items 1 and 2.
+**6. [Rule 1 - Bug] _VORONOI_CACHE not cleared by cache_clear_project**
+- **Found during:** Post-plan advisor review
+- **Issue:** `cache_clear_project()` only cleared `_STAGE_CACHE`. After a fresh POST /generate, `_VORONOI_CACHE` retained stale voronoi intermediates (bars, bpx, etc.) from the previous run. On the next POST /render, `run_pipeline_incremental` could use stale voronoi intermediates if the voronoi token matched, producing silently wrong output.
+- **Fix:** Moved `_VORONOI_CACHE` from `__init__.py` to `cache.py` (logical co-location with `_STAGE_CACHE`). Updated `cache_clear_project()` to pop both dicts. `__init__.py` imports `_VORONOI_CACHE` from `cache` — all existing usages unchanged.
+- **Files modified:** `backend/medieval_forge/services/pipeline/cache.py`, `backend/medieval_forge/services/pipeline/__init__.py`
+- **Committed in:** bf85eb5
+
+---
+
+**Total deviations:** 6 auto-fixed (3 Rule 2 missing critical, 2 Rule 1 bugs, 1 Rule 1 bug)
+**Impact on plan:** All fixes essential for correctness. No scope creep. D-17 and D-13 would have been broken without items 1 and 2; item 6 prevents stale voronoi on repeated generate→render cycles.
 
 ## Commits
 
@@ -183,6 +192,7 @@ All 10 Unity contract files (lookup PNGs, visual PNGs, JSON sidecars, mountain/r
 |------|---------|-------|
 | 250fc8b | refactor(04-02): extract _RUN_QUEUES/_RUN_TASKS to shared _run_state.py | _run_state.py, generate.py, test_v3_generate.py |
 | 43de932 | feat(04-02): create render.py + run_pipeline_incremental + 12 integration tests | render.py, __init__.py, main.py, 5 test files |
+| bf85eb5 | fix(04-02): move _VORONOI_CACHE to cache.py and clear on cache_clear_project | cache.py, __init__.py |
 
 ## Known Stubs
 

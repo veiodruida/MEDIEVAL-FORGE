@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: + bootstrap v3 infrastructure
 status: executing
-stopped_at: Completed 04-02-PLAN.md (Backend Incremental Render)
-last_updated: "2026-05-10T16:39:40.122Z"
+stopped_at: Completed 04-02-PLAN.md
+last_updated: "2026-05-10T16:46:03.001Z"
 last_activity: 2026-05-10
 progress:
   total_phases: 9
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md
 ## Current Position
 
 Phase: 04 (parameter-studio-live-re-render) — EXECUTING
-Plan: 4 of 7
+Plan: 5 of 7
 Status: Ready to execute
 Last activity: 2026-05-10
 
@@ -64,6 +64,8 @@ See `.planning/PROJECT.md` Key Decisions table (D-V3-01 through D-V3-07).
 - [Phase 04]: Completed-stages closure list in _render_producer (not return value) — StageCancelled prevents return; advisor item 2
 - [Phase 04]: _VORONOI_CACHE side-table for non-array voronoi intermediates; _STAGE_CACHE holds numpy arrays only
 - [Phase 04]: run_pipeline gains optional project_id=None param for cache population; preserves Phase 01 CLI parity
+- [Phase 04]: Completed-stages tracked via closure list in _render_producer (not return value) — return unavailable in except StageCancelled block
+- [Phase 04]: _VORONOI_CACHE moved to cache.py and cleared by cache_clear_project — stale voronoi after fresh generate prevented
 
 ### Blockers/Concerns
 
@@ -83,6 +85,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-10T16:39:40.120Z
-Stopped at: Completed 04-02-PLAN.md (Backend Incremental Render)
+Last session: 2026-05-10T16:46:02.997Z
+Stopped at: Completed 04-02-PLAN.md
 Resume file: None
