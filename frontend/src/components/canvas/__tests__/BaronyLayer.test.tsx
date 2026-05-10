@@ -41,9 +41,14 @@ const B: BaronyRender[] = [
   { id: 'B_B1', name: 'B_B1', condado_id: 'C_B', fill: '#00ff00', points: [20, 0, 30, 0, 30, 10, 20, 10] },
 ]
 
+const COLORS: Record<string, string> = {
+  B_A1: '#ff0000',
+  B_B1: '#00ff00',
+}
+
 describe('BaronyLayer', () => {
-  it('renders one Line per barony with fill from the BaronyRender.fill field', () => {
-    render(<BaronyLayer baronies={B} visible />)
+  it('renders one Line per barony with fill resolved via baronyColors lookup', () => {
+    render(<BaronyLayer baronies={B} baronyColors={COLORS} visible />)
     const lines = screen.getAllByTestId('line')
     expect(lines.length).toBe(2)
     expect(lines[0].getAttribute('data-fill')).toBe('#ff0000')
@@ -55,21 +60,31 @@ describe('BaronyLayer', () => {
   })
 
   it('Layer has listening=false and opacity=0.85', () => {
-    render(<BaronyLayer baronies={B} visible />)
+    render(<BaronyLayer baronies={B} baronyColors={COLORS} visible />)
     const layer = screen.getByTestId('layer')
     expect(layer.getAttribute('data-listening')).toBe('false')
     expect(layer.getAttribute('data-opacity')).toBe('0.85')
   })
 
   it('respects visible prop', () => {
-    const { rerender } = render(<BaronyLayer baronies={B} visible />)
+    const { rerender } = render(<BaronyLayer baronies={B} baronyColors={COLORS} visible />)
     expect(screen.getByTestId('layer').getAttribute('data-visible')).toBe('true')
-    rerender(<BaronyLayer baronies={B} visible={false} />)
+    rerender(<BaronyLayer baronies={B} baronyColors={COLORS} visible={false} />)
     expect(screen.getByTestId('layer').getAttribute('data-visible')).toBe('false')
   })
 
+  it('falls back to BaronyRender.fill when the colors map is missing the id', () => {
+    render(<BaronyLayer baronies={B} baronyColors={{}} visible />)
+    const lines = screen.getAllByTestId('line')
+    // Falls back to the fill field that the geojson select carried (Plan 03-01
+    // wrote no `fill` property at the backend, so this path is also tolerant
+    // of `undefined`, ending at the gray FALLBACK_FILL).
+    expect(lines[0].getAttribute('data-fill')).toBe('#ff0000')
+    expect(lines[1].getAttribute('data-fill')).toBe('#00ff00')
+  })
+
   it('renders an empty Layer when baronies list is empty', () => {
-    render(<BaronyLayer baronies={[]} visible />)
+    render(<BaronyLayer baronies={[]} baronyColors={COLORS} visible />)
     expect(screen.queryAllByTestId('line').length).toBe(0)
   })
 })

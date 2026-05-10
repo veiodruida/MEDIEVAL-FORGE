@@ -135,7 +135,7 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
     y: 0,
   })
 
-  const [territoriesQ, baroniesQ, condadoColorsQ, , metaQ] = useCanvasArtifacts(
+  const [territoriesQ, baroniesQ, condadoColorsQ, baronyColorsQ, metaQ] = useCanvasArtifacts(
     projectId,
     projection,
     cacheVersion,
@@ -299,7 +299,8 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
     !projection ||
     !territoriesQ.data ||
     !condadoColorsQ.data ||
-    !baroniesQ.data
+    !baroniesQ.data ||
+    !baronyColorsQ.data
   ) {
     return (
       <div ref={setContainerRef} style={{ width: '100%', height: '100%', padding: 24 }}>
@@ -346,7 +347,11 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
           onHoverEnter={handleHoverEnter}
           onHoverLeave={handleHoverLeave}
         />
-        <BaronyLayer baronies={baroniesQ.data} visible={layerVisibility.baronies} />
+        <BaronyLayer
+          baronies={baroniesQ.data}
+          baronyColors={baronyColorsQ.data}
+          visible={layerVisibility.baronies}
+        />
         <DecorationsLayer
           condados={metaQ.data.condados}
           condadoColors={condadoColorsQ.data}

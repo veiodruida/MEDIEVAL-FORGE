@@ -32,8 +32,19 @@ interface Props {
  * proportional-font strings (short capitals → over-offset; wide letters like W/M
  * → under-offset). Using the real measured width keeps labels pixel-centered.
  */
-function CenteredLabel(props: { x: number; y: number; text: string }) {
+/**
+ * Target on-screen pixel size for territory labels. The Konva Stage applies
+ * `currentScale` to all map-coordinate values, so a hard-coded `fontSize` in
+ * map units shrinks to nothing at low zoom (default fit ≈ 0.3× → 12×0.3 ≈ 4 px).
+ * We invert by setting `fontSize = TARGET_LABEL_SCREEN_PX / currentScale` so the
+ * rendered glyphs land near a consistent CSS-pixel size regardless of zoom.
+ */
+const TARGET_LABEL_SCREEN_PX = 16
+
+function CenteredLabel(props: { x: number; y: number; text: string; scale: number }) {
   const ref = useRef<Konva.Text | null>(null)
+  // Recompute on every text change AND every scale change so the offset stays
+  // centered after zoom (label width in map coords scales with fontSize).
   useEffect(() => {
     const n = ref.current
     if (!n) return
@@ -43,7 +54,14 @@ function CenteredLabel(props: { x: number; y: number; text: string }) {
         : n.width()
     n.offsetX(width / 2)
     n.getLayer()?.batchDraw()
-  }, [props.text])
+  }, [props.text, props.scale])
+
+  const safeScale = props.scale > 0 ? props.scale : 1
+  const fontSize = TARGET_LABEL_SCREEN_PX / safeScale
+  // Keep the white halo/outline thickness ~1 screen px regardless of zoom.
+  const strokeWidth = 1.5 / safeScale
+  // Bump the label slightly above the capital pin (offset is ~ glyph height).
+  const offsetY = fontSize + 4 / safeScale
 
   return (
     <Text
@@ -52,12 +70,13 @@ function CenteredLabel(props: { x: number; y: number; text: string }) {
       y={props.y}
       text={props.text}
       fontFamily="system-ui, sans-serif"
-      fontSize={12}
+      fontSize={fontSize}
+      fontStyle="bold"
       fill="#1a1a1a"
-      stroke="rgba(255,255,255,0.7)"
-      strokeWidth={1}
+      stroke="rgba(255,255,255,0.85)"
+      strokeWidth={strokeWidth}
       listening={false}
-      offsetY={14}
+      offsetY={offsetY}
     />
   )
 }
@@ -137,7 +156,15 @@ export function DecorationsLayer({
       {showLabels &&
         condados.map((c) => {
           const [x, y] = geoToCanvas(c.lon, c.lat, projection)
-          return <CenteredLabel key={`lbl-${c.id}`} x={x} y={y} text={c.name} />
+          return (
+            <CenteredLabel
+              key={`lbl-${c.id}`}
+              x={x}
+              y={y}
+              text={c.name}
+              scale={currentScale}
+            />
+          )
         })}
     </Layer>
   )
