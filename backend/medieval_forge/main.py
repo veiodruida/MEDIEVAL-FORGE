@@ -43,6 +43,7 @@ from .api.v3.ingest import router as v3_ingest_router  # noqa: E402
 from .api.v3.artifacts import router as v3_artifacts_router  # noqa: E402
 from .api.v3.status import router as v3_status_router  # noqa: E402
 from .api.v3.generate import router as v3_generate_router  # noqa: E402
+from .api.v3.render import router as v3_render_router  # noqa: E402
 
 app.include_router(projects_router, prefix="/api")
 app.include_router(export_router, prefix="/api")
@@ -51,6 +52,7 @@ app.include_router(v3_ingest_router, prefix="/api")
 app.include_router(v3_artifacts_router, prefix="/api")
 app.include_router(v3_status_router, prefix="/api")
 app.include_router(v3_generate_router, prefix="/api")
+app.include_router(v3_render_router, prefix="/api")
 
 # /assets/* — JS/CSS bundles. Only mount if directory exists (frontend may
 # not be built yet during early development).

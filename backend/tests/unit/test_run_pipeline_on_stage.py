@@ -2,7 +2,7 @@
 
 Verifies:
 - RegionConfig instantiates with on_stage=None (Phase 01 parity guarantee)
-- run_pipeline emits 22 events in canonical order when on_stage is wired
+- run_pipeline emits 24 events in canonical order when on_stage is wired (12 stages × 2)
 - Callback exceptions propagate (SSE producer wraps and reports)
 
 The full pipeline run is shared with the parity test fixture for cost; this
@@ -22,7 +22,7 @@ from medieval_forge.services.pipeline.regions import REGIONS
 
 CANONICAL_STAGES = (
     "landmask", "border", "voronoi",
-    "cleanup", "smooth", "merge",
+    "median", "fragment", "smooth", "merge",  # Plan 04-01: cleanup → median + fragment split
     "hierarchy", "render", "lookup",
     "metadata", "export",
 )
@@ -38,7 +38,7 @@ def test_region_config_default_on_stage_is_none():
 def test_run_pipeline_emits_22_events_in_canonical_order(
     tmp_path_factory: pytest.TempPathFactory,
 ) -> None:
-    """11 stages × {start, done} = 22 events, exact canonical order."""
+    """12 stages × {start, done} = 24 events, exact canonical order (Plan 04-01 split)."""
     out: Path = tmp_path_factory.mktemp("on_stage_full_run")
     cfg = REGIONS["iberia_868"]()
     cfg.output_dir = str(out)
