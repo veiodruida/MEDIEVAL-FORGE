@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: + bootstrap v3 infrastructure
 status: executing
-stopped_at: Completed 04-03-PLAN.md
-last_updated: "2026-05-10T17:07:48.326Z"
+stopped_at: Completed 04-04-PLAN.md
+last_updated: "2026-05-10T17:19:27.989Z"
 last_activity: 2026-05-10
 progress:
   total_phases: 9
   completed_phases: 3
   total_plans: 22
-  completed_plans: 19
-  percent: 86
+  completed_plans: 20
+  percent: 91
 ---
 
 # Project State (v3)
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md
 ## Current Position
 
 Phase: 04 (parameter-studio-live-re-render) — EXECUTING
-Plan: 6 of 7
+Plan: 7 of 7
 Status: Ready to execute
 Last activity: 2026-05-10
 
@@ -67,6 +67,8 @@ See `.planning/PROJECT.md` Key Decisions table (D-V3-01 through D-V3-07).
 - [Phase 04]: Completed-stages tracked via closure list in _render_producer (not return value) — return unavailable in except StageCancelled block
 - [Phase 04]: _VORONOI_CACHE moved to cache.py and cleared by cache_clear_project — stale voronoi after fresh generate prevented
 - [Phase 04]: useParameterStudioDispatch extracted to hooks/ to isolate projectId; showCancel=rendering only (not generating) per UI-SPEC; useRenderStore absorbed into useRunStore in Task 4 for Wave 3 parallel safety; FakeEventSource shim pattern for jsdom
+- [Phase 04]: getLayers() used instead of findAll('Layer') — findAll not in Konva TypeScript types; getLayers() is the typed Stage method returning Layer[] (Rule 1 deviation from plan implementation detail, same behavior)
+- [Phase 04]: useCanvasArtifacts 6-tuple backward-compatible at indices [0]..[4]; index [5] is new stageRasterUrl string; stageView in all 5 queryKeys; effectiveCacheVersion = priorTokens.render ?? cacheVersion (D-13 cancel revert)
 
 ### Blockers/Concerns
 
@@ -86,6 +88,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-10T17:07:48.321Z
-Stopped at: Completed 04-03-PLAN.md
+Last session: 2026-05-10T17:19:27.986Z
+Stopped at: Completed 04-04-PLAN.md
 Resume file: None
