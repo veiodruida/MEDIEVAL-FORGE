@@ -1,9 +1,12 @@
-import { Box, Button, Flex, Text } from '@radix-ui/themes'
-import { ChevronLeftIcon } from '@radix-ui/react-icons'
+import { Box, Button, Flex, IconButton, Text } from '@radix-ui/themes'
+import { ChevronLeftIcon, MixerHorizontalIcon } from '@radix-ui/react-icons'
 import { Link } from 'react-router-dom'
 import { GenerateStatusBadge } from './GenerateStatusBadge'
 import type { Project } from '../../api/client'
 import type { PipelineStage, RunState } from '../../stores/useRunStore'
+import { usePipelineParams } from '../../stores/usePipelineParams'
+import { useRenderStore } from '../../stores/useRenderStore'
+import { postRenderCancel } from '../../api/render'
 
 export interface WorkspaceToolbarProps {
   project: Project | undefined
@@ -18,7 +21,8 @@ export interface WorkspaceToolbarProps {
 
 /**
  * 48px sticky toolbar per UI-SPEC §Layout Contract.
- * Left zone: ← Projetos + project name. Center: GenerateStatusBadge.
+ * Left zone: ⬡ Params toggle + ← Projetos + project name.
+ * Center: GenerateStatusBadge → red "Cancelar" button when state ∈ {generating, rendering}.
  * Right: Gerar Mapa / Regenerar (disabled when running) + Exportar ZIP.
  */
 export function WorkspaceToolbar({
@@ -28,15 +32,26 @@ export function WorkspaceToolbar({
   hasArtifacts = false,
   onGenerate,
   onExport,
-  statusBadgeOpen: _statusBadgeOpen,
   onToggleStatusBadge,
 }: WorkspaceToolbarProps) {
-  const isRunning = runState === 'generating' || runState === 'ingesting'
-  // Label flips to "Regenerar" once a run has started OR artifacts exist —
-  // the v1 stepper showed "Gerando…" mid-run; UI-SPEC §State Machine says the
-  // CTA should remain a regenerate affordance during/after a run (just disabled).
+  const sidebarOpen = usePipelineParams((s) => s.sidebarOpen)
+  const setSidebarOpen = usePipelineParams((s) => s.setSidebarOpen)
+  const renderState = useRenderStore((s) => s.state)
+
+  // D-16: cancel button visible when EITHER /generate OR /render is alive.
+  const isGenerating = runState === 'generating' || runState === 'ingesting'
+  const isRendering = renderState === 'rendering'
+  const showCancel = isGenerating || isRendering
+  const isRunning = isGenerating || isRendering
+
+  // Label flips to "Regenerar" once a run has started OR artifacts exist.
   const ctaLabel =
     hasArtifacts || runState === 'generated' || isRunning ? 'Regenerar' : 'Gerar Mapa'
+
+  const handleCancel = async () => {
+    if (!project) return
+    await postRenderCancel(project.id).catch(() => {})
+  }
 
   return (
     <Box
@@ -52,6 +67,16 @@ export function WorkspaceToolbar({
     >
       <Flex align="center" justify="between" px="4" gap="5" style={{ height: '100%' }}>
         <Flex align="center" gap="3">
+          <IconButton
+            size="2"
+            variant="ghost"
+            data-testid="toggle-parameter-sidebar"
+            aria-label="Alternar painel de parâmetros"
+            aria-pressed={sidebarOpen}
+            onClick={() => setSidebarOpen(!sidebarOpen)}
+          >
+            <MixerHorizontalIcon />
+          </IconButton>
           <Link to="/projects" style={{ textDecoration: 'none' }}>
             <Flex align="center" gap="1">
               <ChevronLeftIcon />
@@ -65,12 +90,23 @@ export function WorkspaceToolbar({
           )}
         </Flex>
 
-        <GenerateStatusBadge
-          runState={runState}
-          currentStage={currentStage}
-          hasArtifacts={hasArtifacts}
-          onClick={onToggleStatusBadge}
-        />
+        {showCancel ? (
+          <Button
+            color="red"
+            variant="solid"
+            data-testid="cancel-render-button"
+            onClick={handleCancel}
+          >
+            Cancelar
+          </Button>
+        ) : (
+          <GenerateStatusBadge
+            runState={runState}
+            currentStage={currentStage}
+            hasArtifacts={hasArtifacts}
+            onClick={onToggleStatusBadge}
+          />
+        )}
 
         <Flex align="center" gap="2">
           <Button
