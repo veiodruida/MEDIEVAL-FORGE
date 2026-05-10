@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: + bootstrap v3 infrastructure
 status: executing
-stopped_at: Completed 04-00-PLAN.md (Wave 0 stub bootstrap)
-last_updated: "2026-05-10T16:02:37.617Z"
+stopped_at: Completed 04-01-PLAN.md (DAG + Cache Infrastructure)
+last_updated: "2026-05-10T16:15:03.746Z"
 last_activity: 2026-05-10
 progress:
   total_phases: 9
   completed_phases: 3
   total_plans: 22
-  completed_plans: 16
-  percent: 73
+  completed_plans: 17
+  percent: 77
 ---
 
 # Project State (v3)
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md
 ## Current Position
 
 Phase: 04 (parameter-studio-live-re-render) — EXECUTING
-Plan: 2 of 7
+Plan: 3 of 7
 Status: Ready to execute
 Last activity: 2026-05-10
 
@@ -58,6 +58,9 @@ See `.planning/PROJECT.md` Key Decisions table (D-V3-01 through D-V3-07).
 - [Phase 03]: Plan 03-06: Combined D-10+D-11+D-13 frontend purge in one atomic commit (63 files, -8764 LOC). InspectorSidebar.tsx stripped of useResearchStore + useValidationStore (Plan 05's Wave 3 handoff). api/client.ts trimmed to 8 hooks. Pre-existing RunLogPanel Card 'p' prop fix to unblock typecheck gate. Pitfall-1 grep clean; tsc + vitest 154/154 + vite build all green.
 - [Phase 03]: Plan 03-07: D-12 + D-13 backend purge in 2 atomic commits. api/edit.py added (plan-permitted; orphan via 4 LLM imports). services/territories_geojson.py kept (not in plan list; voronoi lazy-imports it). models.py + main.py shrunk; smoke import 25 routes; parity 11/11.
 - [Phase 04]: Register pytest.mark.unit in pyproject.toml; expand Playwright testDir to ./tests to discover both uat/ and e2e/ directories
+- [Phase 04]: Monolith cleanup_and_smooth removed; 4 split functions (apply_median/remove_fragments/smooth_per_territory/merge_small_blobs) deliver byte-equal D-17 parity
+- [Phase 04]: stop_event uses threading.Event directly in RegionConfig (not string forward-ref) — import threading added at module scope in contracts.py
+- [Phase 04]: PIPELINE_STAGES expanded 11->12: 'cleanup' replaced by 'median' + 'fragment'; DAG_ORDER canonical 12-stage tuple in dag.py is single source of truth
 
 ### Blockers/Concerns
 
@@ -77,6 +80,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-10T16:02:37.615Z
-Stopped at: Completed 04-00-PLAN.md (Wave 0 stub bootstrap)
+Last session: 2026-05-10T16:15:03.743Z
+Stopped at: Completed 04-01-PLAN.md (DAG + Cache Infrastructure)
 Resume file: None
