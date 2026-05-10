@@ -1,97 +1,91 @@
 {
-  "status": "paused",
-  "paused_at": "2026-05-07T15:30:00Z",
-  "phase": "01-pipeline-parity-port-harness-together",
-  "plan": "01-03",
-  "task": "task-3-local-green-gate",
+  "version": "1.0",
+  "timestamp": "2026-05-10T20:23:48Z",
+  "phase": "04",
+  "phase_name": "parameter-studio-live-re-render",
+  "phase_dir": ".planning/phases/04-parameter-studio-live-re-render",
+  "plan": 6,
+  "task": 4,
   "total_tasks": 4,
-  "tasks_completed": 2,
+  "status": "paused_at_human_verify_checkpoint",
   "checkpoint_type": "human-verify",
-  "checkpoint_gate": "blocking",
-  "next_action": "Pick a triage option (fix | flip-anyway | refresh-baseline | triage-only) and re-run /gsd-execute-phase 1. Recommended: fix — investigate why port produces 91 condados while golden has 92, add fix(01-03): commit, re-run parity, expect 10/10 green, then proceed to Task 4 (CI flip).",
-  "context_notes": [
-    "Plans 01-01 and 01-02 are FULLY DONE with SUMMARY.md files. Plan 01-03 has Tasks 1 and 2 committed (a9c2032, 04a6e83) but Task 3 (local-green checkpoint) is BLOCKED — parity is RED.",
-    "Parity test result: 4 pass / 6 fail. The 4 passing tests are mountains_mask SSIM, rivers_overlay SSIM, lookup_barony_colors deep-equal, mountain_river_data deep-equal — these don't depend on condado count.",
-    "Root-cause hypothesis: port produces 91 condados while golden has 92. The missing condado (golden has '255,128,0': 92 in lookup_condado_colors.json) cascades to all 6 failing tests via pixel redistribution.",
-    "Plan 01-02 SUMMARY already logged '251 baronies, 91 condados active' and flagged size deltas as pre-existing. This is a port-correctness issue, NOT a parity-harness issue.",
-    "Plan 01-03 <resume-signal> is explicit: 'If failure, do NOT proceed to Task 4 — triage and fix first.' The CI flip (Task 4) must wait for green parity per RESEARCH §7.",
-    "The orchestrator stopped here intentionally. Resuming via /gsd-execute-phase 1 will re-detect Plan 01-03 incomplete (no SUMMARY.md) and re-spawn the gsd-executor agent with fresh context."
+  "completed_tasks": [
+    {"id": "04-00", "name": "Wave 0 stub bootstrap (16 test files)", "status": "done", "commit": "1c13196"},
+    {"id": "04-01", "name": "DAG + version_token + cleanup split + stage cache", "status": "done", "commit": "9882ade"},
+    {"id": "04-02", "name": "Backend /render endpoint + cancel + parity", "status": "done", "commit": "6a630eb"},
+    {"id": "04-03", "name": "Parameter sidebar UI + render-stream consumer", "status": "done", "commit": "8be80e8"},
+    {"id": "04-04", "name": "Canvas hydration + clearCache discipline", "status": "done", "commit": "d6f769d"},
+    {"id": "04-05", "name": "Barony name labels (D-12)", "status": "done", "commit": "1662b05"},
+    {"id": "04-06.1", "name": "Mount ParameterSidebar in ProjectDetail.tsx", "status": "done", "commit": "d2e7534"},
+    {"id": "04-06.optionA", "name": "Gate _write_outputs_to_disk on affected stages", "status": "done", "commit": "aca6f59"},
+    {"id": "04-06.2", "name": "Fill SC-3 + SC-4 Playwright specs with real assertions", "status": "done", "commit": "3277641"},
+    {"id": "04-06.relax", "name": "Relax SC-3 wall-clock budget to 30s pending Phase 05", "status": "done", "commit": "f703865"},
+    {"id": "04-06.3", "name": "Cross-surface verification gate (D-15 grep + parity + full suites)", "status": "done", "commit": "(pure verification, no commit)"}
   ],
-  "parity_failure_details": {
-    "test_command": "pytest backend/tests/parity/ -v -m parity",
-    "runtime_seconds": 284,
-    "passing": [
-      "test_visual_png_ssim[mountains_mask.png]",
-      "test_visual_png_ssim[rivers_overlay.png]",
-      "test_json_deep_equal[lookup_barony_colors.json]",
-      "test_json_deep_equal[mountain_river_data.json]"
-    ],
-    "failing": {
-      "test_lookup_png_byte_equal[lookup_barony.png]": "pixel-mismatch (DIFF_*.png written)",
-      "test_lookup_png_byte_equal[lookup_condado.png]": "pixel-mismatch (DIFF_*.png written)",
-      "test_visual_png_ssim[visual_condado.png]": "SSIM 0.9716 < 0.98 threshold",
-      "test_visual_png_ssim[visual_barony.png]": "SSIM 0.9723 < 0.98 threshold",
-      "test_json_deep_equal[lookup_condado_colors.json]": "golden has 92 entries (incl. '255,128,0': 92), port emits 91",
-      "test_json_deep_equal[territory_metadata.json]": "barony pixel_count drift (Grado 889->882, Salas 299->301, Tineo 3158->3170)"
+  "remaining_tasks": [
+    {"id": "04-06.4", "name": "Manual UAT — 12 visual sign-off steps in 04-06-HUMAN-UAT.md", "status": "pending_human", "scheduled": "2026-05-11"},
+    {"id": "04-06.summary", "name": "Create 04-06-SUMMARY.md after UAT passes", "status": "not_started"},
+    {"id": "phase.code_review", "name": "Auto-run gsd-code-review after Plan 04-06 closes", "status": "not_started"},
+    {"id": "phase.verify", "name": "Auto-run gsd-verifier (phase goal verification)", "status": "not_started"},
+    {"id": "phase.roadmap", "name": "Mark Phase 04 complete in ROADMAP.md + STATE.md", "status": "not_started"}
+  ],
+  "blockers": [
+    {
+      "description": "Plan 04-06 Task 4 is autonomous: false — requires human visual verification of slider/canvas/cancel flow",
+      "type": "human_action",
+      "workaround": "User runs 12 tests in 04-06-HUMAN-UAT.md on 2026-05-11"
     }
-  },
-  "triage_options": [
+  ],
+  "human_actions_pending": [
     {
-      "key": "fix",
-      "recommended": true,
-      "summary": "Investigate why port emits 91 vs golden's 92 condados; add fix(01-03): commit; re-run parity until 10/10 green; then proceed to Task 4. Matches plan's own resume-signal contract.",
-      "starting_points": [
-        "Compare territory_data_v3.py condado list against the deployed Reconquista output — is condado at color (255,128,0) in our input data? If yes, check why it gets dropped.",
-        "Check cleanup.py merge step (<200px blob removal) — could be pruning condado 92 due to a numpy/scipy version difference.",
-        "Check voronoi.py per-country KD-tree assignment — could be misrouting condado 92 baronies across PT/ES border.",
-        "Run pipeline with intermediate dumps and inspect the condado_idx array before/after each cleanup pass."
-      ]
-    },
-    {
-      "key": "flip-anyway",
-      "recommended": false,
-      "summary": "NOT recommended. RESEARCH §7 forbids flipping CI to non-skippable while parity is red — would gate Phase 01's own merge against itself."
-    },
-    {
-      "key": "refresh-baseline",
-      "recommended": false,
-      "summary": "Replace golden fixtures with port output. Contradicts D-09 'deployed wins'. Only valid if we verify the deployed Reconquista output is itself buggy."
-    },
-    {
-      "key": "triage-only",
-      "recommended": false,
-      "summary": "Investigate without editing — open DIFF_*.png, dump full territory_metadata.json diff, report findings. Useful as a precursor to 'fix'."
+      "action": "Run 12 manual UAT tests on the parameter studio",
+      "context": "Final acceptance gate for Phase 04. All automated checks (222 backend pytests, 190 frontend vitests, tsc, parity, D-15 grep) are green. Human must verify visual + interaction behavior end-to-end.",
+      "blocking": true,
+      "checklist": ".planning/phases/04-parameter-studio-live-re-render/04-06-HUMAN-UAT.md"
     }
+  ],
+  "decisions": [
+    {
+      "decision": "Option A — Selective writes",
+      "rationale": "_write_outputs_to_disk was rewriting all 12 output files unconditionally (6.8s warm baseline). Now gated on the affected stage list returned by run_pipeline_incremental — sigma-only ticks skip mountains/rivers/lookups. Warm baseline dropped from 6.8s to 1.3s.",
+      "phase": "04",
+      "checkpoint": 1,
+      "commit": "aca6f59"
+    },
+    {
+      "decision": "Option A — Relax SC-3 timing budget to 30s",
+      "rationale": "After selective writes, sigma change still measures ~17.5s because compute (smooth_per_territory + merge + hierarchy + render_map) dominates. The 500ms target was aspirational and pre-measurement. Functional contract (pixel diff visible after slider drag) still verified. Optimization deferred to Phase 05.",
+      "phase": "04",
+      "checkpoint": 2,
+      "commit": "f703865"
+    }
+  ],
+  "uncommitted_files": [
+    ".planning/phases/04-parameter-studio-live-re-render/04-06-HUMAN-UAT.md",
+    ".planning/phases/04-parameter-studio-live-re-render/.continue-here.md",
+    ".planning/HANDOFF.json",
+    ".planning/STATE.md (modified earlier this session by state begin-phase)"
+  ],
+  "next_action": "Tomorrow 2026-05-11: start backend (medieval-forge start) and frontend (cd frontend && npm run dev). Open .planning/phases/04-parameter-studio-live-re-render/04-06-HUMAN-UAT.md alongside the browser. Run all 12 tests, transcribe results into the UAT file, then re-invoke /gsd-execute-phase 04 so the orchestrator finishes Task 4, runs code review, runs gsd-verifier, and marks the phase complete.",
+  "context_notes": "Phase 04 delivers the parameter studio. All code is in. Two architectural decisions accepted (selective writes + relaxed SC-3 timing). The 17.5s sigma-change wall-clock is INTENTIONAL — Phase 05 will optimize. Caveman mode is active in the conversation; if the assistant resumes the chat, it will speak terse caveman style by default. Code and commits stay in normal English.",
+  "resume_command": "/gsd-execute-phase 04",
+  "files_to_read_on_resume": [
+    ".planning/HANDOFF.json",
+    ".planning/phases/04-parameter-studio-live-re-render/.continue-here.md",
+    ".planning/phases/04-parameter-studio-live-re-render/04-06-HUMAN-UAT.md",
+    ".planning/phases/04-parameter-studio-live-re-render/04-06-PLAN.md",
+    ".planning/STATE.md"
   ],
   "shipped_commits_this_session": [
-    "13864fa docs(01): record P-1 and Q10 preflight verdicts",
-    "11fad14 chore(01): commit Iberia 868 pipeline inputs + LFS for PT GeoJSON",
-    "e652281 chore(01): commit Iberia 868 golden fixtures (10 of 12 contract files)",
-    "513c353 feat(01): move territory data into package (D-13)",
-    "078bf1c feat(01): scaffold pipeline package skeleton with RegionConfig + iberia_config",
-    "fbacf0f docs(01-01): complete Wave 0 preflight + scaffold plan",
-    "512c63e feat(01): port section 2 coordinate transforms -> contracts.py",
-    "5c123b5 feat(01): port sections 3+4 data loading + land mask -> landmask.py",
-    "6811579 feat(01): port section 5 border mask -> border.py",
-    "a13e103 feat(01): port sections 6+8 voronoi (per-country KD-trees) -> voronoi.py",
-    "1e3249c feat(01): port section 7 cleanup_and_smooth -> cleanup.py",
-    "19ca70b feat(01): port sections 10+11 lookup + export (P-1 per Q8) -> lookup.py, export.py",
-    "13d72d4 feat(01): port sections 9+12 rendering -> render.py",
-    "b74e3d2 feat(01): wire section 13 run_pipeline orchestration -> pipeline/__init__.py",
-    "19a9ef6 docs(01-02): complete verbatim port plan",
-    "a9c2032 chore(01-03): delete v1 generator stack + main.py register edit (D-05/D-06/D-07)",
-    "04a6e83 test(01-03): parity harness + unit + integration tests for v3 pipeline"
-  ],
-  "resume_command": "/gsd-execute-phase 1",
-  "resume_session_doc": ".planning/sessions/2026-05-07-session.md",
-  "files_to_read_on_resume": [
-    ".planning/sessions/2026-05-07-session.md",
-    ".planning/HANDOFF.json",
-    ".planning/STATE.md",
-    ".planning/phases/01-pipeline-parity-port-harness-together/01-03-PLAN.md",
-    ".planning/phases/01-pipeline-parity-port-harness-together/01-01-SUMMARY.md",
-    ".planning/phases/01-pipeline-parity-port-harness-together/01-02-SUMMARY.md",
-    ".planning/phases/01-pipeline-parity-port-harness-together/01-RESEARCH.md",
-    ".planning/phases/01-pipeline-parity-port-harness-together/PREFLIGHT.md"
+    "1c13196 docs(04-00): complete Wave 0 stub bootstrap plan",
+    "9882ade docs(04-01): complete DAG + cache infrastructure plan",
+    "6a630eb docs(04-02): complete backend incremental render plan",
+    "8be80e8 docs(04-03): complete parameter studio UI shell plan",
+    "d6f769d docs(04-04): complete canvas hydration plan",
+    "1662b05 docs(04-05): complete BaronyLayer labels plan — D-12 closed",
+    "d2e7534 feat(04-06): mount ParameterSidebar in ProjectDetail.tsx workspace shell",
+    "aca6f59 perf(04-06): gate _write_outputs_to_disk on affected stages (Option A)",
+    "3277641 feat(04-06): fill SC-3 + SC-4 Playwright specs with real assertions",
+    "f703865 test(04-06): relax SC-3 wall-clock budget to 30s pending Phase 05 optimization"
   ]
 }
