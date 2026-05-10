@@ -6,8 +6,8 @@ import { create } from 'zustand'
  * Owns the lifecycle of a single in-flight pipeline run:
  *   idle → ingesting → generating → generated | error
  *
- * The 11 canonical pipeline stages match the cfg.on_stage emit order from
- * Plan 03-01 (services/pipeline/__init__.py). Each stage emits {start, done}
+ * The 12 canonical pipeline stages match the cfg.on_stage emit order from
+ * Plan 04-01 (services/pipeline/__init__.py). Each stage emits {start, done}
  * pairs that this store translates into currentStage / completedStages.
  *
  * logLines is capped at LOG_CAP=500 entries; once exceeded, the oldest entry
@@ -19,7 +19,8 @@ export const PIPELINE_STAGES = [
   'landmask',
   'border',
   'voronoi',
-  'cleanup',
+  'median',
+  'fragment',
   'smooth',
   'merge',
   'hierarchy',

@@ -10,7 +10,7 @@ function wrap(node: ReactNode) {
 }
 
 describe('RunLogPanel', () => {
-  it('renders all 11 PIPELINE_STAGES in canonical order', () => {
+  it('renders all 12 PIPELINE_STAGES in canonical order', () => {
     render(
       wrap(
         <RunLogPanel
@@ -21,7 +21,7 @@ describe('RunLogPanel', () => {
       ),
     )
     const rows = screen.getAllByTestId(/stage-row-/)
-    expect(rows).toHaveLength(11)
+    expect(rows).toHaveLength(12)
     PIPELINE_STAGES.forEach((stage, idx) => {
       expect(rows[idx]).toHaveTextContent(stage)
     })
@@ -47,7 +47,7 @@ describe('RunLogPanel', () => {
     expect(active[0]).toHaveTextContent('voronoi')
 
     const pending = screen.getAllByTestId('stage-row-pending')
-    expect(pending).toHaveLength(8)
+    expect(pending).toHaveLength(9)
   })
 
   it('marks error stage with error state (overrides other states)', () => {

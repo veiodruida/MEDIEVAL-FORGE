@@ -17,12 +17,13 @@ describe('useRunStore — initial state', () => {
     expect(s.errorStage).toBeNull()
   })
 
-  it('test_pipeline_stages_tuple: 11 canonical stages in canonical order', () => {
+  it('test_pipeline_stages_tuple: 12 canonical stages in canonical order', () => {
     expect(PIPELINE_STAGES).toEqual([
       'landmask',
       'border',
       'voronoi',
-      'cleanup',
+      'median',
+      'fragment',
       'smooth',
       'merge',
       'hierarchy',
@@ -31,7 +32,7 @@ describe('useRunStore — initial state', () => {
       'metadata',
       'export',
     ])
-    expect(PIPELINE_STAGES.length).toBe(11)
+    expect(PIPELINE_STAGES.length).toBe(12)
   })
 })
 

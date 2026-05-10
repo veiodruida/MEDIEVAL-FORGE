@@ -359,8 +359,8 @@ describe('ProjectDetail workspace shell', () => {
   })
 
   // Sanity: PIPELINE_STAGES is what RunLogPanel renders against
-  it('PIPELINE_STAGES has 11 entries', () => {
-    expect(PIPELINE_STAGES).toHaveLength(11)
+  it('PIPELINE_STAGES has 12 entries', () => {
+    expect(PIPELINE_STAGES).toHaveLength(12)
   })
 
   // -----------------------------------------------------------------------
@@ -383,7 +383,7 @@ describe('ProjectDetail workspace shell', () => {
     // Open
     fireEvent.click(screen.getByTestId('generate-status-badge'))
     await waitFor(() => {
-      expect(screen.getAllByTestId(/stage-row-/)).toHaveLength(11)
+      expect(screen.getAllByTestId(/stage-row-/)).toHaveLength(12)
     })
 
     // Close
@@ -416,7 +416,7 @@ describe('ProjectDetail workspace shell', () => {
     })
   })
 
-  it('full SSE flow: 11 stage_start + 11 stage_done -> 11 done rows in RunLogPanel', async () => {
+  it('full SSE flow: 12 stage_start + 12 stage_done -> 12 done rows in RunLogPanel', async () => {
     installFetchMock({ status: STATUS_EMPTY })
     const Wrapper = makeWrapper()
     render(
@@ -440,9 +440,9 @@ describe('ProjectDetail workspace shell', () => {
     })
 
     await waitFor(() => {
-      expect(screen.getAllByTestId('stage-row-done')).toHaveLength(11)
+      expect(screen.getAllByTestId('stage-row-done')).toHaveLength(12)
     })
-    expect(useRunStore.getState().completedStages).toHaveLength(11)
+    expect(useRunStore.getState().completedStages).toHaveLength(12)
   })
 
   it('garbage SSE event is logged and ignored (T-03-FE-WORKSPACE-01)', async () => {
