@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: + bootstrap v3 infrastructure
 status: executing
-stopped_at: Completed 04-01-PLAN.md (DAG + Cache Infrastructure)
-last_updated: "2026-05-10T16:15:03.746Z"
+stopped_at: Completed 04-02-PLAN.md (Backend Incremental Render)
+last_updated: "2026-05-10T16:39:40.122Z"
 last_activity: 2026-05-10
 progress:
   total_phases: 9
   completed_phases: 3
   total_plans: 22
-  completed_plans: 17
-  percent: 77
+  completed_plans: 18
+  percent: 82
 ---
 
 # Project State (v3)
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md
 ## Current Position
 
 Phase: 04 (parameter-studio-live-re-render) — EXECUTING
-Plan: 3 of 7
+Plan: 4 of 7
 Status: Ready to execute
 Last activity: 2026-05-10
 
@@ -61,6 +61,9 @@ See `.planning/PROJECT.md` Key Decisions table (D-V3-01 through D-V3-07).
 - [Phase 04]: Monolith cleanup_and_smooth removed; 4 split functions (apply_median/remove_fragments/smooth_per_territory/merge_small_blobs) deliver byte-equal D-17 parity
 - [Phase 04]: stop_event uses threading.Event directly in RegionConfig (not string forward-ref) — import threading added at module scope in contracts.py
 - [Phase 04]: PIPELINE_STAGES expanded 11->12: 'cleanup' replaced by 'median' + 'fragment'; DAG_ORDER canonical 12-stage tuple in dag.py is single source of truth
+- [Phase 04]: Completed-stages closure list in _render_producer (not return value) — StageCancelled prevents return; advisor item 2
+- [Phase 04]: _VORONOI_CACHE side-table for non-array voronoi intermediates; _STAGE_CACHE holds numpy arrays only
+- [Phase 04]: run_pipeline gains optional project_id=None param for cache population; preserves Phase 01 CLI parity
 
 ### Blockers/Concerns
 
@@ -80,6 +83,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-10T16:15:03.743Z
-Stopped at: Completed 04-01-PLAN.md (DAG + Cache Infrastructure)
+Last session: 2026-05-10T16:39:40.120Z
+Stopped at: Completed 04-02-PLAN.md (Backend Incremental Render)
 Resume file: None
