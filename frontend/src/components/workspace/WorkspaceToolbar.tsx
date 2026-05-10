@@ -5,7 +5,6 @@ import { GenerateStatusBadge } from './GenerateStatusBadge'
 import type { Project } from '../../api/client'
 import type { PipelineStage, RunState } from '../../stores/useRunStore'
 import { usePipelineParams } from '../../stores/usePipelineParams'
-import { useRenderStore } from '../../stores/useRenderStore'
 import { postRenderCancel } from '../../api/render'
 
 export interface WorkspaceToolbarProps {
@@ -36,13 +35,13 @@ export function WorkspaceToolbar({
 }: WorkspaceToolbarProps) {
   const sidebarOpen = usePipelineParams((s) => s.sidebarOpen)
   const setSidebarOpen = usePipelineParams((s) => s.setSidebarOpen)
-  const renderState = useRenderStore((s) => s.state)
 
-  // D-16: cancel button visible when EITHER /generate OR /render is alive.
-  const isGenerating = runState === 'generating' || runState === 'ingesting'
-  const isRendering = renderState === 'rendering'
-  const showCancel = isGenerating || isRendering
-  const isRunning = isGenerating || isRendering
+  // D-16: cancel button replaces badge when runState === 'rendering'.
+  // UI-SPEC §State Machine: generating shows the badge (no cancel); only rendering shows cancel.
+  // Rationale: /render/cancel cancels incremental re-renders; /generate runs have no SSE cancel.
+  const isRunning =
+    runState === 'generating' || runState === 'ingesting' || runState === 'rendering'
+  const showCancel = runState === 'rendering'
 
   // Label flips to "Regenerar" once a run has started OR artifacts exist.
   const ctaLabel =

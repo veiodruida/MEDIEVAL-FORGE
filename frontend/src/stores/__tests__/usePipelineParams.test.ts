@@ -6,7 +6,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { usePipelineParams, PARAM_DEFAULTS, diffOverrides } from '../usePipelineParams'
 import { useParameterStudioDispatch } from '../../hooks/useParameterStudioDispatch'
-import { useRenderStore } from '../useRenderStore'
+import { useRunStore } from '../useRunStore'
 
 // ---------------------------------------------------------------------------
 // Mock api/render.ts so tests don't hit network
@@ -29,7 +29,7 @@ describe('usePipelineParams', () => {
       stageView: 'render-final',
       sidebarOpen: true,
     })
-    useRenderStore.getState().reset()
+    useRunStore.getState().reset()
     // Reset and re-configure mocks each test
     mockPostRender.mockReset()
     mockPostRenderCancel.mockReset()

@@ -1,10 +1,13 @@
 import { create } from 'zustand'
 
 /**
- * useRunStore — SSE-driven run state machine for Phase 03 read-only canvas.
+ * useRunStore — SSE-driven run state machine for Phase 03 read-only canvas,
+ * extended in Phase 04 Plan 04-03 with the 'rendering' state + render actions.
  *
- * Owns the lifecycle of a single in-flight pipeline run:
+ * State machine (full):
  *   idle → ingesting → generating → generated | error
+ *   idle → generated → rendering → generated | error
+ *                               ↑ (cancelRender) → generated (reverted to prior)
  *
  * The 12 canonical pipeline stages match the cfg.on_stage emit order from
  * Plan 04-01 (services/pipeline/__init__.py). Each stage emits {start, done}
@@ -32,7 +35,14 @@ export const PIPELINE_STAGES = [
 
 export type PipelineStage = (typeof PIPELINE_STAGES)[number]
 
-export type RunState = 'idle' | 'ingesting' | 'generating' | 'generated' | 'error'
+// Phase 04 adds 'rendering' to the RunState union (D-13 + D-16 + UI-SPEC §State Machine).
+export type RunState =
+  | 'idle'
+  | 'ingesting'
+  | 'generating'
+  | 'generated'
+  | 'error'
+  | 'rendering'
 
 export const LOG_CAP = 500
 
@@ -45,6 +55,10 @@ export interface RunStoreState {
   errorMessage: string | null
   errorStage: PipelineStage | null
 
+  // Phase 04 additions (D-13 cancel revert):
+  priorTokens: Record<string, string>  // stage_name → prior_token
+  affectedStages: PipelineStage[]      // stages recomputed by current /render run
+
   start: (runId: string, kind: 'ingesting' | 'generating') => void
   appendLog: (line: string) => void
   startStage: (stage: PipelineStage) => void
@@ -55,11 +69,24 @@ export interface RunStoreState {
     errorStage?: PipelineStage,
   ) => void
   reset: () => void
+
+  // Phase 04 render actions (D-13):
+  startRender: (runId: string, affectedStages?: PipelineStage[]) => void
+  revertStage: (stage: PipelineStage, priorToken: string) => void
+  cancelRender: () => void  // transitions rendering → generated
 }
 
 const INITIAL: Omit<
   RunStoreState,
-  'start' | 'appendLog' | 'startStage' | 'finishStage' | 'finish' | 'reset'
+  | 'start'
+  | 'appendLog'
+  | 'startStage'
+  | 'finishStage'
+  | 'finish'
+  | 'reset'
+  | 'startRender'
+  | 'revertStage'
+  | 'cancelRender'
 > = {
   state: 'idle',
   runId: null,
@@ -68,6 +95,8 @@ const INITIAL: Omit<
   logLines: [],
   errorMessage: null,
   errorStage: null,
+  priorTokens: {},
+  affectedStages: [],
 }
 
 export const useRunStore = create<RunStoreState>((set) => ({
@@ -82,6 +111,8 @@ export const useRunStore = create<RunStoreState>((set) => ({
       logLines: [],
       errorMessage: null,
       errorStage: null,
+      priorTokens: {},
+      affectedStages: [],
     }),
 
   appendLog: (line) =>
@@ -113,4 +144,23 @@ export const useRunStore = create<RunStoreState>((set) => ({
     }),
 
   reset: () => set({ ...INITIAL }),
+
+  // Phase 04 render actions:
+  startRender: (runId, affectedStages = []) =>
+    set({
+      state: 'rendering',
+      runId,
+      currentStage: null,
+      completedStages: [],
+      priorTokens: {},
+      affectedStages,
+      errorMessage: null,
+      errorStage: null,
+    }),
+
+  revertStage: (stage, priorToken) =>
+    set((s) => ({ priorTokens: { ...s.priorTokens, [stage]: priorToken } })),
+
+  cancelRender: () =>
+    set({ state: 'generated', currentStage: null }),
 }))

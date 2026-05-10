@@ -8,7 +8,7 @@ import { Theme } from '@radix-ui/themes'
 import type { ReactNode } from 'react'
 import { ParameterSidebar } from '../ParameterSidebar'
 import { usePipelineParams, PARAM_DEFAULTS } from '../../../stores/usePipelineParams'
-import { useRenderStore } from '../../../stores/useRenderStore'
+import { useRunStore } from '../../../stores/useRunStore'
 
 // Mock the render API and useRenderStream so ParameterSidebar tests don't hit network
 vi.mock('../../../api/render', () => ({
@@ -36,7 +36,7 @@ describe('ParameterSidebar', () => {
       stageView: 'render-final',
       sidebarOpen: true,
     })
-    useRenderStore.getState().reset()
+    useRunStore.getState().reset()
   })
 
   it('renders 320px collapsible left sidebar', () => {

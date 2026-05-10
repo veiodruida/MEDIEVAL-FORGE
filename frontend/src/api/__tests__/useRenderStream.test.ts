@@ -1,12 +1,12 @@
 /**
- * Plan 04-03 Task 1 — useRenderStream unit tests.
- * Tests the SSE consumer: subscribes to /render/stream, dispatches to stores.
+ * Plan 04-03 Task 1/4 — useRenderStream unit tests.
+ * Tests the SSE consumer: subscribes to /render/stream, dispatches to useRunStore.
+ * Task 4 migration: all dispatches now go through useRunStore (useRenderStore deleted).
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { useRenderStream } from '../useRenderStream'
 import { useRunStore } from '../../stores/useRunStore'
-import { useRenderStore } from '../../stores/useRenderStore'
 
 // ---------------------------------------------------------------------------
 // FakeEventSource — jsdom does not implement EventSource; this shim allows
@@ -68,7 +68,6 @@ describe('useRenderStream', () => {
   beforeEach(() => {
     FakeEventSource.instances = []
     useRunStore.getState().reset()
-    useRenderStore.getState().reset()
   })
 
   afterEach(() => {
@@ -119,11 +118,16 @@ describe('useRenderStream', () => {
     expect(useRunStore.getState().currentStage).toBeNull()
   })
 
-  it('translates stage_cancel envelope to renderStore.revertStage', () => {
+  it('translates stage_cancel envelope to runStore.revertStage', () => {
     const { result } = renderHook(() => useRenderStream())
 
     act(() => {
       result.current.subscribe('proj-1')
+    })
+
+    // Seed a rendering state so revertStage is meaningful
+    act(() => {
+      useRunStore.getState().startRender('r-1')
     })
 
     act(() => {
@@ -134,7 +138,8 @@ describe('useRenderStream', () => {
       })
     })
 
-    const priorTokens = useRenderStore.getState().priorTokens
+    // priorTokens now lives in useRunStore (Task 4 migration)
+    const priorTokens = useRunStore.getState().priorTokens
     expect(priorTokens['smooth']).toBe('prior-token-abc')
   })
 
@@ -155,7 +160,5 @@ describe('useRenderStream', () => {
     expect(es.closed).toBe(true)
     // run store should transition to generated
     expect(useRunStore.getState().state).toBe('generated')
-    // render store should be idle
-    expect(useRenderStore.getState().state).toBe('idle')
   })
 })

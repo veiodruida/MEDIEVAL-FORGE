@@ -1,6 +1,6 @@
 import { useDebouncedCallback } from 'use-debounce'
 import { usePipelineParams, diffOverrides } from '../stores/usePipelineParams'
-import { useRenderStore } from '../stores/useRenderStore'
+import { useRunStore } from '../stores/useRunStore'
 import { postRender, postRenderCancel } from '../api/render'
 
 /**
@@ -10,7 +10,7 @@ import { postRender, postRenderCancel } from '../api/render'
  *   1. Cancel any in-flight render (POST /render/cancel — 404 treated as success).
  *   2. Compute diff of current values vs last rendered.
  *   3. If diff is non-empty, POST /render with overrides + stage_view.
- *   4. startRender(runId) → useRenderStore transitions to 'rendering'.
+ *   4. startRender(runId) → useRunStore transitions to 'rendering'.
  *   5. markRendered(values) → records the values just dispatched.
  *
  * Reset path: call returned `dispatch.flush()` to bypass the 250ms debounce
@@ -32,12 +32,12 @@ export function useParameterStudioDispatch(
     await postRenderCancel(projectId).catch(() => {})
     try {
       const { run_id } = await postRender(projectId, diff, stageView)
-      useRenderStore.getState().startRender(run_id)
+      useRunStore.getState().startRender(run_id)
       usePipelineParams.getState().markRendered(values)
       onRenderStarted?.(run_id)
     } catch (e) {
       const msg = (e as Error).message
-      useRenderStore.getState().finishRender('error', msg)
+      useRunStore.getState().finish('error', msg)
     }
   }, 250)
 

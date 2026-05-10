@@ -7,7 +7,7 @@ import {
   diffOverrides,
   type SliderKey,
 } from '../../stores/usePipelineParams'
-import { useRenderStore } from '../../stores/useRenderStore'
+import { useRunStore } from '../../stores/useRunStore'
 import { useRenderStream } from '../../api/useRenderStream'
 import { postRender, postRenderCancel } from '../../api/render'
 import { useDebouncedCallback } from 'use-debounce'
@@ -38,12 +38,12 @@ export function ParameterSidebar({ projectId }: ParameterSidebarProps) {
     await postRenderCancel(projectId).catch(() => {})
     try {
       const { run_id } = await postRender(projectId, diff, stageView)
-      useRenderStore.getState().startRender(run_id)
+      useRunStore.getState().startRender(run_id)
       usePipelineParams.getState().markRendered(values)
       renderStream.subscribe(projectId)
     } catch (e) {
       const msg = (e as Error).message
-      useRenderStore.getState().finishRender('error', msg)
+      useRunStore.getState().finish('error', msg)
     }
   }, [projectId, renderStream])
 

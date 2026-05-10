@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef } from 'react'
-import { useRenderStore } from '../stores/useRenderStore'
 import { useRunStore, PIPELINE_STAGES, type PipelineStage } from '../stores/useRunStore'
 
 const STAGE_SET = new Set<string>(PIPELINE_STAGES)
@@ -38,11 +37,11 @@ export function useRenderStream(): RenderStreamHandle {
 
     // Track if any stage_cancel event was received during this run.
     // Used to decide whether to call cancelRender() vs finish('generated') on done.
+    // cancelRender() preserves priorTokens for CanvasViewer (Plan 04-04) to revert.
     let cancelled = false
 
     es.onmessage = (e: MessageEvent) => {
       const run = useRunStore.getState()
-      const render = useRenderStore.getState()
       let msg: RenderSseEnvelope
       try {
         msg = JSON.parse(e.data) as RenderSseEnvelope
@@ -67,18 +66,16 @@ export function useRenderStream(): RenderStreamHandle {
           // Frontend records the prior_token so CanvasViewer (Plan 04-04) can
           // re-hydrate against the cached prior array.
           cancelled = true
-          if (msg.stage) render.revertStage(msg.stage, msg.message ?? '')
+          if (stage) run.revertStage(stage, msg.message ?? '')
           return
         case 'error':
-          render.finishRender('error', msg.message ?? 'Erro desconhecido')
           run.finish('error', msg.message ?? 'Erro desconhecido', stage ?? undefined)
           close()
           return
         case 'done':
           if (cancelled) {
-            render.finishRender('idle')
+            run.cancelRender()
           } else {
-            render.finishRender('idle')
             run.finish('generated')
           }
           close()

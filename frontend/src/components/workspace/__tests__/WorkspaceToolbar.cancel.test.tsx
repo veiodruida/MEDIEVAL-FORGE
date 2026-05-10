@@ -1,16 +1,18 @@
 /**
- * Plan 04-03 Task 3 — WorkspaceToolbar cancel button tests.
- * Tests D-16: status badge → red Cancelar button when state ∈ {generating, rendering}.
+ * Plan 04-03 Task 3/4 — WorkspaceToolbar cancel button tests.
+ * Tests D-16: status badge → red Cancelar button when state === 'rendering'.
+ * Per UI-SPEC §State Machine: cancel only shows during 'rendering', not 'generating'.
+ * Task 4 migration: cancel state now read from runState prop ('rendering' added to RunState union).
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, act } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import { Theme } from '@radix-ui/themes'
 import { MemoryRouter } from 'react-router-dom'
 import type { ReactNode } from 'react'
 import { WorkspaceToolbar } from '../WorkspaceToolbar'
 import type { Project } from '../../../api/client'
 import { usePipelineParams, PARAM_DEFAULTS } from '../../../stores/usePipelineParams'
-import { useRenderStore } from '../../../stores/useRenderStore'
+import { useRunStore } from '../../../stores/useRunStore'
 
 // Mock postRenderCancel so tests don't hit network
 vi.mock('../../../api/render', () => ({
@@ -70,39 +72,30 @@ describe('WorkspaceToolbar cancel', () => {
       stageView: 'render-final',
       sidebarOpen: true,
     })
-    useRenderStore.getState().reset()
+    useRunStore.getState().reset()
     vi.mocked(postRenderCancel).mockReset()
     vi.mocked(postRenderCancel).mockResolvedValue(undefined)
   })
 
   it('renders status badge when state in {idle, generated}', () => {
+    // idle: badge shown, no cancel
     renderToolbar('idle')
-
-    // Cancel button should NOT be present
     expect(screen.queryByTestId('cancel-render-button')).toBeNull()
-    // Status badge SHOULD be present
     expect(screen.getByTestId('generate-status-badge')).toBeInTheDocument()
   })
 
-  it('replaces status badge with red Cancelar button when state in {generating, rendering}', () => {
-    // Test with runState=generating
-    const { unmount } = renderToolbar('generating')
+  it('replaces status badge with red Cancelar button when state in {rendering}', () => {
+    // Per UI-SPEC §State Machine: cancel only visible during 'rendering' (not 'generating').
+    // During 'generating' the status badge stays visible showing "Gerando: {stage}".
+    renderToolbar('rendering')
     expect(screen.getByTestId('cancel-render-button')).toBeInTheDocument()
     expect(screen.getByTestId('cancel-render-button')).toHaveTextContent('Cancelar')
-    expect(screen.queryByTestId('generate-status-badge')).toBeNull()
-    unmount()
-
-    // Test with useRenderStore.state=rendering (runState=generated but render in progress)
-    act(() => {
-      useRenderStore.setState({ state: 'rendering', runId: 'r-1', priorTokens: {}, affectedStages: [], errorMessage: null })
-    })
-    renderToolbar('generated')
-    expect(screen.getByTestId('cancel-render-button')).toBeInTheDocument()
     expect(screen.queryByTestId('generate-status-badge')).toBeNull()
   })
 
   it('Cancelar onClick fires postRenderCancel(projectId)', async () => {
-    renderToolbar('generating')
+    // Trigger cancel button via runState='rendering'
+    renderToolbar('rendering')
 
     const cancelBtn = screen.getByTestId('cancel-render-button')
     fireEvent.click(cancelBtn)
@@ -115,21 +108,11 @@ describe('WorkspaceToolbar cancel', () => {
   })
 
   it('badge restores when state flips back to generated', () => {
-    // Start in rendering state
-    act(() => {
-      useRenderStore.setState({ state: 'rendering', runId: 'r-1', priorTokens: {}, affectedStages: [], errorMessage: null })
-    })
-    const { rerender } = renderToolbar('generated')
-
-    // Cancel button visible
+    // Start in rendering state — cancel button visible
+    const { rerender } = renderToolbar('rendering')
     expect(screen.getByTestId('cancel-render-button')).toBeInTheDocument()
 
-    // Flip render store back to idle
-    act(() => {
-      useRenderStore.setState({ state: 'idle', runId: null, priorTokens: {}, affectedStages: [], errorMessage: null })
-    })
-
-    // Re-render with generated state + idle render store
+    // Re-render with generated state — badge restored
     rerender(
       wrap(
         <WorkspaceToolbar
