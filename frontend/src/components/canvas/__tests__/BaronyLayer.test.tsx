@@ -34,6 +34,11 @@ vi.mock('react-konva', () => ({
       data-listening={String(p.listening)}
     />
   ),
+  // Text stub added so BaronyLayer's D-12 label render doesn't crash.
+  // Props are intentionally minimal — BaronyLayer.test.tsx does not assert label content.
+  Text: (p: { 'data-testid'?: string; text?: string; listening?: boolean }) => (
+    <div data-testid={p['data-testid']} data-text={p.text} data-listening={String(p.listening)} />
+  ),
 }))
 
 const B: BaronyRender[] = [
