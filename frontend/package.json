@@ -24,6 +24,7 @@
     "react-konva": "^19.2.3",
     "react-markdown": "^10.1.0",
     "react-router-dom": "^7.14.0",
+    "use-debounce": "^10.1.1",
     "use-image": "^1.1.4",
     "zundo": "^2.3.0",
     "zustand": "^5.0.12"
