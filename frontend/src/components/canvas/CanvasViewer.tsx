@@ -5,6 +5,7 @@ import { BackgroundLayer } from './BackgroundLayer'
 import { TerritoryLayer } from './TerritoryLayer'
 import { BaronyLayer } from './BaronyLayer'
 import { LayerTogglePanel } from './LayerTogglePanel'
+import { LegendCard } from './LegendCard'
 import { DecorationsLayer } from './DecorationsLayer'
 import { InteractionLayer } from './InteractionLayer'
 import { FitToViewButton } from './FitToViewButton'
@@ -360,6 +361,7 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
         <InteractionLayer territories={territoriesQ.data} />
       </Stage>
       <LayerTogglePanel />
+      <LegendCard />
       <FitToViewButton onFit={fitToView} />
       <HoverTooltip name={hover.name} x={hover.x} y={hover.y} />
       <span data-testid="territory-layer-ready" hidden />
