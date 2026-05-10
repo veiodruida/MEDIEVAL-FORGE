@@ -91,7 +91,7 @@ Plans:
 - [x] 04-00-PLAN.md — Wave 0 stub bootstrap (14 test stub files; pytest/vitest/Playwright suite stays green)
 - [x] 04-01-PLAN.md — Wave 1: cleanup.py split into 4 cacheable functions + cache.py + dag.py + 12-stage PIPELINE_STAGES sync (D-01/D-02/D-03/D-17/D-18)
 - [x] 04-02-PLAN.md — Wave 2: api/v3/_run_state.py extract + render.py POST/GET/cancel + run_pipeline_incremental + stage raster endpoint + parity (D-04/D-13/D-14/D-17/D-18)
-- [ ] 04-03-PLAN.md — Wave 3: ParameterSidebar + 4 SliderCards + StageViewToggle + usePipelineParams + useRenderStream + WorkspaceToolbar Cancel (D-05..D-08, D-10/D-11, D-16)
+- [x] 04-03-PLAN.md — Wave 3: ParameterSidebar + 4 SliderCards + StageViewToggle + usePipelineParams + useRenderStream + WorkspaceToolbar Cancel (D-05..D-08, D-10/D-11, D-16)
 - [ ] 04-04-PLAN.md — Wave 3: useRunStore rendering state + useCanvasArtifacts re-key + CanvasViewer Konva.clearCache discipline + prior_token swap (D-13, CLAUDE.md rule)
 - [ ] 04-05-PLAN.md — Wave 3: BaronyLayer Konva Text labels (D-12 polish)
 - [ ] 04-06-PLAN.md — Wave 4: ProjectDetail integration + Playwright SC-3 + SC-4 + cross-surface gate + visual sign-off
