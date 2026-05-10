@@ -10,6 +10,7 @@ import {
 import { useGenerateStream } from '../api/useGenerateStream'
 import { useRunStore } from '../stores/useRunStore'
 import { CanvasViewer } from '../components/canvas/CanvasViewer'
+import { ParameterSidebar } from '../components/canvas/ParameterSidebar'
 import { WorkspaceToolbar } from '../components/workspace/WorkspaceToolbar'
 import { RunLogPanel } from '../components/workspace/RunLogPanel'
 import { EmptyCanvasState } from '../components/workspace/EmptyCanvasState'
@@ -142,25 +143,28 @@ export function ProjectDetail() {
         statusBadgeOpen={logPanelOpen}
         onToggleStatusBadge={() => setLogPanelOpen((o) => !o)}
       />
-      <Box style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
-        {body}
-        {logPanelOpen && (
-          <Box
-            style={{
-              position: 'absolute',
-              top: 12,
-              right: 12,
-              zIndex: 30,
-            }}
-          >
-            <RunLogPanel
-              completedStages={run.completedStages}
-              currentStage={run.currentStage}
-              errorStage={run.errorStage}
-            />
-          </Box>
-        )}
-      </Box>
+      <Flex style={{ flex: 1, overflow: 'hidden' }}>
+        {id && <ParameterSidebar projectId={id} />}
+        <Box style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+          {body}
+          {logPanelOpen && (
+            <Box
+              style={{
+                position: 'absolute',
+                top: 12,
+                right: 12,
+                zIndex: 30,
+              }}
+            >
+              <RunLogPanel
+                completedStages={run.completedStages}
+                currentStage={run.currentStage}
+                errorStage={run.errorStage}
+              />
+            </Box>
+          )}
+        </Box>
+      </Flex>
     </Flex>
   )
 }
