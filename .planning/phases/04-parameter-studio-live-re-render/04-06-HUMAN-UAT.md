@@ -1,5 +1,5 @@
 ---
-status: diagnosed
+status: resolved
 phase: 04-parameter-studio-live-re-render
 source:
   - 04-00-SUMMARY.md
@@ -10,7 +10,8 @@ source:
   - 04-05-SUMMARY.md
   - 04-06-SUMMARY.md (pending — Task 4 done, will be written when orchestrator resumes)
 started: 2026-05-10T20:23:48Z
-updated: 2026-05-11T09:45:13Z
+updated: 2026-05-11T13:30:00Z
+resolved_by: 04.1-parameter-studio-polish-cancel-race-hardening
 ---
 
 ## Current Test
@@ -101,7 +102,8 @@ blocked: 0
 # All three are post-completion improvements, not test failures.
 
 - truth: "Map canvas keeps current zoom/pan when slider triggers a re-render"
-  status: failed
+  status: resolved
+  resolved_by: 04.1-03 (D-01 stable projection bounds key) + 04.1-05 (viewport-key effect gate + keepPreviousData fix)
   reason: "User reported: zoom resets every time I edit a parameter — annoying when comparing details after a small slider change"
   severity: major
   test: 4
@@ -115,7 +117,8 @@ blocked: 0
   debug_session: ""
 
 - truth: "User can preview the previous render alongside the new one to judge slider impact"
-  status: failed
+  status: resolved
+  resolved_by: 04.1-03 (D-02 hold-spacebar before/after preview gesture, 'Anterior' badge)
   reason: "User reported: deveria ter uma maneira de previsualizar se quiser o antes e o depois de uma modificação"
   severity: minor
   test: 4
@@ -132,7 +135,8 @@ blocked: 0
   debug_session: ""
 
 - truth: "User can verify that a barony's size/extent matches the historical 868 AD dataset"
-  status: failed
+  status: resolved
+  resolved_by: 04.1-04 (D-03 barony historical discoverability panel — hierarchy + centroid + source-file label + Voronoi explainer)
   reason: "User reported: notei baronias muito grandes e nao sei se elas sao realente assim como posso ter certeza? é pela idade? como a pesquisa eh feita?"
   severity: minor
   test: 8
