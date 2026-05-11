@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: + bootstrap v3 infrastructure
 status: executing
-stopped_at: Completed 04.1-04-PLAN.md
-last_updated: "2026-05-11T12:41:36.676Z"
+stopped_at: Completed 04.1-03-PLAN.md
+last_updated: "2026-05-11T12:56:28.826Z"
 last_activity: 2026-05-11
 progress:
   total_phases: 10
   completed_phases: 4
   total_plans: 27
-  completed_plans: 25
-  percent: 93
+  completed_plans: 26
+  percent: 96
 ---
 
 # Project State (v3)
@@ -26,8 +26,8 @@ See: .planning/PROJECT.md
 ## Current Position
 
 Phase: 04.1 (parameter-studio-polish-cancel-race-hardening) — EXECUTING
-Plan: 3 of 5 (out-of-order: 01 + 02 + 04 complete; 03 + 05 still pending)
-Status: Ready to execute (next: 04.1-03 D-01 + D-02; then 04.1-05 regression sweep)
+Plan: 4 of 5 (out-of-order: 01 + 02 + 04 complete; 03 + 05 still pending)
+Status: Ready to execute
 Last activity: 2026-05-11
 
 Progress: [█████████░] 93% (25 of 27 plans complete)
@@ -77,6 +77,7 @@ See `.planning/PROJECT.md` Key Decisions table (D-V3-01 through D-V3-07).
 - [Phase 04.1]: Plan 04.1-01: WR-02 closed — both producers' finally evict _RUN_QUEUES/_RUN_TASKS after sentinel; 6 new pytest cases (3 per producer); 2 pre-existing cancel tests reshaped to subscribe-before-release via threading.Event gate (Rule 1 deviation, advisor-confirmed). 26/26 backend tests + 11/11 parity green.
 - [Phase 04.1]: Plan 04.1-02: WR-01 + WR-03 closed in one wave. useParameterStudioDispatch carries D-04 bounded RENDER_BUSY retry (3 retries / 1.5s window, per-(project_id) useRef<Map> counter, surfaces finish('error', 'RENDER_BUSY') on 4th attempt). ParameterSidebar consumes the canonical hook via onRenderStarted callback — inlined latest-wins copy removed. 5 new vitest cases + 195/195 frontend tests green.
 - [Phase 04.1]: Plan 04.1-04: D-03 closed at unit-test level. BaronyFeature/BaronyRender carry optional centroid?: [number, number] (backend already emitted it via canvas_sidecars.py line 233; frontend type was dropping it on the floor). InspectorSidebar barony branch extended with Coordenada de origem (lat/lon 3-decimal precision, fallback '—'), Origem dos dados (literal 'inicio/territory_data_v3.py' monospaced non-clickable label), and collapsible 'Sobre o método' PT-BR explainer of the Voronoi-from-centroids mechanic. CanvasViewer plumbs baronies={baroniesQ.data}. 5 new vitest cases + 200/200 frontend tests + parity 22/22 (12 pass + 6 xfail + 4 xpass) green. SC-3 satisfied at unit level; E2E click-through is plan 04.1-05's responsibility.
+- [Phase 04.1]: Plan 04.1-03: D-01 + D-02 closed at unit-test level. CanvasViewer.tsx: (a) replaced !projection guard with metaBoundsKey memo + bounds-keyed setProjection effect; (b) added projectionBoundsKey memo + prevBoundsKeyRef gating fitToView on real bounds change only; (c) split auto-fit into two effects (bounds-key + viewport-key) so slider re-renders with identical bounds preserve zoom (UAT gap #1); (d) added previousCacheVersion state + lastCacheVersionRef + window keydown/keyup/blur listeners + 3-way effectiveCacheVersion precedence (gesture > D-13 cancel revert > cacheVersion) + 'Anterior' PT-BR badge for hold-spacebar before/after preview (UAT gap #2). 10 new vitest cases in 2 split test files; 210/210 frontend tests + tsc clean. D-13 fallback preserved (Test 7 regression guard).
 
 ### Blockers/Concerns
 
@@ -96,6 +97,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-11T12:41:35.284Z
-Stopped at: Completed 04.1-04-PLAN.md
+Last session: 2026-05-11T12:56:28.824Z
+Stopped at: Completed 04.1-03-PLAN.md
 Resume file: None
