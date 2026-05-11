@@ -3,6 +3,7 @@ import { useUIStore } from '../../stores/uiStore'
 import { MultiSelectInspector } from './MultiSelectInspector'
 import { pixelsToKm2 as pixelsToKm2Util } from '../../lib/pixelsToKm2'
 import type {
+  BaronyRender,
   TerritoryMetadata,
   TerritoryMetadataCondado,
   TerritoryRender,
@@ -43,6 +44,7 @@ interface ProjectSummary {
 interface InspectorSidebarProps {
   metadata: TerritoryMetadata
   territories: TerritoryRender[]
+  baronies: BaronyRender[]  // D-03 (Phase 04.1): supplies centroid for barony historical panel
   project: ProjectSummary
 }
 
@@ -67,6 +69,7 @@ interface InspectorSidebarProps {
 export function InspectorSidebar({
   metadata,
   territories,
+  baronies,
   project,
 }: InspectorSidebarProps) {
   const selectedIds = useUIStore((s) => s.selectedTerritoryIds)
@@ -95,6 +98,12 @@ export function InspectorSidebar({
     const duchyName = metadata.duchies[barony.duchy]?.name ?? barony.duchy
     const kingdomId = metadata.duchies[barony.duchy]?.kingdom ?? ''
     const kingdomName = metadata.kingdoms[kingdomId] ?? kingdomId
+
+    // D-03 (Phase 04.1): centroid sourced from the GeoJSON (BaronyRender),
+    // NOT from territory_metadata.json (which lacks centroid).
+    const baronyRender = baronies.find((b) => b.name === selectedBaronyId)
+    const centroid = baronyRender?.centroid
+
     return (
       <Flex direction="column" gap="3" data-testid="inspector-barony">
         <Heading size="3">{barony.name}</Heading>
@@ -113,6 +122,63 @@ export function InspectorSidebar({
               {`~${Math.round(pixelsToKm2(barony.pixel_count, metadata)).toLocaleString()} km²`}
             </Text>
           </Flex>
+        </Box>
+
+        {/* D-03: Source coordinate row.
+            BaronyRender.centroid is stored as [lon, lat] per the
+            canvas_sidecars.py emission contract. Display convention matches
+            the condado branch: "lat, lon" (lat first), 3-decimal precision.
+            Fallback "—" when the GeoJSON is older (pre-Phase 04.1) and the
+            centroid property is absent — no NaN / 'undefined' leak. */}
+        <Box>
+          <Flex justify="between" align="center">
+            <Text size="1" color="gray">Coordenada de origem</Text>
+            <Text size="2" data-testid="barony-source-coord">
+              {centroid
+                ? `${centroid[1].toFixed(3)}, ${centroid[0].toFixed(3)}`
+                : '—'}
+            </Text>
+          </Flex>
+        </Box>
+
+        {/* D-03: Source data file reference — non-clickable monospaced label
+            (NOT a link; this is a local-only path, not a URL). */}
+        <Box>
+          <Text size="1" color="gray" as="p">Origem dos dados</Text>
+          <Text
+            size="2"
+            as="p"
+            data-testid="barony-source-file"
+            style={{ fontFamily: 'monospace' }}
+          >
+            inicio/territory_data_v3.py
+          </Text>
+        </Box>
+
+        {/* D-03: Collapsible PT-BR explainer of the Voronoi-from-centroids
+            mechanic — answers the UAT gap "noticed very large baronies, are
+            they really like this?". Frontier regions (Andalusia) have sparse
+            historical centroids, which is expected behavior, not a bug.
+            English equivalent kept inline as i18n placeholder. */}
+        <Box>
+          <details data-testid="barony-method-explainer">
+            <summary style={{ cursor: 'pointer' }}>
+              <Text size="2" weight="bold" as="span">
+                Sobre o método
+              </Text>
+            </summary>
+            <Box mt="2">
+              <Text size="2" color="gray" as="p">
+                As baronias são geradas por Voronoi a partir de centroides históricos.
+                Regiões com poucos centroides (fronteira, Andalusia) produzem células
+                maiores — isso é o comportamento esperado, não um erro do mapa.
+              </Text>
+              {/* English equivalent (i18n placeholder per CONTEXT.md D-03):
+                  Baronies are generated via Voronoi tessellation from historical
+                  centroids. Regions with few centroids (frontier, Andalusia)
+                  produce larger cells — this is expected behavior, not a map error. */}
+            </Box>
+          </details>
         </Box>
       </Flex>
     )

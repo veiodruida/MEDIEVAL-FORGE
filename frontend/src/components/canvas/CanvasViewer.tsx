@@ -451,6 +451,7 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
             <InspectorSidebar
               metadata={metaQ.data}
               territories={territoriesQ.data}
+              baronies={baroniesQ.data}
               project={{
                 name: project.name,
                 country_qid: project.country_qid,
