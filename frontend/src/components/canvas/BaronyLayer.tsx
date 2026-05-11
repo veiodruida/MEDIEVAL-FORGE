@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { Layer, Line, Text } from 'react-konva'
 import type Konva from 'konva'
 import type { BaronyRender } from '../../hooks/useCanvasArtifacts'
@@ -53,6 +54,25 @@ function truncate(name: string): string {
 export function BaronyLayer({ baronies, baronyColors, visible }: Props) {
   const selectedBaronyId = useUIStore((s) => s.selectedBaronyId)
   const selectBarony = useUIStore((s) => s.selectBarony)
+
+  // Plan 04.1-05 (D-03 E2E gate): expose deterministic barony selection to
+  // Playwright via a window-level escape hatch. Gated on `import.meta.env.DEV`
+  // so the hook never ships in production builds (mitigates T-04.1-05-01).
+  // The E2E spec cannot reliably hit a specific barony via pixel-coord click
+  // in the seeded Iberia 868 fixture; calling __forgeSelectBarony(name) is
+  // the deterministic alternative.
+  useEffect(() => {
+    if (!import.meta.env.DEV) return
+    ;(window as unknown as {
+      __forgeSelectBarony?: (name: string) => void
+    }).__forgeSelectBarony = (name: string) => {
+      useUIStore.getState().selectBarony(name)
+    }
+    return () => {
+      delete (window as unknown as { __forgeSelectBarony?: unknown })
+        .__forgeSelectBarony
+    }
+  }, [])
 
   const handleClick = (id: string) =>
     (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
