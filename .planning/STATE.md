@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: + bootstrap v3 infrastructure
 status: executing
-stopped_at: Completed 04-06-PLAN.md
-last_updated: "2026-05-11T12:08:17.423Z"
-last_activity: 2026-05-11 -- Phase 04.1 planning complete
+stopped_at: Completed 04.1-01-PLAN.md
+last_updated: "2026-05-11T12:21:23.119Z"
+last_activity: 2026-05-11
 progress:
   total_phases: 10
   completed_phases: 4
   total_plans: 27
-  completed_plans: 22
-  percent: 81
+  completed_plans: 23
+  percent: 85
 ---
 
 # Project State (v3)
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md
 
 **Core value:** A Game Designer goes from "country + historical period" to a validated, Unity-ready map package — driven by geometry, with LLM as opt-in metadata.
-**Current focus:** Phase 04 — parameter-studio-live-re-render
+**Current focus:** Phase 04.1 — parameter-studio-polish-cancel-race-hardening
 
 ## Current Position
 
-Phase: 05
-Plan: Not started
+Phase: 04.1 (parameter-studio-polish-cancel-race-hardening) — EXECUTING
+Plan: 2 of 5
 Status: Ready to execute
-Last activity: 2026-05-11 -- Phase 04.1 planning complete
+Last activity: 2026-05-11
 
 Progress: [███░░░░░░░] 33% (3 of 9 phases complete)
 
@@ -74,6 +74,7 @@ See `.planning/PROJECT.md` Key Decisions table (D-V3-01 through D-V3-07).
 - [Phase 04]: Option A selective writes: _write_outputs_to_disk gated on affected stages (6.8s → 1.3s warm render)
 - [Phase 04]: SC-3 Playwright budget relaxed to 30s (D-19); strict 500ms target deferred to Phase 05 pipeline optimization
 - [Phase 04]: UAT 12/12 passed; 3 polish gaps (zoom reset, before/after preview, barony data discoverability) deferred to Phase 04.1
+- [Phase 04.1]: Plan 04.1-01: WR-02 closed — both producers' finally evict _RUN_QUEUES/_RUN_TASKS after sentinel; 6 new pytest cases (3 per producer); 2 pre-existing cancel tests reshaped to subscribe-before-release via threading.Event gate (Rule 1 deviation, advisor-confirmed). 26/26 backend tests + 11/11 parity green.
 
 ### Blockers/Concerns
 
@@ -93,6 +94,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-11T09:50:43.917Z
-Stopped at: Completed 04-06-PLAN.md
+Last session: 2026-05-11T12:21:23.116Z
+Stopped at: Completed 04.1-01-PLAN.md
 Resume file: None
