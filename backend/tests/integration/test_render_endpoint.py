@@ -325,3 +325,156 @@ async def test_render_rejects_unknown_cfg_field(client, in_memory_db):
     r = await client.post(f"/api/v3/projects/{pid}/render",
                           json={"cfg_overrides": {"unknown_field": 42}})
     assert r.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# Plan 04.1-01 Task 1 (WR-02 / D-05): _RUN_QUEUES + _RUN_TASKS eviction in
+# _render_producer's finally block.
+# ---------------------------------------------------------------------------
+
+async def test_render_producer_evicts_run_queues_and_tasks_on_success(
+    client, in_memory_db, monkeypatch
+):
+    """After _render_producer runs to completion, _RUN_QUEUES[pid] and
+    _RUN_TASKS[pid] must be popped (WR-02 fix). Without this fix a late
+    GET /render/stream would find the key present but the queue drained,
+    awaiting queue.get() forever."""
+    from medieval_forge.api.v3 import _run_state
+    from medieval_forge.api.v3 import render as v3_render_mod
+
+    monkeypatch.setattr(
+        v3_render_mod, "run_pipeline_incremental",
+        _stub_run_pipeline_incremental,
+    )
+
+    pid = await _make_project(in_memory_db)
+    r = await client.post(f"/api/v3/projects/{pid}/render",
+                          json={"cfg_overrides": {}})
+    assert r.status_code == 202
+
+    # Drain the producer to completion (terminal None sentinel reached).
+    await _drain_queue(pid)
+
+    # Allow the producer's finally block (which runs AFTER `await queue.put(None)`)
+    # to execute its eviction pops.
+    task = _run_state._RUN_TASKS.get(pid)
+    if task is not None:
+        try:
+            await asyncio.wait_for(task, timeout=5.0)
+        except (asyncio.CancelledError, Exception):  # noqa: BLE001
+            pass
+
+    assert _run_state._RUN_QUEUES.get(pid) is None, (
+        "_RUN_QUEUES[pid] should be popped in _render_producer's finally block"
+    )
+    assert _run_state._RUN_TASKS.get(pid) is None, (
+        "_RUN_TASKS[pid] should be popped in _render_producer's finally block"
+    )
+
+
+async def test_render_stream_after_completion_returns_404_not_hang(
+    client, in_memory_db, monkeypatch
+):
+    """A late GET /render/stream call AFTER the producer finishes must
+    return HTTP 404 within 1 second (NOT hang on a drained queue)."""
+    from medieval_forge.api.v3 import _run_state
+    from medieval_forge.api.v3 import render as v3_render_mod
+
+    monkeypatch.setattr(
+        v3_render_mod, "run_pipeline_incremental",
+        _stub_run_pipeline_incremental,
+    )
+
+    pid = await _make_project(in_memory_db)
+    r = await client.post(f"/api/v3/projects/{pid}/render",
+                          json={"cfg_overrides": {}})
+    assert r.status_code == 202
+
+    # Drain the producer to completion.
+    await _drain_queue(pid)
+
+    # Wait for the producer task to fully exit so its finally block ran.
+    task = _run_state._RUN_TASKS.get(pid)
+    if task is not None:
+        try:
+            await asyncio.wait_for(task, timeout=5.0)
+        except (asyncio.CancelledError, Exception):  # noqa: BLE001
+            pass
+
+    # Late-subscriber: must 404 within 1s, NOT hang.
+    async with asyncio.timeout(1.0):
+        late = await client.get(f"/api/v3/projects/{pid}/render/stream")
+    assert late.status_code == 404
+    assert "no active render run" in late.json()["detail"]
+
+
+def _stub_run_pipeline_incremental_cancellable(cfg, project_id):
+    """Spin-wait on cfg.stop_event so a /render/cancel POST can interrupt.
+
+    Emits stage_start, then polls stop_event every 10ms. When the event is
+    set, raises StageCancelled — mirroring how the real split cleanup
+    functions cooperatively cancel.
+    """
+    import time
+    from medieval_forge.services.pipeline.cleanup import StageCancelled
+
+    if cfg.on_stage:
+        cfg.on_stage("median", "start")
+    # Cooperative cancel poll loop — runs inside asyncio.to_thread, so
+    # time.sleep is safe.
+    for _ in range(500):  # max ~5s before giving up
+        if cfg.stop_event is not None and cfg.stop_event.is_set():
+            raise StageCancelled("median")
+        time.sleep(0.01)
+    # Should not reach here under test (cancel POST is expected).
+    if cfg.on_stage:
+        cfg.on_stage("median", "done")
+    return ["median"]
+
+
+async def test_render_producer_evicts_run_queues_on_cancel(
+    client, in_memory_db, monkeypatch
+):
+    """When the producer exits via StageCancelled, its finally block must
+    still evict _RUN_QUEUES and _RUN_TASKS (finally runs in all exit paths)."""
+    from medieval_forge.api.v3 import _run_state
+    from medieval_forge.api.v3 import render as v3_render_mod
+
+    monkeypatch.setattr(
+        v3_render_mod, "run_pipeline_incremental",
+        _stub_run_pipeline_incremental_cancellable,
+    )
+
+    pid = await _make_project(in_memory_db)
+    r = await client.post(f"/api/v3/projects/{pid}/render",
+                          json={"cfg_overrides": {}})
+    assert r.status_code == 202
+
+    # Wait until the producer has set the stop_event slot (i.e. entered the
+    # try block and started its work). Without this we could POST /cancel
+    # before _RUN_STOP_EVENTS[pid] exists and get a 404 from /cancel.
+    async with asyncio.timeout(2.0):
+        while pid not in _run_state._RUN_STOP_EVENTS:
+            await asyncio.sleep(0.01)
+
+    # Cancel the run.
+    cancel_resp = await client.post(f"/api/v3/projects/{pid}/render/cancel")
+    assert cancel_resp.status_code == 200
+
+    # Drain remaining stream events (terminal None sentinel reached).
+    await _drain_queue(pid)
+
+    # Wait for producer task to fully exit.
+    task = _run_state._RUN_TASKS.get(pid)
+    if task is not None:
+        try:
+            await asyncio.wait_for(task, timeout=5.0)
+        except (asyncio.CancelledError, Exception):  # noqa: BLE001
+            pass
+
+    assert _run_state._RUN_QUEUES.get(pid) is None, (
+        "_RUN_QUEUES[pid] should be popped even on StageCancelled exit"
+    )
+    assert _run_state._RUN_TASKS.get(pid) is None, (
+        "_RUN_TASKS[pid] should be popped even on StageCancelled exit"
+    )
