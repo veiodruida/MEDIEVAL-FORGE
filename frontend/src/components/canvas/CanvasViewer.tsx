@@ -152,12 +152,92 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
   // reverts to the state before the cancelled render.
   const priorTokens = useRunStore((s) => s.priorTokens)
 
-  // D-13: effectiveCacheVersion folds priorTokens.render. When cancel fires and
-  // revertStage('render', prior_token) sets priorTokens.render, the queryKey changes
-  // (TanStack invalidates its in-memory cache) and the fetch URL changes
-  // (?v=<prior_token> vs ?v=<cacheVersion>) — browser HTTP cache also misses.
+  // D-02 (Phase 04.1): hold-spacebar before/after preview gesture.
+  //
+  // Track the previous cacheVersion via useRef + useState. Every time the
+  // `cacheVersion` prop transitions (slider-driven render completed → backend
+  // bumped proj.updated_at → TanStack refetched → new prop value), promote
+  // the prior value to `previousCacheVersion` state. The browser HTTP cache
+  // retains the previous artifact URLs (`?v=<previousCacheVersion>`) thanks
+  // to query-string cache-busting (useCanvasArtifacts.ts:64,123), so the
+  // gesture serves from warm cache — instant raster swap.
+  //
+  // This is INTENTIONALLY decoupled from priorTokens.render (D-13), which
+  // serves a different purpose: post-cancel revert display. The gesture and
+  // D-13 are distinct features and their state derives from different sources.
+  const [previousCacheVersion, setPreviousCacheVersion] = useState<string | undefined>(undefined)
+  const lastCacheVersionRef = useRef<string | undefined>(cacheVersion)
+
+  useEffect(() => {
+    // Promote the previously-seen cacheVersion to state on every transition.
+    // Initial mount: lastCacheVersionRef seeded with the first cacheVersion
+    // value; no transition happens, previousCacheVersion stays undefined.
+    // First transition (v1 → v2): previousCacheVersion becomes v1.
+    // Subsequent transitions (v2 → v3): previousCacheVersion becomes v2.
+    if (
+      cacheVersion !== undefined &&
+      lastCacheVersionRef.current !== undefined &&
+      lastCacheVersionRef.current !== cacheVersion
+    ) {
+      setPreviousCacheVersion(lastCacheVersionRef.current)
+    }
+    lastCacheVersionRef.current = cacheVersion
+  }, [cacheVersion])
+
+  const [previewPrior, setPreviewPrior] = useState(false)
+
+  // Gesture enabled only when a previous render exists. On the FIRST render
+  // of a project (no cacheVersion transition yet) the gesture is a no-op.
+  const previewEnabled = previousCacheVersion !== undefined
+
+  useEffect(() => {
+    if (!previewEnabled) {
+      // If previousCacheVersion clears mid-hold (rare), reset.
+      setPreviewPrior(false)
+      return
+    }
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.code !== 'Space' || e.repeat) return
+      // Don't intercept when user is typing in a slider/inspector input.
+      const tag = (e.target as HTMLElement | null)?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement | null)?.isContentEditable) return
+      e.preventDefault() // prevent page-scroll-on-space default
+      setPreviewPrior(true)
+    }
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.code !== 'Space') return
+      setPreviewPrior(false)
+    }
+    const onBlur = () => setPreviewPrior(false)
+    window.addEventListener('keydown', onKeyDown)
+    window.addEventListener('keyup', onKeyUp)
+    window.addEventListener('blur', onBlur)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('keyup', onKeyUp)
+      window.removeEventListener('blur', onBlur)
+    }
+  }, [previewEnabled])
+
+  // D-02 + D-13 precedence (top wins):
+  //   1. Spacebar gesture (highest priority) → previousCacheVersion
+  //   2. D-13 cancel revert (preserved from Phase 04) → priorTokens.render
+  //   3. Default → cacheVersion (prop, current settled state)
+  // The two "prior" semantics are intentionally distinct:
+  //   - previousCacheVersion: "the render that was current right before the
+  //     latest slider-driven re-render replaced it" — observable only on
+  //     hold-spacebar; on release the raster returns to cacheVersion (NOT
+  //     to priorTokens.render). This is the gesture per D-02.
+  //   - priorTokens.render: "the prior render that the user reverted to
+  //     after cancelling an in-flight render" — always-on display from the
+  //     moment the stage_cancel SSE fires until the next successful render.
+  //     This is the cancel revert per D-13/SC-4.
   const effectiveCacheVersion =
-    priorTokens.render !== undefined ? priorTokens.render : cacheVersion
+    previewPrior && previousCacheVersion !== undefined
+      ? previousCacheVersion
+      : priorTokens.render !== undefined
+        ? priorTokens.render
+        : cacheVersion
 
   const [territoriesQ, baroniesQ, condadoColorsQ, baronyColorsQ, metaQ, stageRasterUrl] =
     useCanvasArtifacts(projectId, projection, effectiveCacheVersion, stageView)
@@ -481,6 +561,26 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
       <LegendCard />
       <FitToViewButton onFit={fitToView} />
       <HoverTooltip name={hover.name} x={hover.x} y={hover.y} />
+      {previewPrior && (
+        <div
+          data-testid="preview-prior-badge"
+          style={{
+            position: 'absolute',
+            top: 12,
+            left: 12,
+            padding: '4px 10px',
+            background: 'var(--gray-12)',
+            color: 'var(--gray-1)',
+            borderRadius: 6,
+            fontSize: 12,
+            fontWeight: 500,
+            zIndex: 30,
+            pointerEvents: 'none',
+          }}
+        >
+          Anterior
+        </div>
+      )}
       <span data-testid="territory-layer-ready" hidden />
     </div>
   )
