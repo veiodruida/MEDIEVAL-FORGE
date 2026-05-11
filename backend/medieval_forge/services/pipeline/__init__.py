@@ -126,7 +126,7 @@ def _write_outputs_to_disk(
         """Raise StageCancelled (a pseudo-cancel) if stop_event is set mid-write."""
         if cfg.stop_event is not None and cfg.stop_event.is_set():
             from .cleanup import StageCancelled
-            raise StageCancelled("write", "write_outputs")
+            raise StageCancelled("write")
 
     W2, H2 = cfg.map_w * cfg.upscale, cfg.map_h * cfg.upscale
     os.makedirs(cfg.output_dir, exist_ok=True)

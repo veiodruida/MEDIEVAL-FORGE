@@ -129,3 +129,44 @@ def test_split_chain_default_cfg_matches_cleanup_and_smooth() -> None:
     assert np.array_equal(result, monolith_out), (
         "split chain output must be byte-identical to cleanup_and_smooth monolith (D-17)"
     )
+
+
+def test_stage_cancelled_constructor_takes_exactly_one_arg() -> None:
+    """Regression for CR-01: StageCancelled accepts one positional arg (stage_name).
+
+    Calling with two args raises TypeError, which the render producer's broad
+    `except Exception` catches and re-emits as an 'error' SSE event — bypassing
+    the stage_cancel path and silently breaking D-13 revert. Lock the contract.
+    """
+    from medieval_forge.services.pipeline.cleanup import StageCancelled
+
+    # Single arg succeeds and exposes stage_name attribute.
+    exc = StageCancelled("write")
+    assert exc.stage_name == "write"
+    assert "stage cancelled: write" in str(exc)
+
+    # Two-arg call must fail with TypeError (constructor signature contract).
+    with pytest.raises(TypeError):
+        StageCancelled("write", "write_outputs")  # type: ignore[call-arg]
+
+
+def test_write_outputs_check_cancel_uses_single_arg() -> None:
+    """Regression for CR-01: _write_outputs_to_disk's internal _check_cancel
+    must raise StageCancelled with a single arg, not the buggy two-arg form
+    that caused TypeError → SSE 'error' instead of 'stage_cancel'.
+
+    Static-check the source — exercising the closure would require
+    materializing a full RegionConfig + threading.Event + output dirs.
+    """
+    import inspect
+
+    from medieval_forge.services.pipeline import _write_outputs_to_disk
+
+    src = inspect.getsource(_write_outputs_to_disk)
+    assert 'raise StageCancelled("write")' in src, (
+        "_write_outputs_to_disk._check_cancel must raise StageCancelled('write') "
+        "with a single positional arg — CR-01 regression"
+    )
+    assert 'raise StageCancelled("write", "write_outputs")' not in src, (
+        "CR-01 buggy two-arg form has reappeared in _write_outputs_to_disk"
+    )
