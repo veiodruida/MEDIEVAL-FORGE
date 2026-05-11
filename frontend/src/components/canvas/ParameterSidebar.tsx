@@ -2,15 +2,9 @@ import { useCallback } from 'react'
 import { Box, Flex, ScrollArea, Separator, Text } from '@radix-ui/themes'
 import { SliderCard } from './SliderCard'
 import { StageViewToggle } from './StageViewToggle'
-import {
-  usePipelineParams,
-  diffOverrides,
-  type SliderKey,
-} from '../../stores/usePipelineParams'
-import { useRunStore } from '../../stores/useRunStore'
+import { usePipelineParams, type SliderKey } from '../../stores/usePipelineParams'
 import { useRenderStream } from '../../api/useRenderStream'
-import { postRender, postRenderCancel } from '../../api/render'
-import { useDebouncedCallback } from 'use-debounce'
+import { useParameterStudioDispatch } from '../../hooks/useParameterStudioDispatch'
 
 interface ParameterSidebarProps {
   projectId: string
@@ -29,25 +23,15 @@ export function ParameterSidebar({ projectId }: ParameterSidebarProps) {
   const sidebarOpen = usePipelineParams((s) => s.sidebarOpen)
   const renderStream = useRenderStream()
 
-  const dispatchRender = useCallback(async () => {
-    const { values, lastRendered, stageView } = usePipelineParams.getState()
-    const diff = diffOverrides(values, lastRendered)
-    if (Object.keys(diff).length === 0) return
-    // Latest-wins (D-07): cancel in-flight, close SSE, then POST + subscribe.
-    renderStream.close()
-    await postRenderCancel(projectId).catch(() => {})
-    try {
-      const { run_id } = await postRender(projectId, diff, stageView)
-      useRunStore.getState().startRender(run_id)
-      usePipelineParams.getState().markRendered(values)
-      renderStream.subscribe(projectId)
-    } catch (e) {
-      const msg = (e as Error).message
-      useRunStore.getState().finish('error', msg)
-    }
-  }, [projectId, renderStream])
-
-  const debouncedRender = useDebouncedCallback(dispatchRender, 250)
+  // D-06 (Phase 04.1 WR-03): single canonical dispatch path.
+  // useParameterStudioDispatch wraps the 250ms-debounced latest-wins sequence
+  // + D-04 bounded RENDER_BUSY retry. We pass renderStream.subscribe via
+  // onRenderStarted so the SSE consumer attaches once a run_id is returned.
+  // useRenderStream.subscribe internally closes any prior EventSource — no
+  // need for an explicit renderStream.close() here.
+  const debouncedRender = useParameterStudioDispatch(projectId, (_runId) => {
+    renderStream.subscribe(projectId)
+  })
 
   // Reset bypasses debounce — flush() invokes the wrapped fn synchronously.
   const onResetCommit = useCallback(
