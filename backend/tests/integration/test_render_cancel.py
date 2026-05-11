@@ -7,6 +7,7 @@ Plan 04-02 Task 2 — TDD GREEN. Covers:
 from __future__ import annotations
 
 import asyncio
+import threading
 import time
 import uuid
 
@@ -215,17 +216,24 @@ async def test_cancel_on_first_render_falls_back_to_generate_baseline(
 ):
     """Cold-cache /render + immediate cancel should NOT crash. The canvas can
     still hydrate from prior /generate artifacts on disk (none in this test,
-    but the endpoint must exit cleanly with 'done' SSE event)."""
+    but the endpoint must exit cleanly with 'done' SSE event).
+
+    Post-WR-02 (04.1-01): the producer's finally now pops _RUN_QUEUES after
+    `queue.put(None)`, so a stream subscriber that arrives AFTER the producer
+    drains gets 404. We use a threading.Event gate inside the stub so the stub
+    blocks until the test has subscribed to the stream.
+    """
     from medieval_forge.api.v3 import render as v3_render_mod
     from medieval_forge.services.pipeline.cleanup import StageCancelled
 
     pid = await _make_project(in_memory_db)
 
+    proceed = threading.Event()
+
     def _immediate_cancel_incremental(cfg, project_id):
+        # Block until the test has opened the SSE stream (post-WR-02 contract).
+        proceed.wait(timeout=5.0)
         # Simulate cancel landing before any stage completes.
-        if cfg.stop_event is not None and cfg.stop_event.is_set():
-            raise StageCancelled("median")
-        # Or just raise immediately to test the except path.
         raise StageCancelled("median")
 
     monkeypatch.setattr(v3_render_mod, "run_pipeline_incremental",
@@ -235,7 +243,16 @@ async def test_cancel_on_first_render_falls_back_to_generate_baseline(
                           json={"cfg_overrides": {}})
     assert r.status_code == 202
 
-    chunks = await _collect_sse_until_done(client, pid, timeout=10.0)
+    # Subscribe BEFORE releasing the producer so _RUN_QUEUES[pid] is still
+    # present when stream_render runs its 404 guard.
+    chunks: list[str] = []
+    async with asyncio.timeout(10.0):
+        async with client.stream("GET",
+                                 f"/api/v3/projects/{pid}/render/stream") as resp:
+            assert resp.status_code == 200
+            proceed.set()  # release producer now that we're subscribed
+            async for chunk in resp.aiter_text():
+                chunks.append(chunk)
     combined = "".join(chunks)
 
     # Must terminate with 'done' event (no crash / hanging stream)
@@ -249,7 +266,13 @@ async def test_cancel_on_first_render_falls_back_to_generate_baseline(
 async def test_cancel_does_not_update_cache(client, in_memory_db, monkeypatch):
     """Pre-seed the cache with a known token for 'smooth'. Cancel mid-/render.
     The cached smooth token must remain unchanged (D-13: cache_put fires only
-    on stage success, never on StageCancelled)."""
+    on stage success, never on StageCancelled).
+
+    Post-WR-02 (04.1-01): the producer's finally now pops _RUN_QUEUES after
+    `queue.put(None)`, so a stream subscriber that arrives AFTER the producer
+    drains gets 404. We gate the stub on a threading.Event so the stream
+    opens before the producer raises StageCancelled.
+    """
     from medieval_forge.api.v3 import render as v3_render_mod
     from medieval_forge.services.pipeline.cache import cache_put, cache_get
     from medieval_forge.services.pipeline.cleanup import StageCancelled
@@ -261,11 +284,15 @@ async def test_cancel_does_not_update_cache(client, in_memory_db, monkeypatch):
     cache_put(pid, "smooth", prior_token, np.zeros((2, 2), dtype=np.int16))
     assert cache_get(pid, "smooth").token == prior_token
 
+    proceed = threading.Event()
+
     def _cancel_before_smooth(cfg, project_id):
         # Simulate: median completes, fragment completes, then cancel hits smooth
         if cfg.on_stage:
             cfg.on_stage("median", "start")
             cfg.on_stage("median", "done")
+        # Wait until test has subscribed to the stream (post-WR-02 contract).
+        proceed.wait(timeout=5.0)
         raise StageCancelled("smooth")
 
     monkeypatch.setattr(v3_render_mod, "run_pipeline_incremental",
@@ -275,7 +302,14 @@ async def test_cancel_does_not_update_cache(client, in_memory_db, monkeypatch):
                           json={"cfg_overrides": {}})
     assert r.status_code == 202
 
-    chunks = await _collect_sse_until_done(client, pid, timeout=10.0)
+    chunks: list[str] = []
+    async with asyncio.timeout(10.0):
+        async with client.stream("GET",
+                                 f"/api/v3/projects/{pid}/render/stream") as resp:
+            assert resp.status_code == 200
+            proceed.set()  # release producer now that we're subscribed
+            async for chunk in resp.aiter_text():
+                chunks.append(chunk)
     combined = "".join(chunks)
     assert '"event_type": "done"' in combined
 

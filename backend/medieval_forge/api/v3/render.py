@@ -175,9 +175,11 @@ async def _render_producer(
         _emit(queue, "error", None, exc.__class__.__name__, None)
 
     finally:
-        await queue.put(None)  # terminal sentinel
+        await queue.put(None)  # terminal sentinel — MUST stay before evictions
         _RUN_STOP_EVENTS.pop(project_id, None)
         _RUN_KIND.pop(project_id, None)
+        _RUN_QUEUES.pop(project_id, None)   # WR-02 fix: prevent late-subscriber hang
+        _RUN_TASKS.pop(project_id, None)    # WR-02 fix: prevent stale task reference
 
 
 # ---------------------------------------------------------------------------
