@@ -190,3 +190,165 @@ describe('usePipelineParams', () => {
     expect('stage_view' in diff).toBe(false)
   })
 })
+
+// =============================================================================
+// Plan 04.1-02 Task 1 — D-04 bounded RENDER_BUSY retry contract.
+//
+// Contract: after a cancel→POST race, postRender returns 409 (Error 'RENDER_BUSY').
+// The dispatch hook re-queues up to 3 times within a 1.5s window; on the 4th
+// consecutive 409 it surfaces useRunStore.finish('error', 'RENDER_BUSY').
+// A successful postRender (run_id returned) resets the retry counter.
+// =============================================================================
+describe('useParameterStudioDispatch RENDER_BUSY retry (D-04)', () => {
+  beforeEach(() => {
+    usePipelineParams.setState({
+      values: { ...PARAM_DEFAULTS },
+      lastRendered: { ...PARAM_DEFAULTS },
+      stageView: 'render-final',
+      sidebarOpen: true,
+    })
+    useRunStore.getState().reset()
+    mockPostRender.mockReset()
+    mockPostRenderCancel.mockReset()
+    mockGetStageRasterUrl.mockReset()
+    mockPostRenderCancel.mockResolvedValue(undefined)
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  // Helper — advance the 250ms debounce + flush microtasks so async dispatch
+  // resolves (postRenderCancel → postRender → catch → re-queue) before the
+  // next iteration. Mirrors the pattern from the 'latest-wins' test above.
+  async function advanceOneDebounceCycle() {
+    await act(async () => {
+      vi.advanceTimersByTime(250)
+      // Multiple microtask flushes — postRenderCancel.then → postRender.then → catch.
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+  }
+
+  it('test_render_busy_three_times_then_success_does_not_error', async () => {
+    vi.useFakeTimers()
+    // Two 409s then a success — should NOT transition to error.
+    mockPostRender
+      .mockRejectedValueOnce(new Error('RENDER_BUSY'))
+      .mockRejectedValueOnce(new Error('RENDER_BUSY'))
+      .mockResolvedValueOnce({ run_id: 'r-ok', status: 'scheduled', kind: 'render' })
+
+    const { result } = renderHook(() =>
+      useParameterStudioDispatch('proj-1'),
+    )
+
+    // Trigger initial dispatch (non-empty diff).
+    act(() => {
+      usePipelineParams.getState().setValue('smooth_sigma', 3.5)
+      result.current()
+    })
+
+    // Cycle 1: 250ms → 409 → re-queue.
+    await advanceOneDebounceCycle()
+    // Cycle 2: 250ms → 409 → re-queue.
+    await advanceOneDebounceCycle()
+    // Cycle 3: 250ms → 200 success.
+    await advanceOneDebounceCycle()
+
+    expect(mockPostRender).toHaveBeenCalledTimes(3)
+    expect(useRunStore.getState().state).not.toBe('error')
+    expect(useRunStore.getState().runId).toBe('r-ok')
+  })
+
+  it('test_render_busy_four_times_surfaces_error_on_fourth_attempt', async () => {
+    vi.useFakeTimers()
+    // Always 409 — on the 4th attempt the bounded retry surfaces 'error'.
+    mockPostRender.mockRejectedValue(new Error('RENDER_BUSY'))
+
+    const { result } = renderHook(() =>
+      useParameterStudioDispatch('proj-1'),
+    )
+
+    act(() => {
+      usePipelineParams.getState().setValue('smooth_sigma', 3.5)
+      result.current()
+    })
+
+    // Cycles 1, 2, 3 — re-queue.
+    await advanceOneDebounceCycle()
+    await advanceOneDebounceCycle()
+    await advanceOneDebounceCycle()
+    // Cycle 4 — exhausts retries, finish('error', 'RENDER_BUSY').
+    await advanceOneDebounceCycle()
+
+    expect(mockPostRender).toHaveBeenCalledTimes(4)
+    expect(useRunStore.getState().state).toBe('error')
+    expect(useRunStore.getState().errorMessage).toBe('RENDER_BUSY')
+  })
+
+  it('test_render_busy_counter_resets_on_success', async () => {
+    vi.useFakeTimers()
+    // 2× 409 → success → 1× 409 → success. After the first success the
+    // counter resets; the next 409 starts at attempt 1, not 3, so no error.
+    mockPostRender
+      .mockRejectedValueOnce(new Error('RENDER_BUSY'))
+      .mockRejectedValueOnce(new Error('RENDER_BUSY'))
+      .mockResolvedValueOnce({ run_id: 'r-ok-1', status: 'scheduled', kind: 'render' })
+      .mockRejectedValueOnce(new Error('RENDER_BUSY'))
+      .mockResolvedValueOnce({ run_id: 'r-ok-2', status: 'scheduled', kind: 'render' })
+
+    const { result } = renderHook(() =>
+      useParameterStudioDispatch('proj-1'),
+    )
+
+    // First slider edit dispatches the first cycle.
+    act(() => {
+      usePipelineParams.getState().setValue('smooth_sigma', 3.5)
+      result.current()
+    })
+
+    // 409, 409, then success — counter should be cleared.
+    await advanceOneDebounceCycle()
+    await advanceOneDebounceCycle()
+    await advanceOneDebounceCycle()
+    expect(useRunStore.getState().runId).toBe('r-ok-1')
+    expect(useRunStore.getState().state).not.toBe('error')
+
+    // Trigger a new diff to start a fresh dispatch (markRendered set
+    // lastRendered=3.5; setValue(3.6) creates a new diff).
+    act(() => {
+      usePipelineParams.getState().setValue('smooth_sigma', 3.6)
+      result.current()
+    })
+
+    // 409 once → re-queue → success.
+    await advanceOneDebounceCycle()
+    await advanceOneDebounceCycle()
+    expect(mockPostRender).toHaveBeenCalledTimes(5)
+    expect(useRunStore.getState().state).not.toBe('error')
+    expect(useRunStore.getState().runId).toBe('r-ok-2')
+  })
+
+  it('test_non_render_busy_error_surfaces_immediately_without_retry', async () => {
+    vi.useFakeTimers()
+    mockPostRender.mockRejectedValue(new Error('OTHER_FAILURE'))
+
+    const { result } = renderHook(() =>
+      useParameterStudioDispatch('proj-1'),
+    )
+
+    act(() => {
+      usePipelineParams.getState().setValue('smooth_sigma', 3.5)
+      result.current()
+    })
+
+    await advanceOneDebounceCycle()
+
+    // postRender called exactly once — no retry for non-RENDER_BUSY errors.
+    expect(mockPostRender).toHaveBeenCalledTimes(1)
+    expect(useRunStore.getState().state).toBe('error')
+    expect(useRunStore.getState().errorMessage).toBe('OTHER_FAILURE')
+  })
+})
