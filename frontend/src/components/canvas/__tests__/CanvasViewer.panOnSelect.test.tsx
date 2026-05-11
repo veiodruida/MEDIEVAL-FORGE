@@ -258,6 +258,97 @@ describe('CanvasViewer — Pitfall 6 empty-Stage click deselect', () => {
   })
 })
 
+describe('CanvasViewer — pan-on-select gate (debug 04.1-bug-pan-reset)', () => {
+  beforeEach(() => {
+    panToGeoCenterMock.mockClear()
+    stageHoisted.lastProps = null
+    useUIStore.setState({
+      selectedTerritoryId: null,
+      selectedTerritoryIds: [],
+      layerVisibility: {
+        condados: true,
+        baronies: false,
+        borders: true,
+        capitals: true,
+        labels: false,
+      },
+    })
+    setupFetchMock()
+  })
+
+  it('does NOT re-call panToGeoCenter when cacheVersion changes but selectedId is unchanged', async () => {
+    // Mount with a pre-existing condado selection so the effect's selection
+    // guard passes. Initial mount should call panToGeoCenter once.
+    useUIStore.setState({
+      selectedTerritoryId: 'C_LUGO',
+      selectedTerritoryIds: ['C_LUGO'],
+    })
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const { rerender } = render(
+      <QueryClientProvider client={qc}>
+        <CanvasViewer projectId="p1" cacheVersion="v1" />
+      </QueryClientProvider>,
+    )
+    await screen.findByTestId('konva-stage')
+    // Wait one tick so the selection-pan useEffect runs after mount.
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0))
+    })
+
+    const callsAfterMount = panToGeoCenterMock.mock.calls.length
+
+    // Simulate three slider-driven cacheVersion bumps. Each triggers a
+    // TanStack refetch → metaQ.data ref changes on success. Without the
+    // prevSelectedIdRef gate, the selection-pan effect would re-fire on
+    // every refetch, overwriting the user's manual pan (debug
+    // 04.1-bug-pan-reset).
+    for (const v of ['v2', 'v3', 'v4']) {
+      rerender(
+        <QueryClientProvider client={qc}>
+          <CanvasViewer projectId="p1" cacheVersion={v} />
+        </QueryClientProvider>,
+      )
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 0))
+      })
+    }
+
+    // The selection-pan effect must NOT fire again — selectedId stayed
+    // 'C_LUGO' across all renders.
+    expect(panToGeoCenterMock.mock.calls.length).toBe(callsAfterMount)
+  })
+
+  it('DOES call panToGeoCenter again when selectedId clears and re-selects the same id', async () => {
+    // Regression guard for the prevSelectedIdRef sync-on-clear branch:
+    // a clear (null) followed by re-selecting the SAME id IS a transition
+    // from the user's perspective and should re-pan.
+    useUIStore.setState({
+      selectedTerritoryId: 'C_LUGO',
+      selectedTerritoryIds: ['C_LUGO'],
+    })
+    render(<CanvasViewer projectId="p1" />, { wrapper })
+    await screen.findByTestId('konva-stage')
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0))
+    })
+
+    panToGeoCenterMock.mockClear()
+
+    // Clear selection
+    await act(async () => {
+      useUIStore.getState().select(null)
+      await new Promise((r) => setTimeout(r, 0))
+    })
+    // Re-select the SAME id
+    await act(async () => {
+      useUIStore.getState().select('C_LUGO')
+      await new Promise((r) => setTimeout(r, 0))
+    })
+
+    expect(panToGeoCenterMock).toHaveBeenCalled()
+  })
+})
+
 describe('CanvasViewer — Stage wiring for zoom/pan/fit', () => {
   beforeEach(() => {
     panToGeoCenterMock.mockClear()

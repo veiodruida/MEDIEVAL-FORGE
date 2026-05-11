@@ -377,9 +377,28 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
   // Read scale live from stage.scaleX() — DO NOT add currentScale or
   // viewportW/H to the dep array (would re-trigger pan on every wheel tick or
   // resize event).
+  //
+  // Phase 04.1 follow-up (debug session 04.1-bug-pan-reset): the effect MUST
+  // only fire on a real selectedId TRANSITION. `metaQ.data` was historically
+  // in the dep array because the pan needs metadata to resolve lon/lat — but
+  // metaQ.data REFERENCE changes on every successful TanStack refetch
+  // (slider drag → cacheVersion bump → refetch → select() builds fresh
+  // condado objects → mergedMeta useMemo emits a new object). Without a
+  // selection-CHANGE gate, every slider drag re-fired panToGeoCenter,
+  // overwriting the user's manual pan. The fix: track prevSelectedIdRef and
+  // bail when selectedId hasn't actually changed (mirrors Plan 04.1-03's
+  // prevBoundsKeyRef pattern for the auto-fit effect).
+  const prevSelectedIdRef = useRef<string | null>(null)
   useEffect(() => {
     const stage = stageRef.current
-    if (!stage || !projection || !selectedId || !metaQ.data) return
+    if (!stage || !projection || !selectedId || !metaQ.data) {
+      // Keep ref in sync with selection clears so a future re-select of the
+      // SAME id still fires (clear → re-select === transition).
+      prevSelectedIdRef.current = selectedId ?? null
+      return
+    }
+    if (prevSelectedIdRef.current === selectedId) return
+    prevSelectedIdRef.current = selectedId
     const condado = metaQ.data.condados.find((c) => c.id === selectedId)
     if (!condado) return
     panToGeoCenter(
