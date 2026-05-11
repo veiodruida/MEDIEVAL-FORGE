@@ -37,7 +37,7 @@ from ...services.paths import is_valid_uuid, project_dir
 from ...services.pipeline import run_pipeline
 from ...services.pipeline.cache import cache_clear_project
 from ...services.pipeline.regions import iberia_config
-from ._run_state import _RUN_QUEUES, _RUN_TASKS, _RUN_KIND, is_run_alive  # noqa: F401
+from ._run_state import _RUN_QUEUES, _RUN_TASKS, _RUN_KIND, _RUN_STOP_EVENTS, is_run_alive  # noqa: F401
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/v3/projects", tags=["v3-generate"])
@@ -149,7 +149,11 @@ async def _generate_producer(
         except Exception:  # noqa: BLE001
             logger.exception("failed to update status to error_generating")
     finally:
-        await queue.put(None)  # terminal sentinel
+        await queue.put(None)  # terminal sentinel — MUST stay before evictions
+        _RUN_STOP_EVENTS.pop(project_id, None)
+        _RUN_KIND.pop(project_id, None)
+        _RUN_QUEUES.pop(project_id, None)   # WR-02 fix: prevent late-subscriber hang
+        _RUN_TASKS.pop(project_id, None)    # WR-02 fix: prevent stale task reference
 
 
 @router.post("/{project_id}/generate", status_code=202)
@@ -197,9 +201,13 @@ async def trigger_generate(
 async def stream_generate(project_id: str) -> StreamingResponse:
     """Drain the per-project SSE queue until the None sentinel.
 
-    Refresh-mid-run is a documented limitation (RESEARCH §Pitfall 9): if the
-    browser refreshes during a run, this stream returns 404 because the queue
-    has been drained. Phase 04 may add reconnect support if needed.
+    Refresh-mid-run / post-run limitation (RESEARCH §Pitfall 9, updated for
+    WR-02 fix in Phase 04.1-01): after the producer's finally block runs,
+    _RUN_QUEUES no longer contains project_id, so a late stream subscriber
+    receives HTTP 404 (handled by the guard above). Reconnect-after-disconnect
+    during an active run is not supported; the original consumer drains via
+    its local queue reference, and new subscribers after the finally hit the
+    404 guard.
     """
     if not is_valid_uuid(project_id):
         raise HTTPException(status_code=400, detail="project_id must be a valid UUID")
