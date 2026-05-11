@@ -94,7 +94,7 @@ Plans:
 - [x] 04-03-PLAN.md — Wave 3: ParameterSidebar + 4 SliderCards + StageViewToggle + usePipelineParams + useRenderStream + WorkspaceToolbar Cancel (D-05..D-08, D-10/D-11, D-16)
 - [x] 04-04-PLAN.md — Wave 3: useRunStore rendering state + useCanvasArtifacts re-key + CanvasViewer Konva.clearCache discipline + prior_token swap (D-13, CLAUDE.md rule)
 - [x] 04-05-PLAN.md — Wave 3: BaronyLayer Konva Text labels (D-12 polish)
-- [ ] 04-06-PLAN.md — Wave 4: ProjectDetail integration + Playwright SC-3 + SC-4 + cross-surface gate + visual sign-off
+- [x] 04-06-PLAN.md — Wave 4: ProjectDetail integration + Playwright SC-3 + SC-4 + cross-surface gate + visual sign-off
 
 ### Phase 05: Region generalization
 **Goal:** Iberia is a config, not a hard-coded path. Other regions/periods supported.
