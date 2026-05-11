@@ -16,6 +16,9 @@ export interface BaronyRender {
   condado_id: string
   fill: string
   points: number[]
+  // D-03 (Phase 04.1): geo centroid in lon/lat (degrees). Available when
+  // the backend baronies.geojson includes the `centroid` property.
+  centroid?: [number, number]
 }
 
 export interface TerritoryMetadataCondado {
@@ -63,7 +66,17 @@ interface BaronyFeature {
   geometry:
     | { type: 'Polygon'; coordinates: [number, number][][] }
     | { type: 'MultiPolygon'; coordinates: [number, number][][][] }
-  properties: { id: string; name: string; condado_id: string; fill: string }
+  properties: {
+    id: string
+    name: string
+    condado_id: string
+    fill: string
+    // D-03 (Phase 04.1): backend canvas_sidecars.py emits the geo centroid
+    // [lon, lat] for every barony. Optional because old artifacts on disk
+    // (pre-Phase 04.1) may lack the field; downstream code falls back to
+    // undefined rather than crashing.
+    centroid?: [number, number]
+  }
 }
 
 interface FC<F> {
@@ -180,6 +193,7 @@ export function useCanvasArtifacts(
             condado_id: f.properties.condado_id,
             fill: f.properties.fill,
             points: geoRingToKonvaPoints(firstOuterRing(f.geometry), projection),
+            centroid: f.properties.centroid,  // D-03: pass through if present
           }))
         },
       },
