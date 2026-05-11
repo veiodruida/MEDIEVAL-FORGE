@@ -86,7 +86,7 @@ Plans:
 2. Backend incremental endpoint per stage; in-memory cache of intermediate arrays
 3. Move σ from 3.0 → 4.5 reformats territories visibly in <500ms without full re-run
 4. Cancel restores prior state; Konva `clearCache()` after every geometric mutation
-**Plans:** 7 plans
+**Plans:** 7/7 plans complete
 Plans:
 - [x] 04-00-PLAN.md — Wave 0 stub bootstrap (14 test stub files; pytest/vitest/Playwright suite stays green)
 - [x] 04-01-PLAN.md — Wave 1: cleanup.py split into 4 cacheable functions + cache.py + dag.py + 12-stage PIPELINE_STAGES sync (D-01/D-02/D-03/D-17/D-18)
