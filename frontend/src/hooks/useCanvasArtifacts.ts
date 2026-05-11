@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { useQueries } from '@tanstack/react-query'
+import { useQueries, keepPreviousData } from '@tanstack/react-query'
 import { geoRingToKonvaPoints, type ProjectionConfig } from '../lib/projection'
 import type { StageView } from '../api/render'
 
@@ -155,6 +155,11 @@ export function useCanvasArtifacts(
         enabled: Boolean(projectId && projection),
         staleTime: Infinity,
         gcTime: Infinity,
+        // Plan 04.1-05 D-01 E2E fix: keep prior data visible during cacheVersion
+        // refetch so CanvasViewer stays out of the "Loading map…" branch.
+        // Without this, the Stage unmounts on every slider drag → remount
+        // resets prevBoundsKeyRef → fitToView fires → zoom reset (UAT gap #1).
+        placeholderData: keepPreviousData,
         select: (raw: FC<CondadoFeature>): TerritoryRender[] => {
           if (!projection) return []
           const result: TerritoryRender[] = []
@@ -185,6 +190,7 @@ export function useCanvasArtifacts(
         enabled: Boolean(projectId && projection),
         staleTime: Infinity,
         gcTime: Infinity,
+        placeholderData: keepPreviousData,  // Plan 04.1-05 D-01 fix
         select: (raw: FC<BaronyFeature>): BaronyRender[] => {
           if (!projection) return []
           return raw.features.map((f) => ({
@@ -207,6 +213,7 @@ export function useCanvasArtifacts(
         enabled: Boolean(projectId),
         staleTime: Infinity,
         gcTime: Infinity,
+        placeholderData: keepPreviousData,  // Plan 04.1-05 D-01 fix
       },
       {
         // [3] barony_colors.json sidecar — {barony_name: '#rrggbb'}
@@ -218,6 +225,7 @@ export function useCanvasArtifacts(
         enabled: Boolean(projectId),
         staleTime: Infinity,
         gcTime: Infinity,
+        placeholderData: keepPreviousData,  // Plan 04.1-05 D-01 fix
       },
       {
         // [4] territory_metadata.json
@@ -229,6 +237,7 @@ export function useCanvasArtifacts(
         enabled: Boolean(projectId),
         staleTime: Infinity,
         gcTime: Infinity,
+        placeholderData: keepPreviousData,  // Plan 04.1-05 D-01 fix
       },
     ],
   })

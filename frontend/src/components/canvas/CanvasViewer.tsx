@@ -342,12 +342,36 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
     }
     if (viewportKeyRef.current !== vkey) {
       viewportKeyRef.current = vkey
-      fitToView()
+      // Plan 04.1-05 D-01 fix: only re-fit if the user has NOT manually
+      // zoomed. Otherwise a viewport oscillation (workspace layout settle,
+      // sidebar mount, container flex re-measure, slider-driven refetch
+      // briefly re-flowing the layout) clobbers the user's chosen zoom.
+      // This mirrors the bounds-key gate's intent: "don't clobber user zoom".
+      // Legitimate fit cases (genuine window resize from the same baseline)
+      // still fire because currentScale === minScale at that moment.
+      if (Math.abs(currentScale - minScale) < 1e-6) {
+        fitToView()
+      }
     }
-  }, [viewportW, viewportH, projection, fitToView])
+  }, [viewportW, viewportH, projection, fitToView, currentScale, minScale])
 
   // Ctrl/Cmd+0 fit-to-view shortcut
   useKeyboardShortcuts(fitToView)
+
+  // Plan 04.1-05 (D-01 E2E gate): expose Konva Stage scale to Playwright via
+  // a window-level escape hatch. Gated on `import.meta.env.DEV` so the hook
+  // never ships in production builds (mitigates T-04.1-05-01). Mirrors
+  // `currentScale` (already kept in sync with stage.scaleX() by the wheel
+  // handler at line 422-423 and by fitToView at line 295).
+  useEffect(() => {
+    if (!import.meta.env.DEV) return
+    ;(window as unknown as { __forgeStageScale?: number }).__forgeStageScale =
+      currentScale
+    return () => {
+      delete (window as unknown as { __forgeStageScale?: number })
+        .__forgeStageScale
+    }
+  }, [currentScale])
 
   // Pan canvas to center the newly selected territory (D-15 single-select pan).
   // Read scale live from stage.scaleX() — DO NOT add currentScale or
