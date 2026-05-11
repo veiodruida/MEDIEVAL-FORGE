@@ -96,6 +96,19 @@ Plans:
 - [x] 04-05-PLAN.md — Wave 3: BaronyLayer Konva Text labels (D-12 polish)
 - [x] 04-06-PLAN.md — Wave 4: ProjectDetail integration + Playwright SC-3 + SC-4 + cross-surface gate + visual sign-off
 
+### Phase 04.1: Parameter studio polish + cancel-race hardening
+**Goal:** Close the six items deferred from Phase 04 verification (3 UAT polish gaps + 3 code-review warnings recorded in `.planning/phases/04-parameter-studio-live-re-render/04-VERIFICATION.md` and `04-REVIEW.md`). Make the parameter studio production-ready before Phase 05 reuses the canvas for multi-region generalization.
+**Depends on:** Phase 04
+**Status:** planned
+**Success criteria:**
+1. Canvas preserves zoom/pan across slider re-render — `CanvasViewer.tsx:206-208` no longer calls `fitToView()` when the projection reference changes mid-render (UAT gap #1, severity major)
+2. Before/after preview affordance lets the user compare slider impact without re-running (UAT gap #2, severity minor)
+3. In-app discoverability panel surfaces source-of-truth references for the historical 868 AD barony dataset (UAT gap #3, severity minor)
+4. Cancel→POST 409 race (WR-01) treated as non-fatal — debounce re-queue replaces the `useRunStore.finish('error', 'RENDER_BUSY')` transition in `useParameterStudioDispatch.ts` and `ParameterSidebar.tsx`
+5. `_RUN_QUEUES` and `_RUN_TASKS` evicted in `_render_producer` and `_generate_producer` `finally` blocks (WR-02) — late `GET /render/stream` subscribers no longer hang on a drained queue
+6. Single canonical dispatch path (WR-03) — `ParameterSidebar.tsx` consumes `useParameterStudioDispatch` instead of inlining the latest-wins sequence; no duplicate logic
+**Plans:** TBD (gap-closure planning)
+
 ### Phase 05: Region generalization
 **Goal:** Iberia is a config, not a hard-coded path. Other regions/periods supported.
 **Depends on:** Phase 04
