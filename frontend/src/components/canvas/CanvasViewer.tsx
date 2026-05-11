@@ -242,6 +242,33 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
   const [territoriesQ, baroniesQ, condadoColorsQ, baronyColorsQ, metaQ, stageRasterUrl] =
     useCanvasArtifacts(projectId, projection, effectiveCacheVersion, stageView)
 
+  // Phase 04.1 debug 04.1-bug-pan-reset fix: TanStack v5 `keepPreviousData`
+  // (the `placeholderData` helper) does NOT carry data across queryKey changes
+  // when used inside `useQueries`. When `cacheVersion` bumps (slider re-render),
+  // every queryKey changes -> all queries go pending -> `!metaQ.data` etc fire
+  // true -> CanvasViewer unmounts the Konva Stage -> imperative x/y/scale lost
+  // -> next mount sits at default (0,0,1) -> fit-to-view recenters to upper-left
+  // (the reported "pan reset" symptom).
+  //
+  // Fix: keep the last-good data in refs at the component level so the early-
+  // return guards can fall back to stale data while a refetch is in flight.
+  // This keeps the Stage mounted across cacheVersion transitions.
+  const lastGoodMetaRef = useRef(metaQ.data)
+  const lastGoodTerritoriesRef = useRef(territoriesQ.data)
+  const lastGoodBaroniesRef = useRef(baroniesQ.data)
+  const lastGoodCondadoColorsRef = useRef(condadoColorsQ.data)
+  const lastGoodBaronyColorsRef = useRef(baronyColorsQ.data)
+  if (metaQ.data) lastGoodMetaRef.current = metaQ.data
+  if (territoriesQ.data) lastGoodTerritoriesRef.current = territoriesQ.data
+  if (baroniesQ.data) lastGoodBaroniesRef.current = baroniesQ.data
+  if (condadoColorsQ.data) lastGoodCondadoColorsRef.current = condadoColorsQ.data
+  if (baronyColorsQ.data) lastGoodBaronyColorsRef.current = baronyColorsQ.data
+  const effectiveMeta = metaQ.data ?? lastGoodMetaRef.current
+  const effectiveTerritories = territoriesQ.data ?? lastGoodTerritoriesRef.current
+  const effectiveBaronies = baroniesQ.data ?? lastGoodBaroniesRef.current
+  const effectiveCondadoColors = condadoColorsQ.data ?? lastGoodCondadoColorsRef.current
+  const effectiveBaronyColors = baronyColorsQ.data ?? lastGoodBaronyColorsRef.current
+
   // Build projection when metadata loads OR when metadata bounds change.
   // Phase 04.1 D-01: previously this effect ran `if (metaQ.data && !projection)`
   // which froze projection at the first value seen — preventing fit-to-view
@@ -503,7 +530,14 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
   // EARLY RETURNS — safe because every hook above has been called. Every
   // branch must carry `ref={setContainerRef}` so the observer migrates.
   // ------------------------------------------------------------------------
-  if (metaQ.isPending) {
+  // Phase 04.1 debug 04.1-bug-pan-reset fix: do NOT unmount the Stage just
+  // because the query is in pending state — when cacheVersion bumps (slider
+  // re-render), the queryKey changes and metaQ.isPending flips to true even
+  // though placeholderData carries the prior data. The data-guard below
+  // (`!metaQ.data`) handles the genuine "no data" case. Keeping this branch
+  // would still unmount Stage and clobber x/y/scale (default Konva Stage is
+  // 0,0,1 = top-left corner — exactly the reported sympton).
+  if (metaQ.isPending && !effectiveMeta) {
     return (
       <div ref={setContainerRef} style={{ width: '100%', height: '100%', padding: 24 }}>
         Loading map…
@@ -525,12 +559,12 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
   }
 
   if (
-    !metaQ.data ||
+    !effectiveMeta ||
     !projection ||
-    !territoriesQ.data ||
-    !condadoColorsQ.data ||
-    !baroniesQ.data ||
-    !baronyColorsQ.data
+    !effectiveTerritories ||
+    !effectiveCondadoColors ||
+    !effectiveBaronies ||
+    !effectiveBaronyColors
   ) {
     return (
       <div ref={setContainerRef} style={{ width: '100%', height: '100%', padding: 24 }}>
@@ -575,21 +609,21 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
           visible={layerVisibility.condados}
         />
         <TerritoryLayer
-          territories={territoriesQ.data}
-          condadoColors={condadoColorsQ.data}
+          territories={effectiveTerritories}
+          condadoColors={effectiveCondadoColors}
           visible={!isStageOverlay && layerVisibility.condados}
           showBorders={layerVisibility.borders}
           onHoverEnter={handleHoverEnter}
           onHoverLeave={handleHoverLeave}
         />
         <BaronyLayer
-          baronies={baroniesQ.data}
-          baronyColors={baronyColorsQ.data}
+          baronies={effectiveBaronies}
+          baronyColors={effectiveBaronyColors}
           visible={!isStageOverlay && layerVisibility.baronies}
         />
         <DecorationsLayer
-          condados={metaQ.data.condados}
-          condadoColors={condadoColorsQ.data}
+          condados={effectiveMeta.condados}
+          condadoColors={effectiveCondadoColors}
           layerVisibility={{
             capitals: !isStageOverlay && layerVisibility.capitals,
             labels: !isStageOverlay && layerVisibility.labels,
@@ -598,7 +632,7 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
           minScale={minScale}
           isEditMode={false}
         />
-        <InteractionLayer territories={territoriesQ.data} />
+        <InteractionLayer territories={effectiveTerritories} />
       </Stage>
       <LayerTogglePanel />
       <LegendCard />
@@ -651,9 +685,9 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
             }}
           >
             <InspectorSidebar
-              metadata={metaQ.data}
-              territories={territoriesQ.data}
-              baronies={baroniesQ.data}
+              metadata={effectiveMeta}
+              territories={effectiveTerritories}
+              baronies={effectiveBaronies}
               project={{
                 name: project.name,
                 country_qid: project.country_qid,
