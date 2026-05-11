@@ -162,25 +162,38 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
   const [territoriesQ, baroniesQ, condadoColorsQ, baronyColorsQ, metaQ, stageRasterUrl] =
     useCanvasArtifacts(projectId, projection, effectiveCacheVersion, stageView)
 
-  // Build projection once metadata loads
+  // Build projection when metadata loads OR when metadata bounds change.
+  // Phase 04.1 D-01: previously this effect ran `if (metaQ.data && !projection)`
+  // which froze projection at the first value seen — preventing fit-to-view
+  // from ever responding to a region/project switch. We now rebuild projection
+  // when the underlying bounds actually change, gated by a useMemo on the
+  // primitive scalars so a slider re-render that produces a new metaQ.data
+  // object reference with identical bounds is a no-op.
+  const metaBoundsKey = useMemo(() => {
+    if (!metaQ.data) return null
+    const [mapW, mapH] = metaQ.data.map_size
+    const { bounds } = metaQ.data
+    return `${mapW}x${mapH}:${bounds.lon_min},${bounds.lon_max},${bounds.lat_min},${bounds.lat_max}`
+  }, [metaQ.data])
+
   useEffect(() => {
-    if (metaQ.data && !projection) {
-      const [mapW, mapH] = metaQ.data.map_size
-      const { bounds } = metaQ.data
-      setProjection(
-        buildProjectionConfig(
-          {
-            lonMin: bounds.lon_min,
-            lonMax: bounds.lon_max,
-            latMin: bounds.lat_min,
-            latMax: bounds.lat_max,
-          },
-          mapW,
-          mapH,
-        ),
-      )
-    }
-  }, [metaQ.data, projection])
+    if (!metaQ.data || metaBoundsKey === null) return
+    const [mapW, mapH] = metaQ.data.map_size
+    const { bounds } = metaQ.data
+    setProjection(
+      buildProjectionConfig(
+        {
+          lonMin: bounds.lon_min,
+          lonMax: bounds.lon_max,
+          latMin: bounds.lat_min,
+          latMax: bounds.lat_max,
+        },
+        mapW,
+        mapH,
+      ),
+    )
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [metaBoundsKey])
 
   // Fit-to-view callback (shared by auto-fit on mount, button click, Ctrl+0).
   const fitToView = useCallback(() => {
@@ -202,10 +215,56 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
     setCurrentScale(scale)
   }, [projection, viewportW, viewportH])
 
-  // Auto-fit once projection lands AND whenever Stage dimensions change.
+  // D-01 (Phase 04.1): stable projection-bounds key prevents fitToView from
+  // re-firing when a slider triggers a metadata refetch → new projection
+  // object with identical bounds. fitToView still fires when bounds actually
+  // change (project switch, region load) — those cases bump the bounds key.
+  // Viewport resize is handled by a separate effect below so the two
+  // independent reasons to fit (bounds change vs. viewport change) can't
+  // entangle.
+  const projectionBoundsKey = useMemo(() => {
+    if (!projection) return null
+    return `${projection.mapW}x${projection.mapH}:${projection.lonMin},${projection.lonMax},${projection.latMin},${projection.latMax}`
+  }, [
+    projection?.mapW,
+    projection?.mapH,
+    projection?.lonMin,
+    projection?.lonMax,
+    projection?.latMin,
+    projection?.latMax,
+  ])
+
+  const prevBoundsKeyRef = useRef<string | null>(null)
+
+  // Auto-fit on first mount AND on real bounds change. Slider re-renders that
+  // produce a new projection ref with identical bounds DO NOT fire fitToView
+  // here — the bounds-key compare gates the actual call (UAT gap #1).
   useEffect(() => {
-    if (projection) fitToView()
-  }, [projection, fitToView, viewportW, viewportH])
+    if (!projection || projectionBoundsKey === null) return
+    if (prevBoundsKeyRef.current !== projectionBoundsKey) {
+      prevBoundsKeyRef.current = projectionBoundsKey
+      fitToView()
+    }
+  }, [projection, projectionBoundsKey, fitToView])
+
+  // Separate effect for viewport resize: fit-to-view stays responsive to
+  // window/container resize but is NOT entangled with projection reference
+  // changes. Without this, a slider re-render that produces a new projection
+  // object with identical bounds would still reset zoom (UAT gap #1).
+  const viewportKeyRef = useRef<string>('')
+  useEffect(() => {
+    if (!projection) return
+    const vkey = `${viewportW}x${viewportH}`
+    if (viewportKeyRef.current === '') {
+      // First measurement — handled by the bounds-key effect above
+      viewportKeyRef.current = vkey
+      return
+    }
+    if (viewportKeyRef.current !== vkey) {
+      viewportKeyRef.current = vkey
+      fitToView()
+    }
+  }, [viewportW, viewportH, projection, fitToView])
 
   // Ctrl/Cmd+0 fit-to-view shortcut
   useKeyboardShortcuts(fitToView)
