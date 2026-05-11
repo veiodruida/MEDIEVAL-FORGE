@@ -107,10 +107,10 @@ Plans:
 4. Cancel→POST 409 race (WR-01) treated as non-fatal — debounce re-queue replaces the `useRunStore.finish('error', 'RENDER_BUSY')` transition in `useParameterStudioDispatch.ts` and `ParameterSidebar.tsx`
 5. `_RUN_QUEUES` and `_RUN_TASKS` evicted in `_render_producer` and `_generate_producer` `finally` blocks (WR-02) — late `GET /render/stream` subscribers no longer hang on a drained queue
 6. Single canonical dispatch path (WR-03) — `ParameterSidebar.tsx` consumes `useParameterStudioDispatch` instead of inlining the latest-wins sequence; no duplicate logic
-**Plans:** 1/5 plans executed
+**Plans:** 2/5 plans executed
 Plans:
 - [x] 04.1-01-PLAN.md — Wave 1: Backend producer eviction (D-05 / WR-02) — _RUN_QUEUES + _RUN_TASKS evicted in render.py + generate.py finally blocks + pytest coverage
-- [ ] 04.1-02-PLAN.md — Wave 2: Frontend dispatch consolidation + bounded RENDER_BUSY retry (D-06 + D-04 / WR-03 + WR-01) — ParameterSidebar consumes useParameterStudioDispatch; 3-retry/1.5s window
+- [x] 04.1-02-PLAN.md — Wave 2: Frontend dispatch consolidation + bounded RENDER_BUSY retry (D-06 + D-04 / WR-03 + WR-01) — ParameterSidebar consumes useParameterStudioDispatch; 3-retry/1.5s window
 - [ ] 04.1-03-PLAN.md — Wave 3: CanvasViewer stable projection-bounds key + preview gesture (D-01 + D-02) — fitToView gated, hold-spacebar shows prior raster + Anterior badge
 - [ ] 04.1-04-PLAN.md — Wave 2: InspectorSidebar barony historical panel (D-03) — extends BaronyRender with centroid; adds source-coord, source-file label, PT-BR explainer
 - [ ] 04.1-05-PLAN.md — Wave 4: Regression + E2E gate — 3 new Playwright specs (SC-1/SC-2/SC-3) + parity + Phase 04 specs stay green

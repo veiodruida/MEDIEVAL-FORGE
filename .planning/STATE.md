@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: + bootstrap v3 infrastructure
 status: executing
-stopped_at: Completed 04.1-01-PLAN.md
-last_updated: "2026-05-11T12:21:23.119Z"
+stopped_at: Completed 04.1-02-PLAN.md
+last_updated: "2026-05-11T12:29:32.024Z"
 last_activity: 2026-05-11
 progress:
   total_phases: 10
   completed_phases: 4
   total_plans: 27
-  completed_plans: 23
-  percent: 85
+  completed_plans: 24
+  percent: 89
 ---
 
 # Project State (v3)
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md
 ## Current Position
 
 Phase: 04.1 (parameter-studio-polish-cancel-race-hardening) — EXECUTING
-Plan: 2 of 5
+Plan: 3 of 5
 Status: Ready to execute
 Last activity: 2026-05-11
 
@@ -75,6 +75,7 @@ See `.planning/PROJECT.md` Key Decisions table (D-V3-01 through D-V3-07).
 - [Phase 04]: SC-3 Playwright budget relaxed to 30s (D-19); strict 500ms target deferred to Phase 05 pipeline optimization
 - [Phase 04]: UAT 12/12 passed; 3 polish gaps (zoom reset, before/after preview, barony data discoverability) deferred to Phase 04.1
 - [Phase 04.1]: Plan 04.1-01: WR-02 closed — both producers' finally evict _RUN_QUEUES/_RUN_TASKS after sentinel; 6 new pytest cases (3 per producer); 2 pre-existing cancel tests reshaped to subscribe-before-release via threading.Event gate (Rule 1 deviation, advisor-confirmed). 26/26 backend tests + 11/11 parity green.
+- [Phase 04.1]: Plan 04.1-02: WR-01 + WR-03 closed in one wave. useParameterStudioDispatch carries D-04 bounded RENDER_BUSY retry (3 retries / 1.5s window, per-(project_id) useRef<Map> counter, surfaces finish('error', 'RENDER_BUSY') on 4th attempt). ParameterSidebar consumes the canonical hook via onRenderStarted callback — inlined latest-wins copy removed. 5 new vitest cases + 195/195 frontend tests green.
 
 ### Blockers/Concerns
 
@@ -94,6 +95,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-11T12:21:23.116Z
-Stopped at: Completed 04.1-01-PLAN.md
+Last session: 2026-05-11T12:29:32.022Z
+Stopped at: Completed 04.1-02-PLAN.md
 Resume file: None
