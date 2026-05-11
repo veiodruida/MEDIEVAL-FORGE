@@ -255,6 +255,143 @@ async def test_stream_emits_error_event_when_pipeline_raises(
 
 
 # ---- 8. updated_at bumped on success (D-19 cache-bust precondition) ----
+# ---------------------------------------------------------------------------
+# Plan 04.1-01 Task 2 (WR-02 / D-05): _RUN_QUEUES + _RUN_TASKS eviction in
+# _generate_producer's finally block.
+# ---------------------------------------------------------------------------
+
+async def test_generate_producer_evicts_run_queues_and_tasks_on_success(
+    client, in_memory_db, monkeypatch
+):
+    """After _generate_producer runs to completion, _RUN_QUEUES[pid] and
+    _RUN_TASKS[pid] must be popped (WR-02 fix). Without this fix a late
+    GET /generate/stream would find the key present but the queue drained,
+    awaiting queue.get() forever."""
+    from medieval_forge.api.v3 import _run_state
+    from medieval_forge.api.v3 import generate as v3_generate_mod
+
+    pid = await _make_project(in_memory_db, status="draft")
+
+    def _stub_run_pipeline(cfg):
+        if cfg.on_stage:
+            cfg.on_stage("voronoi", "start")
+            cfg.on_stage("voronoi", "done")
+
+    monkeypatch.setattr(v3_generate_mod, "run_pipeline", _stub_run_pipeline)
+
+    r = await client.post(f"/api/v3/projects/{pid}/generate")
+    assert r.status_code == 202
+
+    # Drain the producer to completion.
+    queue = _run_state._RUN_QUEUES.get(pid)
+    if queue is not None:
+        async with asyncio.timeout(10.0):
+            while True:
+                msg = await queue.get()
+                if msg is None:
+                    break
+
+    # Wait for the producer task to fully exit so its finally block ran.
+    task = _run_state._RUN_TASKS.get(pid)
+    if task is not None:
+        try:
+            await asyncio.wait_for(task, timeout=5.0)
+        except (asyncio.CancelledError, Exception):  # noqa: BLE001
+            pass
+
+    assert _run_state._RUN_QUEUES.get(pid) is None, (
+        "_RUN_QUEUES[pid] should be popped in _generate_producer's finally"
+    )
+    assert _run_state._RUN_TASKS.get(pid) is None, (
+        "_RUN_TASKS[pid] should be popped in _generate_producer's finally"
+    )
+
+
+async def test_generate_stream_after_completion_returns_404_not_hang(
+    client, in_memory_db, monkeypatch
+):
+    """A late GET /generate/stream call AFTER the producer finishes must
+    return HTTP 404 within 1 second (NOT hang on a drained queue)."""
+    from medieval_forge.api.v3 import _run_state
+    from medieval_forge.api.v3 import generate as v3_generate_mod
+
+    pid = await _make_project(in_memory_db, status="draft")
+
+    def _stub_run_pipeline(cfg):
+        if cfg.on_stage:
+            cfg.on_stage("voronoi", "start")
+            cfg.on_stage("voronoi", "done")
+
+    monkeypatch.setattr(v3_generate_mod, "run_pipeline", _stub_run_pipeline)
+
+    r = await client.post(f"/api/v3/projects/{pid}/generate")
+    assert r.status_code == 202
+
+    # Drain the producer to completion.
+    queue = _run_state._RUN_QUEUES.get(pid)
+    if queue is not None:
+        async with asyncio.timeout(10.0):
+            while True:
+                msg = await queue.get()
+                if msg is None:
+                    break
+
+    task = _run_state._RUN_TASKS.get(pid)
+    if task is not None:
+        try:
+            await asyncio.wait_for(task, timeout=5.0)
+        except (asyncio.CancelledError, Exception):  # noqa: BLE001
+            pass
+
+    # Late-subscriber: must 404 within 1s, NOT hang.
+    async with asyncio.timeout(1.0):
+        late = await client.get(f"/api/v3/projects/{pid}/generate/stream")
+    assert late.status_code == 404
+    assert "no active generate run" in late.json()["detail"]
+
+
+async def test_generate_producer_evicts_run_queues_on_failure(
+    client, in_memory_db, monkeypatch
+):
+    """When the producer exits via an exception, its finally block must
+    still evict _RUN_QUEUES and _RUN_TASKS (finally runs in all exit paths)."""
+    from medieval_forge.api.v3 import _run_state
+    from medieval_forge.api.v3 import generate as v3_generate_mod
+
+    pid = await _make_project(in_memory_db, status="draft")
+
+    def _failing_run_pipeline(cfg):  # noqa: ARG001
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(v3_generate_mod, "run_pipeline", _failing_run_pipeline)
+
+    r = await client.post(f"/api/v3/projects/{pid}/generate")
+    assert r.status_code == 202
+
+    # Drain to terminal sentinel (error event then None).
+    queue = _run_state._RUN_QUEUES.get(pid)
+    if queue is not None:
+        async with asyncio.timeout(10.0):
+            while True:
+                msg = await queue.get()
+                if msg is None:
+                    break
+
+    task = _run_state._RUN_TASKS.get(pid)
+    if task is not None:
+        try:
+            await asyncio.wait_for(task, timeout=5.0)
+        except (asyncio.CancelledError, Exception):  # noqa: BLE001
+            pass
+
+    assert _run_state._RUN_QUEUES.get(pid) is None, (
+        "_RUN_QUEUES[pid] should be popped even when producer raises"
+    )
+    assert _run_state._RUN_TASKS.get(pid) is None, (
+        "_RUN_TASKS[pid] should be popped even when producer raises"
+    )
+
+
 async def test_generate_bumps_updated_at_on_success(
     client, in_memory_db, monkeypatch
 ):
