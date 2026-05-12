@@ -78,3 +78,23 @@ async def sample_project(async_session):
     await session.commit()
     await session.refresh(proj)
     return proj.id, factory
+
+
+@pytest.fixture(autouse=True)
+def clear_region_cache_between_tests():
+    """Clear the region_loader cache before each test.
+
+    Guarded import: the symbol lands in Plan 05-01 Task 2.
+    No-op until region_loader module is available.
+    """
+    try:
+        from medieval_forge.services.pipeline.region_loader import clear_region_cache
+        clear_region_cache()
+    except ImportError:
+        pass
+    yield
+    try:
+        from medieval_forge.services.pipeline.region_loader import clear_region_cache
+        clear_region_cache()
+    except ImportError:
+        pass
