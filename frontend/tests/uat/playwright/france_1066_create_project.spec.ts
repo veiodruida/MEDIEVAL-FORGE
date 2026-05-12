@@ -42,8 +42,10 @@ test.describe('France 1066 NewProjectModal flow', () => {
 
     // -------------------------------------------------------------------
     // 4. Fill project name
+    //    (Radix TextField.Root renders a plain <input> without a linked <label>;
+    //    use placeholder as the accessible selector — see NewProjectModal.tsx:127)
     // -------------------------------------------------------------------
-    await page.getByLabel('Nome do projeto').fill('UAT France 1066')
+    await page.getByPlaceholder('Ex.: Reconquista 868').fill('UAT France 1066')
 
     // -------------------------------------------------------------------
     // 5. Select France 1066 region from the region picker
@@ -68,7 +70,8 @@ test.describe('France 1066 NewProjectModal flow', () => {
     // 7. Assert navigation to /projects/{id}
     //    The mutation on success calls navigate(`/projects/${id}`)
     // -------------------------------------------------------------------
-    await expect(page).toHaveURL(/\/projects\/\d+/, { timeout: 15_000 })
+    // Project IDs are UUIDs (String(36) in models.py) — not digits
+    await expect(page).toHaveURL(/\/projects\/[\w-]+/, { timeout: 15_000 })
 
     // -------------------------------------------------------------------
     // 8. Workspace renders — generate button available
