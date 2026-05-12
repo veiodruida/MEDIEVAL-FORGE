@@ -1,310 +1,262 @@
 ---
 phase: 05
-reviewers: [gemini, opencode, deepseek-v4-flash, qwen3-30b-a3b-thinking-2507-local]
-reviewed_at: 2026-05-12T09:59:05Z
-deepseek_appended_at: 2026-05-12T10:08:00Z
-qwen3_local_appended_at: 2026-05-12T12:55:00Z
-plans_reviewed: [05-01-PLAN.md, 05-02-PLAN.md, 05-03-PLAN.md, 05-04-PLAN.md, 05-05-PLAN.md, 05-06-PLAN.md, 05-07-PLAN.md, 05-08-PLAN.md, 05-09-PLAN.md, 05-10-PLAN.md]
-skipped: [claude (self), codex (TOML hooks parse error in user config + 401 auth in fallback)]
-hardware: RTX 4070 Ti SUPER 16GB (Qwen3-30B-A3B Q4_K_M, MoE experts on CPU, 64k ctx q8 KV)
-qwen3_timings: prompt 53263 tok @ 307 tok/s (174s), generation 3812 tok @ 16.4 tok/s (233s)
+reviewers: [gemini, codex, opencode]
+reviewed_at: 2026-05-12T15:32:27Z
+plans_reviewed:
+  - 05-01-PLAN.md
+  - 05-02-PLAN.md
+  - 05-03-PLAN.md
+  - 05-04-PLAN.md
+  - 05-05-PLAN.md
+  - 05-06-PLAN.md
+  - 05-07-PLAN.md
+  - 05-08-PLAN.md
+  - 05-09-PLAN.md
+  - 05-10-PLAN.md
+  - 05-11-PLAN.md
+  - 05-12-PLAN.md
 ---
 
-# Cross-AI Plan Review — Phase 05
+# Cross-AI Plan Review — Phase 05 Region Generalization
 
 ## Gemini Review
 
-This is a high-quality, comprehensive, and low-risk set of plans. The detailed breakdown, adherence to a safe migration pattern ("structure -> migrate -> delete"), and extensive, multi-layered testing strategy provide high confidence in a successful outcome.
+# Phase 05 Implementation Plan Review — Region Generalization
 
-### 1. Summary
+This review analyzes the 12 execution plans for Phase 05, including the gap-closure plans (05-11 and 05-12) designed to reach the 12-file Unity contract and satisfy human verification requirements.
 
-The plans for Phase 05 ("Region Generalization") are exceptionally well-crafted. They outline a robust strategy to refactor a hard-coded configuration into a flexible, data-driven YAML system. The core strength lies in the rigorous, safety-first sequencing, which ensures the existing "Iberia" functionality remains verifiable and regression-free throughout the migration via a hard parity gate. The plans demonstrate deep integration with the preceding research, systematically addressing identified pitfalls and security concerns. By breaking the work into ten discrete, verifiable steps, the phase is manageable, and its success is measurable at every stage.
+## 1. Summary
+Phase 05 is an architecturally sound transition from a hard-coded single-region pipeline to a data-driven, multi-region platform. The implementation strategy rigorously adheres to the **"Structure → Migrate → Delete"** pattern (D-17), ensuring that byte-equal parity with the legacy Iberian system is never broken during the swap. The addition of plans 05-11 and 05-12 successfully closes the critical gaps identified in initial verification, specifically the 12-file export contract and the necessity for live UAT browser verification. The use of Pydantic for schema enforcement and strict path-traversal guards demonstrates a high standard of engineering and security.
 
-### 2. Strengths
+## 2. Strengths
+*   **Hard Parity Invariant:** The dependency chain (D-17) is perfectly ordered. `test_iberia_868_yaml.py` (05-03) establishes a non-skippable gate *before* the legacy code is purged (05-05), preventing any "silent" regressions during the refactor.
+*   **Security by Design:** Path traversal risks are mitigated at multiple layers: regex validation of region keys, `pathlib.Path.relative_to` checks for dataset resolution, and Pydantic-level input validation for the `POST /api/v3/projects` endpoint.
+*   **Contract Integrity:** Plan 05-11 specifically addresses the SC-3 gap by implementing `terrain_lookup.png` and `terrain_types.json`. By anchoring the 12-file list in a single constant (`EXPORT_FILE_CONTRACT`), the plan eliminates drift between the exporter and the E2E test suite.
+*   **Deterministic Toy Generation:** `gen_toy_france.py` (05-06) uses jittered-grid Voronoi with a locked `rng_seed=42`, ensuring that the SC-3 "contract gate" is reproducible across different environments without requiring massive geographic datasets.
+*   **Singleton Safety:** Explicit focus on **Pitfall 9** (Singleton Mutation) in Plan 05-04 via `dataclasses.replace` is a mature design choice that prevents concurrent request corruption in the cached loader.
 
-*   **Risk Mitigation**: The "parity gate stays green" principle is brilliantly executed. Establishing the YAML parity test (Plan 05-03) *before* deleting the legacy code (Plan 05-05) is a textbook example of a safe refactoring pattern. The pre-deletion audit in Plan 05-05 further exemplifies this safety-first approach.
-*   **Attention to Detail**: The plans address subtle but critical implementation details that are often missed. This includes using `op.batch_alter_table` for SQLite compatibility (Plan 05-04), preventing singleton mutation of cached objects with `dataclasses.replace` (Plan 05-04), and correcting file-path anchor logic across different modules (Plans 05-04, 05-07).
-*   **Comprehensive Testing**: The validation strategy is outstanding. It covers the full testing pyramid: unit tests for new logic and error paths (05-01, 05-06, 05-09), a critical parity test for regression (05-03), integration tests for API and database changes (05-04), and a final E2E contract test complemented by a manual Playwright UAT (05-10).
-*   **Excellent Documentation & Traceability**: The plans are tightly linked to the `CONTEXT.md` decisions and `RESEARCH.md` findings. For instance, Plan 05-01 adds the missing `PyYAML` dependency, and Plan 05-04 creates a new v3 project route, directly resolving issues flagged in research. This ensures decisions are implemented and knowledge is not lost.
+## 3. Concerns
+*   **Autogen Efficiency (MEDIUM):** As noted in `05-REVIEW.md` (WR-01), `_autogen_territories` reads the same file twice for single-country regions. While functional correctness is maintained via `original_idx` uniqueness, this produces ~80 condados for France instead of the intended ~40. Plans 05-11/12 correctly log this to `STATE.md` as out-of-scope, but it remains a technical debt item that may impact performance in Phase 06/07.
+*   **Singleton Mutation in Tests (LOW):** `test_iberia_868_yaml.py` contains a direct mutation of the `load_region` result (Pitfall 9). While mitigated by the `clear_region_cache_between_tests` autouse fixture, it violates the phase's core mandate on immutability.
+*   **Complex Startup in UAT (LOW):** Plan 05-12 relies on a `checkpoint:human-verify`. While necessary for visual sign-off, the complexity of background process management (killing PIDs, waiting for 200 OK) makes the local runner script sensitive to environment-specific `pkill` behavior.
 
-### 3. Concerns
+## 4. Suggestions
+*   **Tighten Autogen Bounds:** In Plan 05-06, the unit test `test_load_region_autogen` should assert `40 <= len(cfg.condados) <= 50`. Currently, it only checks `>= 40`, which allows the 80-condado doubling bug to pass undetected.
+*   **Fix WR-02 Immediately:** Before closing Phase 05, the `test_iberia_868_yaml.py` fixture should be updated to use `replace(load_region(...), output_dir=...)`. Leaving a known Pitfall 9 violation in the *canonical parity gate* is a poor precedent for Phase 06.
+*   **Accessibility Labels:** In Plan 05-08 (`NewProjectModal.tsx`), ensure `<Text as="label">` uses the `htmlFor` prop linked to the `TextField` ID. This is required for Playwright's `getByLabel` selector to work reliably and for proper screen reader support.
 
-*   **MEDIUM: Incomplete Initial Audit**: The `RESEARCH.md` document initially missed several test files that imported the symbols targeted for deletion. Plan 05-05 correctly identifies and migrates these files after a more thorough audit. While the plan itself is now correct, this points to a potential weakness in the initial investigation process. An incomplete audit could lead to breakage if not caught by such a diligent execution plan.
-*   **LOW: Inconsistent `wave` Metadata**: The `wave` numbers across the plans (e.g., 2, 3, 4, 5) do not strictly follow a linear sequence, which can be slightly confusing for a human reviewer. The `depends_on` array correctly enforces the execution order, making this a minor clerical issue with no technical impact.
-*   **LOW: Ambiguity in UI Legacy Path**: Plan 05-08 gives the executor discretion on how to handle the UI link to the legacy project creation page. This could result in an "orphaned" page that is still accessible via URL but has no UI entry point. While low-impact, it leaves a piece of the old implementation in an ambiguous state.
+## 5. Risk Assessment
+**Risk Level: LOW**
 
-### 4. Suggestions
+The phase is low-risk due to the exhaustive automated test coverage (Unit, Parity, and E2E) and the "golden set" comparison for Iberia. The most complex logic (the 11-stage pipeline) is already proven; Phase 05 merely changes the *injection source* of the configuration. The gap closure plans (11 and 12) have finalized the Unity contract requirements, leaving no known functional gaps before Phase 06.
 
-*   **Formalize Pre-Refactor Audits**: Incorporate mandatory, repo-wide `grep` searches for all symbols targeted for deletion or modification into the `RESEARCH.md` template. This would make the discovery process more robust and prevent corrective actions like the one seen in Plan 05-05.
-*   **Clarify Wave Terminology**: For future milestones, either enforce a strict sequential numbering for `waves` or add a sentence to the planning template clarifying that waves are for logical grouping and the `depends_on` field is the sole source of truth for scheduling.
-*   **Prescribe UI Legacy Fate**: Update Plan 05-08 to include a specific instruction for the legacy link, such as: "The `<Link to=\"/projects/new\">` component should be removed from the `ProjectList` page. The route and its backing component (`ProjectNew.tsx`) must remain untouched for now."
+**Approved for execution.**
 
-### 5. Risk Assessment
-
-**Overall Risk: LOW**
-
-This phase is a significant architectural change, yet the execution risk is remarkably low. The planning methodology is the primary mitigating factor. By building a safety net (the parity test) before touching the high wire, the process ensures that the most valuable existing functionality is never compromised. The detailed, incremental nature of the plans, combined with continuous verification, security-mindedness, and direct mitigation of researched pitfalls, leaves very little room for error. The identified concerns are minor and do not materially affect the probability of a successful outcome.
-
-### Per-Plan Notes (Gemini)
-
-**05-02 (MEDIUM risk)** — `CONDADOS` transformation for YAML output (RESEARCH Pitfall 3) is not adequately addressed in the script outline. Manual field mapping introduces risk of functional discrepancy if not precisely handled by executor.
-
-**05-03 (LOW)** — `dataclasses.replace` enforcement should be explicit instruction rather than conditional suggestion.
-
-**05-04 (LOW)** — `_autogen_territories` reliability for france_1066/england_1216 depends on Plan 05-01.
-
-**05-05 (LOW)** — `backend/medieval_forge/data/regions/iberia_868/__init__.py` fate not definitively prescribed.
-
-**05-06 (MEDIUM)** — Voronoi `_voronoi_polygons` drops infinite regions (~6–10 of N=50). Acceptance criteria `>=40 and <=50` accommodates, but acknowledge in code comment (RESEARCH Pitfall 10).
-
-**05-07 (LOW)** — Endpoint re-parses all YAMLs per request; `display_name` fallback to `key` is not always user-friendly.
-
-**05-08 (LOW)** — `useCreateV3Project` vs extending `useCreateProject`: noted as a deliberate choice consistent with new v3 endpoint in 05-04.
-
-**05-09 (LOW)** — Missing `display_name: England 1216 AD` in YAML.
-
-**05-10 (LOW)** — Playwright text selectors (`'Novo projeto'`, `/concluído|complete|done/i`) fragile; prefer `data-test-id`. Confirm `run_pipeline` import path.
 
 ---
 
-## OpenCode Review (minimax-m2.5-free)
+## Codex Review
+
+## Summary
+
+Phase 05 is generally well-planned and has a strong migration strategy: externalize Iberia into YAML, prove parity before deleting legacy code, then extend the system to France/England through the same loader/API/UI path. The plan set is unusually thorough on security, test coverage, and sequencing. The main risks are implementation complexity in `region_loader.py`, possible over-scoping through frontend/UAT scaffolding in early waves, and the late terrain gap closure in 05-11, which does close SC-3 on paper but should be treated as a minimal contract implementation, not a real terrain system.
+
+## Strengths
+
+- **Good D-17 sequencing.** Plans 05-01 → 05-05 preserve the parity-gate-green invariant: loader first, YAML migration second, parity gate third, callsite swap fourth, deletion last.
+
+- **Security is taken seriously.** `load_region()` validates `region_key`, uses `yaml.safe_load`, forbids unknown YAML keys, and guards dataset paths with `relative_to(region_root)`.
+
+- **Pitfall 9 is correctly identified.** The plans repeatedly require `dataclasses.replace(load_region(...), ...)` before mutating per-run fields, which is necessary because the loader cache returns shared config objects.
+
+- **Good coverage shape.** The phase includes unit tests for schema/cache/autogen, parity tests for Iberia, API tests for regions/projects, backend E2E for France export, frontend unit tests, and Playwright UAT.
+
+- **05-11 closes the explicit SC-3 gap.** Moving `terrain_lookup.png` and `terrain_types.json` into `EXPORT_FILE_CONTRACT` and emitting them in `_write_outputs_to_disk` satisfies the ROADMAP’s “file contract IS” wording.
+
+- **France/England scope is disciplined.** Empty territory arrays plus deterministic autogen respect the “geometry only, research deferred” boundary.
+
+## Concerns
+
+- **HIGH: `region_loader.py` is doing too much in 05-01.** It owns schema validation, path security, dataset resolution, cache behavior, territory conversion, GeoJSON parsing, autogen, and test scaffolding. That is a lot for the first wave and makes defects likely. D-03 autogen in particular is domain logic, not just config loading.
+
+- **HIGH: 05-01 scaffolds too many future test files.** Creating placeholder tests across backend, frontend, and Playwright before the relevant code lands risks fake confidence and churn. It also weakens the signal of “pytest collection clean” because skipped placeholders can hide plan drift.
+
+- **HIGH: Autogen double-read bug is real and should not be deferred casually.** Since `france_1066.yaml` intentionally points `pt_geojson` and `es_input` to the same file, `_autogen_territories` must dedupe paths. Otherwise France produces ~80 condados from ~40 features, which undermines the visual/UAT expectation and performance assumptions.
+
+- **MEDIUM: 05-11 terrain implementation is contract-minimal.** A flat “plains everywhere on land, ocean sentinel elsewhere” satisfies the 12-file export contract, but it may create a misleading sense that terrain is implemented. The summary and docs must be explicit that this is a placeholder contract emitter.
+
+- **MEDIUM: `OCEAN_RGB = (0,0,0)` collision guard may be too strict.** Guarding black against all visual colors can fail future legitimate palettes. It is acceptable for Phase 05, but this should be documented as an export sentinel constraint, not a general terrain rule.
+
+- **MEDIUM: Plan 05-04 adds `POST /api/v3/projects` instead of extending existing project creation.** This resolves the open question, but it creates two creation paths. The plan should explicitly define which one the UI uses and whether legacy `/projects` remains supported long-term.
+
+- **MEDIUM: `region_key` validation differs by layer.** Loader regex uses `^[a-z0-9_]+$`, while API uses length constraints too. Consider one shared helper or constant to avoid drift.
+
+- **MEDIUM: Cache policy is explicit-only but still returns mutable singletons.** This is workable only if every consumer uses `replace()`. The remaining parity-test mutation found in review shows this rule is easy to violate.
+
+- **LOW: Path anchor comments are brittle.** Repeated “parents[4], do not change” comments lock a fragile implementation. A shared `repo_root()` helper would be safer and less noisy.
+
+- **LOW: 05-12 runner process cleanup on Windows is fragile.** The PowerShell process-kill filter may miss dev servers because `node` window titles are not reliable. It is acceptable for UAT helper scripts but not robust automation.
+
+## Suggestions
+
+- Split 05-01 internally: keep loader/schema/path/cache first, then add autogen as a focused second task with its own tests.
+
+- Replace placeholder future tests with either real minimal contract tests or omit them until the implementation plan that owns them.
+
+- Fix `_autogen_territories` path dedupe before UAT:
+  ```python
+  seen_paths: set[Path] = set()
+  for geojson_path in (dataset.pt_geojson, dataset.es_input):
+      if geojson_path in seen_paths:
+          continue
+      seen_paths.add(geojson_path)
+  ```
+
+- Tighten France autogen tests to assert a bounded count, e.g. `40 <= len(cfg.condados) <= 50`, not only `>= 40`.
+
+- Fix `backend/tests/parity/test_iberia_868_yaml.py` to use `replace(load_region(...), output_dir=...)`.
+
+- Create a shared path helper for region root discovery instead of repeating `parents[4]` in API modules.
+
+- Make 05-11 comments explicit: terrain files are Phase 05 contract placeholders, richer terrain is deferred.
+
+- In 05-10/05-11, ensure `EXPORT_FILE_CONTRACT` is the only source of truth and the export writer/test both import it.
+
+- Add a test that verifies `load_region("france_1066")` is deterministic across `clear_region_cache()` calls, including generated `original_idx`, colors, and condado order.
+
+- For 05-12, add a fallback note for Windows users if `pwsh` is unavailable: `powershell -ExecutionPolicy Bypass -File scripts/run_france_uat.ps1`.
+
+## Risk Assessment
+
+**Overall risk: MEDIUM.**
+
+The architecture and sequencing are sound, and the plans directly address the major correctness risks: parity preservation, safe YAML loading, path traversal, mutable cached configs, and the 12-file export gap. Risk remains medium because the phase touches many layers at once, introduces a complex loader/autogen path, and relies on late gap closures for SC-3. The biggest practical risk is not security or parity; it is subtle data-shape drift in autogen/export behavior that passes tests but produces visually odd France output.
+
+
+---
+
+## OpenCode Review
+
+## Phase 05 Plan Review
 
 ### Summary
 
-Phase 05 is a well-structured, dependency-order-aware migration with strong parity gates and clear contract tests. The 17 locked decisions constrain the phase tightly, the D-17 sequencing rule (parity gate before deletion) is correctly implemented, and the architecture (loader → YAML → deletion) follows the proven migrate-before-delete pattern. The main risks are subtle: France E2E async handling, migration script `dataset` dict construction, and a few test scaffold gaps that need filling before green runs are meaningful.
+Phase 05 ("region generalization") delivers a clean YAML-driven region loader, a new `POST /api/v3/projects` endpoint with strict validation, a `GET /api/v3/regions` discovery endpoint, three region templates (Iberia migrated, France toy, England YAML-only), a frontend `NewProjectModal` with Radix primitives, and a France 1066 E2E test. Plans 05-11/05-12 were added as gap closures after verification identified that the pipeline was producing 10 files instead of the 12-file Unity contract. The architecture is sound and security is handled well, but the retroactive scope expansion reveals a planning gap that should have been caught in the original 10-plan sequence.
+
+---
 
 ### Strengths
 
-- **D-17 sequencing enforced**: Plans 05-03 (parity gate) → 05-04 (callsite swap) → 05-05 (deletion) is correctly ordered. The parity gate exists *before* `iberia_config()` disappears.
-- **Security-first loader design**: regex key validation, `yaml.safe_load` only, path-escape guard via `relative_to()`, explicit-only cache — all five security layers are unit-tested in Plan 05-01.
-- **Idempotent migration scripts**: France generator + Iberia migrator both re-run safely, verified by sha256 roundtrip tests.
-- **Correct empty-input behavior verified**: RESEARCH confirmed `empty border_polygon` → all-False mask and `empty pt_duchies` → single global KD-tree require zero code changes.
-- **SC-3 contract test correctly scoped**: France E2E asserts file presence + dimensions + JSON validity + `original_idx` uniqueness, NOT pixel content.
-- **England YAML-only contract**: no `inputs/` directory created; `has_dataset: false` exercised through both loader error path and GET endpoint.
-- **Frontend/Backend separation maintained**: `useCreateV3Project` is additive; `useCreateProject` + `ProjectNew.tsx` stay untouched.
-- **`dataclasses.replace()` at every swap**: RESEARCH Pitfall 9 (cached singleton mutation) is explicitly mitigated in both `generate.py` and `render.py`.
+- **Security is first-class.** `yaml.safe_load` enforced (no `yaml.load`), `^[a-z0-9_]+$` region key regex before any filesystem access, `relative_to(region_root)` traversal guard on dataset paths, pydantic `extra='forbid'` schema, and `Field(ge=3.0, le=4.5)` on `smooth_sigma` — all five security boundaries from RESEARCH T-05-01-01 through T-05-04-04 are covered. The threat model in each plan is accurate.
+- **D-17 sequencing is the strongest part of this phase.** The 10-plan ordering (loader → YAML emit → YAML parity gate → callsite swap → delete → France toy → regions endpoint → frontend modal → England YAML → France E2E) enforces the parity-gate-stays-green invariant at the commit level. The rule "Plan 05-05 deletion cannot land before Plan 05-03 YAML parity gate" is explicit and enforced by the `depends_on` chain.
+- **Explicit-only cache policy** (recommended in RESEARCH, adopted in D-15) avoids Windows mtime resolution flake (1-second FAT / 100ns NTFS with caching that masks back-to-back edits). The `dataclasses.replace()` immutability pattern in `generate.py` and `render.py` is consistent and correct.
+- **`dataclasses.replace(cfg, ...)` everywhere** — the singleton-non-mutation contract (RESEARCH Pitfall 9) is applied uniformly across production callsites (05-04 Tasks 2-3), test fixtures (05-05 Task 2), and the France E2E test (05-10). The integration test `test_load_region_singleton_not_mutated` regression-guards this contract.
+- **Path depth comment is permanent** — both `api/v3/projects.py` and `api/v3/regions.py` carry `parents[4] DO NOT change to parents[3]` comments anchoring the empirical fix. This prevents the regression from re-entering future work.
+- **`EXPORT_FILE_CONTRACT` as single source of truth** (R-14, Plan 05-10/05-11) prevents silent drift. The tuple constant in `contracts.py` is imported by the E2E test — any rename now produces an import-time error rather than a silent test pass.
+- **Autogen fallback is clean separation** — loader-side synthesis keeps the pipeline branch Iberia-agnostic. `original_idx` is required on every autogen condado (CLAUDE.md rule #4, Nájera bug guard), enforced in the generator loop and verified by `test_load_region_autogen`.
+
+---
 
 ### Concerns
 
-**HIGH**
+1. **[HIGH] Retroactive SC-3 gap — 05-11/05-12 scope creep.** The ROADMAP Phase 05 entry lists 10 plans; VERIFICATION identified that the pipeline produces 10 files, not 12, and added two gap-closure plans. The deferral was documented in a code comment (`EXPORT_FILE_CONTRACT_DEFERRED`) but this is not a ROADMAP-approved deviation. Plans 05-11/05-12 retroactively expand Phase 05 scope by ~20%. This is the right call (SC-3 wording "file contract IS" is unambiguous), but it should have been caught during Phase 05 planning, not post-verification. The root cause is that no plan in the original 10 explicitly verified the 12-file contract against `CLAUDE.md` — the E2E test in Plan 05-10 was written against a 10-file `_ALWAYS_PRESENT` set.
 
-1. **Migration script `dataset` dict construction (05-02 Task 1)** — If script uses `cfg.dataset` (dataclass) directly instead of `{"pt_geojson": ..., ...}` dict, `yaml.safe_dump` would serialize as `!!python/object:apply:...` → pydantic validation fails → parity gate red. Fix: always construct the dict explicitly from `cfg.dataset.pt_geojson.name` (or path string).
+2. **[HIGH] WR-01: Autogen double-read produces ~80 condados for single-country regions.** `_autogen_territories` in `region_loader.py:389-411` iterates `(dataset.pt_geojson, dataset.es_input)` unconditionally. France 1066 and England 1216 YAMLs point both fields at the same file (documented single-country fallthrough). Every feature is appended twice, yielding ~80 condados instead of ~40. The unit test `test_load_region_autogen` asserts `>= 40` which passes for both 50 and 100, masking the regression. The code review correctly flags this. **Impact:** No CLAUDE.md rule is violated (`original_idx` uniqueness is preserved), but Voronoi seed collision produces spurious barony centroids and the E2E test's cardinality assertions (if any) could be wrong.
 
-2. **France E2E async handling (05-10 Task 1)** — `run_pipeline` is `async def`; calling synchronously raises `TypeError: coroutine was never awaited`. Fix: use `httpx.AsyncClient` / FastAPI `TestClient` hitting `POST /api/v3/projects/{id}/generate`, or `@pytest.mark.asyncio` + `await run_pipeline(cfg)`.
+3. **[HIGH] WR-02: Parity test mutates `load_region()` singleton** (`test_iberia_868_yaml.py:42-44`). Direct `cfg.output_dir = str(out)` on the cached object — the exact pattern CLAUDE.md's Pitfall 9 / T-05-04-04 rule prohibits. The `clear_region_cache_between_tests` autouse hides the blast radius in CI, but this is a focus-area violation. Every other touchpoint in the phase uses `replace()` — the parity test is the outlier. Fix is a one-line change.
 
-**MEDIUM**
+4. **[MEDIUM] Autogen condados: `pt_geojson == es_input` produces duplicate seeds.** When `france_1066.yaml` sets `pt_geojson: inputs/france_municipalities_toy.geojson` and `es_input: inputs/france_municipalities_toy.geojson`, the autogen reads the same file twice. The dedup loop at `_autogen_territories` uses `original_idx` dedup (which is always unique) but does NOT prevent the `representative_point` computation from running twice. Result: centroid coordinates for the same polygon appear twice in the seed list → Voronoi seeds are duplicated → more cells than intended.
 
-3. **`output_dir` type in migration script (05-02)** — `RegionConfigSchema.output_dir: str` is required; if `iberia_config().output_dir` is `None` pre `__post_init__`, dataclass constructor fails. Fix: assert and extract explicitly: `assert cfg.output_dir, "must be set"`.
+5. **[MEDIUM] Plan 05-12 `checkpoint:human-verify` is architecturally inconsistent with automated CI.** The checkpoint asks the user to run `bash scripts/run_france_uat.sh` or `pwsh scripts/run_france_uat.ps1` locally. The resume signal is `approved`/`aprovado`. But Phase 04.1-05 Playwright specs are expected to run in CI (`npx playwright test --reporter=line`). If the user says `approved`, the spec has still never run in a CI headless browser session — only in the user's local headed session. The cross-regression check ("all prior Playwright specs stay green") requires running the full suite, which may not be what the user tested.
 
-4. **`original_idx` in migrated `CONDADOS` (05-02)** — `TerritorySchema.original_idx: int` required. If `CONDADOS` positional tuples don't include it, migration fails or YAML omits → `ValidationError`. Fix: add `original_idx=i+1` in migration script (CLAUDE.md rule 4).
+6. **[MEDIUM] `export.py` `EXPORT_FILE_CONTRACT` update vs `__init__.py` wire-up is split across Plans 05-10 and 05-11.** Plan 05-10 adds `EXPORT_FILE_CONTRACT` constant to `contracts.py` and imports it in the E2E test. Plan 05-11 edits `__init__.py` to wire the actual terrain writes and updates `contracts.py` to expand the tuple from 10→12. If Plan 05-10 commits before Plan 05-11, the constant would list 10 files but the actual pipeline would still be writing 10 — the E2E test would pass because the constant and the pipeline match. The gap would only surface when Plan 05-11 ships the terrain writes. This ordering risk exists within the gap-closure sequence.
 
-5. **`DatasetSchema.pt_geojson` required vs optional (05-01 Task 2)** — Required field means future regions accidentally omitting `dataset` raise `ValidationError` at load time rather than clear "no dataset" message. Fix: make `pt_geojson`, `es_input`, `mountain_river_json` optional with `None` default, then raise `FileNotFoundError` if all `None`.
+7. **[MEDIUM] England's `load_region` error path depends on the template-only guard ordering.** Plan 05-09's `test_england_1216_missing_inputs.py` asserts that `load_region('england_1216')` raises `FileNotFoundError` containing "template-only". This depends on the `_autogen_territories` path NOT firing before the dataset existence check. The current code flow is: YAML parse → `_resolve` each dataset path → `FileNotFoundError` if any missing. Since England has empty `dataset.*` fields, `_resolve` is never called (all `None`), so the `all_unset` check fires. If future work changes the order (e.g., autogen before path resolution), the error message changes.
 
-6. **`parents[4]` depth verification missing explicit comment (05-04 Task 2, 05-07 Task 1)** — Brief comment risks future maintainers reverting. Fix: add permanent anchor comment: `# Path depth: .../api/v3/X.py → parents[4] = repo root. DO NOT change to parents[3].`
+8. **[MEDIUM] `region_loader.py:350-360` no-op try/except** — catches exactly the exceptions the inner `_resolve` raises and re-raises unchanged. Harmless but misleading. This is INFO-02 in the code review.
 
-**LOW**
+9. **[LOW] England 1216 YAML's `pt_geojson: inputs/england_municipalities.geojson` points to a file that will never exist** (`inputs/` directory absent). The `all_unset` check in `load_region` catches this, but `_resolve` is never called because all three fields are `None` after the YAML is parsed... wait, no — England's YAML has all three dataset fields populated (`pt_geojson`, `es_input`, `mountain_river_json` all point to `inputs/...`). The YAML is not missing fields; the paths just point to non-existent files. So `_resolve` IS called, and `resolved.exists()` returns `False`, triggering `FileNotFoundError("template-only")`. This is correct, but it means the "template-only" error message is slightly misleading — England's dataset block is populated, the files just don't exist on disk.
 
-7. **`useCreateV3Project` query-key invalidation (05-08 Task 1)** — Plan says invalidates `['projects']`; if actual key is `['v3', 'projects']` or `['projects', 'list']`, invalidation misses. Fix: confirm exact query key in `client.ts`.
+10. **[LOW] `Select.Root` mixed controlled/uncontrolled mode** (`NewProjectModal.tsx:144-148`). `defaultValue="iberia_868"` and `value={regionKey}` both set — Radix uses the controlled `value`, making `defaultValue` dead. React DevTools warns. The initial value is already wired via `useEffect` at lines 42-46, so `defaultValue` is redundant.
 
-8. **Wave headers don't reflect execution order** — 05-07 (wave 3) executes before 05-05 (wave 5) but dependencies are correct. Could confuse orchestrators. Fix: align wave numbers with dependency depth, or note that waves are organizational only.
+11. **[LOW] `<Text as="label">` without `htmlFor`** (`NewProjectModal.tsx:120, 140`). Visual labels with no accessibility association. Playwright UAT already documents the consequence — spec uses placeholder-based selection. Fix is 2 lines per label.
 
-9. **Playwright UAT human checkpoint blocking (05-10 Task 2)** — `checkpoint:human-verify` blocks auto-advance. Mitigation: define explicit visual pass/fail criteria (e.g., "≥90% of map area non-white, no single-pixel artifacts at 100% zoom").
-
-10. **France `es_input` self-reference (05-06 Task 1)** — `es_input: inputs/france_municipalities_toy.geojson` same as pt_geojson works (single-country fallback) but undocumented. Fix: add comment `# single-country fallback: same file as pt_geojson`.
-
-11. **`test_iberia_868.py` retirement timing (05-05)** — "retire after one CI cycle confirms equivalence" delayed by unrelated flakes. Fix: retire unconditionally — D-14's `test_iberia_868_yaml.py` is canonical.
+---
 
 ### Suggestions
 
-| # | Plan | Suggestion |
-|---|------|------------|
-| S1 | 05-01 | Add a test for `dataclasses.replace()` immutability: mutate returned `cfg.output_dir`, reload, assert unchanged. |
-| S2 | 05-02 | Test that emitted YAML key set matches `set(RegionConfigSchema.model_fields.keys()) ∪ {'dataset', 'kingdoms', 'duchies', 'condados', 'key'}`. |
-| S3 | 05-03 | Add comment in `test_iberia_868_yaml.py` noting it supersedes `test_iberia_868.py` after 05-05. |
-| S4 | 05-04 | Extract `_make_pipeline_cfg(project, **overrides)` helper to DRY `replace()` calls in generate.py/render.py. |
-| S5 | 05-05 | CI grep gate: `grep -rn "iberia_config\b" backend/medieval_forge/ --include="*.py"` must return 0. |
-| S6 | 05-06 | Add `data/regions/france_1066/README.md` noting GeoJSON is synthetic, deterministic, committed fixture. |
-| S7 | 05-08 | Add `data-testid="new-project-modal"` to `Dialog.Content` root for resilient Playwright selectors. |
-| S8 | 05-10 | Extract the 12-file contract into shared constant in `backend/medieval_forge/services/pipeline/contracts.py`. |
+1. **Fix WR-01 (autogen double-read) before Phase 06 ships.** Add a `seen_paths: set[Path]` dedup in `_autogen_territories` (see code review fix) and tighten the unit test bound to `40 <= len(cfg.condados) <= 55` to catch regressions. Alternatively, route single-country regions (where `pt_geojson == es_input`) through a one-tree autogen path that skips the duplicate read.
+
+2. **Fix WR-02 (parity test singleton mutation) in the same commit as any future work on `test_iberia_868_yaml.py`**. One-line `cfg = replace(load_region("iberia_868"), output_dir=str(out))` fix. This is consistent with every other test fixture in the phase.
+
+3. **Run the France Playwright spec in a CI headless session** before Phase 06 begins, not just via the 05-12 checkpoint. The user's local headed session validates the visual surface; the CI headless run validates that the spec is reproducible without a display. These are complementary, not substitutes.
+
+4. **Add `terrain_lookup.png` and `terrain_types.json` to the YAML parity test's parametrized file list** (in `test_iberia_868_yaml.py` or its golden file fixture) once Plan 05-11 ships. Today the parity test does NOT check these files because they were absent from the Phase 01 golden set. Plan 05-11 intentionally does not compare them (terrain is new output), but Phase 06 should add a structural-equal assertion for `terrain_types.json` to catch schema drift.
+
+5. **Clarify in `data/regions/england_1216.yaml`** that the dataset fields point to intentionally-absent files (`inputs/england_municipalities.geojson`) and that `load_region` raises `FileNotFoundError` with "template-only" for this reason. A comment avoids confusion when a future developer reads the YAML and wonders why `has_dataset: false`.
+
+6. **Remove `defaultValue="iberia_868"` from `Select.Root`** in `NewProjectModal.tsx:144`. The initial value is already set by the `useEffect` at lines 42-46 that calls `setRegionKey(defaultRegionKey(regions))`. Redundant `defaultValue` is dead code that causes React DevTools warnings.
+
+7. **Add `htmlFor` to the two label elements** in `NewProjectModal.tsx:120, 140`. Wrap the inputs in `id` attributes and link them with `htmlFor`. This makes the Playwright spec more robust (can use `getByLabel` instead of placeholder-based selection) and fixes the accessibility violation.
+
+8. **Replace `Toast.Root duration={Infinity}`** with a documented value (`duration={1000 * 60 * 60 * 24}`) per the code review fix, or remove `duration` entirely and rely on user-driven dismiss.
+
+9. **Delete the unused `_make_toy_region_with_territories` helper** in `test_region_loader.py:100-141` — it's defined but never called and contains a duplicated `kingdoms:` YAML key.
+
+10. **Delete `_make_on_stage` dead helper** in `render.py:94-99` — defined but never referenced; the producer inlines an equivalent closure.
+
+11. **Remove the no-op try/except** in `region_loader.py:350-360` — let exceptions propagate naturally.
+
+---
 
 ### Risk Assessment
 
-**Overall: MEDIUM**
+| Risk | Likelihood | Impact | Overall |
+|------|-----------|--------|---------|
+| WR-01 autogen double-read propagates to Phase 06 validation | HIGH (already present) | MEDIUM (Voronoi seeds collide; original_idx preserved) | **MEDIUM** |
+| WR-02 parity test singleton mutation breaks under concurrency | MEDIUM (CI has autouse cache clear; parallel pytest-xdist would fail) | HIGH (randomized output_dir across workers) | **HIGH** |
+| Phase 06 re-validates Phase 05 gap-closure work (05-11 terrain) | LOW (terrain.py tested in 05-11 unit + e2e + smoke) | LOW | **LOW** |
+| England "template-only" error message changes if autogen order changes | LOW | LOW | **LOW** |
+| Playwright UAT not reproducible in CI headless (05-12 checkpoint only) | MEDIUM | MEDIUM | **MEDIUM** |
+| `EXPORT_FILE_CONTRACT` constant and pipeline output drift (05-10→05-11 ordering) | LOW (05-11 depends on 05-10; constant and wire-up ship together) | HIGH | **MEDIUM** |
 
-| Risk | Likelihood | Impact | Mitigation |
-|------|-----------|--------|------------|
-| Migration script `dataset` dict is a dataclass | HIGH | HIGH | Explicit dict construction in script |
-| France E2E test async handling wrong | HIGH | HIGH | Use `TestClient` (sync) or `@pytest.mark.asyncio` |
-| `original_idx` missing from migrated CONDADOS | MEDIUM | HIGH | Add `original_idx=i+1` in migration script |
-| `output_dir` uninitialized in `iberia_config()` | MEDIUM | HIGH | Assert and extract explicitly |
-| UI modal text mismatch with Playwright selectors | LOW | MEDIUM | Add `data-testid` attributes |
-| `regions.py` deletion breaks undiscovered callsite | LOW | HIGH | Pre-deletion audit (05-05 Task 1) + CI grep gate |
-| England `has_dataset: false` UX not tested in Playwright | LOW | LOW | England disabled state tested in vitest; UAT focus is France |
+**Overall Phase 05 Risk: MEDIUM.**
 
-### Verdict
+The phase is well-structured, security is solid, and the core deliverables (YAML loader, `load_region`, region selection wire, France toy, frontend modal) are clean and correct. The two warnings (autogen double-read, parity test mutation) are live bugs, not hypothetical risks. Both are fixable in a single commit each. The SC-3 gap closure (05-11/05-12) is the right call but reveals that the original 10-plan sequence missed an end-to-end 12-file contract assertion — this should be remedied before Phase 06 begins, not deferred to Phase 06's validation work.
 
-**Execute with fixes for HIGH concerns (#1 migration script `dataset` dict, #2 France E2E async pattern) before their respective plans run.** Dependency graph is sound, security model complete, parity-gate-stays-green invariant correctly enforced.
 
 ---
 
 ## Consensus Summary
 
-### Agreed Strengths (Gemini ∩ OpenCode)
+All three reviewers approve Phase 05's architecture and sequencing. Risk verdicts: **Gemini LOW, Codex MEDIUM, OpenCode MEDIUM** — divergence driven by how much weight each places on live warnings (WR-01/WR-02) and 05-11/05-12 retroactive scope expansion.
 
-- **D-17 sequencing**: Parity gate (05-03) before deletion (05-05) is correctly enforced and verified.
-- **`dataclasses.replace()` at every swap**: RESEARCH Pitfall 9 mitigation explicit in both generate.py and render.py.
-- **Security model**: Loader uses `yaml.safe_load`, regex key validation, path-escape guard via `relative_to()`.
-- **Testing pyramid**: Unit + parity + integration + E2E + Playwright UAT all present.
-- **`parents[4]` path anchor**: Both plans correctly fix the depth bug in 05-04 and 05-07.
-- **`batch_alter_table` for SQLite**: Migration 0004 wraps add_column correctly.
-- **Frontend additive**: `useCreateV3Project` does not break legacy `useCreateProject` / `ProjectNew.tsx`.
+### Agreed Strengths (2+ reviewers)
 
-### Agreed Concerns (raised by both)
+- **D-17 sequencing preserves Iberia parity invariant** — loader → YAML emit → parity gate → callsite swap → delete order is correct (Gemini, Codex, OpenCode).
+- **Security posture is solid** — `yaml.safe_load`, `^[a-z0-9_]+$` region key regex, `relative_to(region_root)` path-traversal guard, pydantic `extra='forbid'`, `Field(ge=3.0, le=4.5)` on `smooth_sigma` (Gemini, Codex, OpenCode).
+- **Pitfall 9 / singleton-non-mutation contract** explicitly enforced via `dataclasses.replace()` on production callsites (Gemini, Codex, OpenCode).
+- **`EXPORT_FILE_CONTRACT` as single source of truth** prevents drift between exporter and E2E test (Gemini, Codex, OpenCode).
+- **Deterministic France toy** — `rng_seed=42` Voronoi-from-grid keeps SC-3 reproducible (Gemini, OpenCode).
 
-| Concern | Plans | Highest severity |
-|---------|-------|------------------|
-| Wave numbers don't reflect strict execution order | 05-06, 05-07, 05-09 | LOW (clerical) |
-| Plan 05-09 missing `display_name` for england_1216 | 05-09 | LOW |
-| Playwright selectors fragile (text/regex over data-testid) | 05-08, 05-10 | LOW |
-| `parents[4]` depth needs permanent anchor comment | 05-04, 05-07 | LOW–MEDIUM |
-| 05-05 has scope gaps in audit coverage (Gemini flagged process; OpenCode flagged retirement timing) | 05-05 | LOW–MEDIUM |
+### Agreed Concerns (2+ reviewers) — highest priority
 
-### Divergent Views
+- **HIGH — WR-01: `_autogen_territories` double-read** (Gemini, Codex, OpenCode). `region_loader.py:389-411` iterates `(dataset.pt_geojson, dataset.es_input)` unconditionally; France/England point both fields at the same file, yielding ~80 condados instead of ~40. Unit test asserts `>= 40` which masks the regression. Fix: `seen_paths: set[Path]` dedup + tighten bound to `40 <= len(cfg.condados) <= 55`.
+- **HIGH — WR-02: parity test mutates `load_region()` singleton** (Gemini, Codex, OpenCode). `test_iberia_868_yaml.py:42-44` does `cfg.output_dir = str(out)` on the cached object — exact Pitfall 9 pattern. `clear_region_cache_between_tests` hides blast radius; pytest-xdist parallel runs would break. One-line `replace()` fix.
+- **MEDIUM — 05-11 terrain is contract-minimal placeholder, not a terrain system** (Codex, OpenCode). Flat `plains-everywhere-on-land + ocean sentinel` satisfies the 12-file Unity export contract but must be documented as a placeholder emitter so Phase 06/07 do not treat terrain as "done".
+- **MEDIUM — `EXPORT_FILE_CONTRACT` ordering between 05-10 and 05-11** (Codex, OpenCode). The constant lives in `contracts.py`; if 05-10 ships with the 10-file tuple before 05-11 expands it to 12, the E2E test passes against the smaller contract. Both reviewers want the constant + wire-up to ship in a single commit.
+- **MEDIUM — 05-12 platform-specific UAT runner fragility** (Codex, Gemini, OpenCode). Codex flags Windows `pwsh` not-installed fallback; Gemini flags `pkill` portability; OpenCode flags lack of CI headless reproducibility. All converge on: local `checkpoint:human-verify` is necessary but not sufficient — the spec also needs to run headless in CI before Phase 06.
 
-- **Overall risk**: Gemini = LOW; OpenCode = MEDIUM. OpenCode is more concerned about migration-script details (#1 `dataset` dict construction) and France E2E async pattern (#2) — both **HIGH likelihood / HIGH impact** in OpenCode's matrix. Gemini also flagged 05-02 as MEDIUM for `CONDADOS` transformation but did not surface the dataclass-serialization or async-test concerns explicitly.
-- **05-02 risk**: Gemini = MEDIUM (manual field mapping risk); OpenCode = HIGH (dataclass-serialization risk + `original_idx` missing + `output_dir` None). OpenCode's analysis is more concrete and actionable.
-- **05-10 async**: only OpenCode raised it. Worth investigating before execution — if `run_pipeline` is sync, no fix needed; if async, the test will break immediately.
+### Divergent Views (worth investigating)
 
-### Top Priorities for `/gsd-plan-phase 05 --reviews`
+- **Codex flags 05-01 as over-scoped** (schema + path-security + dataset resolution + cache + territory conversion + GeoJSON parsing + autogen + scaffolding all in one wave). Suggests splitting autogen into its own task. Gemini and OpenCode do not raise this — they treat 05-01 as a coherent loader unit. Tie-breaker: 05-01 is already merged; the split is a deferred refactor candidate, not a Phase 05 blocker.
+- **Codex flags two project-creation paths** (legacy `/projects` + new `POST /api/v3/projects`). Suggests defining which the UI uses long-term. OpenCode and Gemini do not raise this — they accept the parallel path as v3 scope. Worth a one-line note in PROJECT.md or a backlog item.
+- **Overall risk verdict**: Gemini calls LOW citing exhaustive test coverage and proven pipeline; Codex and OpenCode call MEDIUM citing live WR-01/WR-02 warnings and scope drift. Treat MEDIUM as canonical — two live bugs are not "exhaustive coverage".
 
-1. **HIGH — 05-02 migration script**: lock `dataset` dict construction (explicit, not `cfg.dataset`); assert `cfg.output_dir` populated; add `original_idx=i+1` to each migrated condado.
-2. **HIGH — 05-10 E2E**: verify `run_pipeline` signature; if async, use `TestClient` or `@pytest.mark.asyncio`.
-3. **MEDIUM — 05-01 schema**: make `pt_geojson`, `es_input`, `mountain_river_json` optional (None default) for cleaner template-only error path; raise explicit `FileNotFoundError` when all None.
-4. **MEDIUM — 05-04 / 05-07**: add permanent anchor comment for `parents[4]` to prevent regression.
-5. **LOW — 05-08 / 05-10**: add `data-testid` attributes; confirm TanStack query key for `useProjects`.
-6. **LOW — 05-09**: add `display_name: England 1216 AD`.
-7. **LOW — 05-08**: prescribe legacy `/projects/new` link fate (remove from ProjectList; keep route+page).
+### Recommended Next Actions
 
-### Reviewer Failures
+1. **Before closing Phase 05**: fix WR-01 (autogen dedupe + tighter bound) and WR-02 (parity test `replace()`) in a single commit each. Both have one-line code review fixes.
+2. **Before Phase 06 begins**: add `terrain_lookup.png` / `terrain_types.json` structural-equal assertion to the YAML parity test (currently absent from Phase 01 golden set).
+3. **Before Phase 06 begins**: run France Playwright spec in CI headless mode in addition to the 05-12 local checkpoint — they validate complementary surfaces.
+4. **Cleanup nits**: remove redundant `defaultValue` on `Select.Root`, add `htmlFor` to label elements, delete dead helpers (`_make_toy_region_with_territories`, `_make_on_stage`), remove no-op try/except at `region_loader.py:350-360`.
 
-- **Claude CLI**: skipped (orchestrator runs inside Claude Code; running claude again would not be an independent perspective).
-- **Codex CLI**: failed twice — first due to `[[hooks]]` TOML structure incompatible with current codex schema (`invalid type: sequence, expected struct HooksToml`); fallback via `CODEX_HOME=$HOME/codex_empty` failed with 401 Unauthorized (no auth.json). User config repair needed: change `[[hooks]]` to a single `[hooks]` struct in `~/.codex/config.toml`, or upgrade codex to a version that accepts the array form.
-
----
-
-## DeepSeek-v4-flash Review (appended 2026-05-12)
-
-> ⚠️ **Reviewer quality caveat**: deepseek-v4-flash was given a smaller prompt asking it to read the plan files from disk (args-too-long blocked the full prompt). The output below contains **several hallucinations** where the reviewer projected ML-pipeline semantics onto this geometric map pipeline. Hallucinations are annotated inline; treat them as **dismiss**, not actionable.
-
-### Summary
-
-The Phase 05 plans provide a solid architecture for region-level multi-country 2-mask generation, building on a proven per-country pipeline. The work correctly centralizes config in `data/regions/`, respects the non-negotiables (NEAREST upscale, σ range, original_idx, ocean/ignore sentinels), and includes a clear France 1066 demonstration. However, the review identifies several unreported gaps: potential thread-safety issues in the KD-tree query stage when using a single-region-wide index, missing deterministic seeding for all data-loading splits, incomplete path-traversal hardening on user-supplied YAML keys, and an unvalidated assumption that the v3 "per-country" KD-tree requirement is satisfied by a region-wide tree that uses a country-prefix mapping. These issues, while mostly medium severity, could silently degrade reproducibility and correctness in multi-region production runs.
-
-### Strengths
-
-- Config externalisation complete — `data/regions/iberia_868.yaml` exists and drives the pipeline (SC-1).
-- Templates ship as promised — `france_1066.yaml` and `england_1216.yaml` are present.
-- France 1066 demo well-scoped — 12 contract files (not parity).
-- Non-negotiables explicitly checked — NEAREST upscaling, σ ∈ [3.0,4.5], original_idx, ocean = -1, ignore = 9999, independent 2× masks.
-- Dependency ordering reasonable.
-
-### Concerns
-
-1. **Per-country KD-tree vs. region-wide index — semantic gap (HIGH, claimed)**
-   `[HALLUCINATION — DISMISS]` Claims 05-04 plans a single region-wide KD-tree with a "country prefix" mapping that violates the per-country invariant. **No plan does this.** CONTEXT.md D-04 and RESEARCH explicitly preserve per-country KD-trees (one tree per country, built from that country's baronies). 05-04 is the alembic migration + region_key wiring plan; it does not touch KD-tree construction at all. This concern is fabricated.
-
-2. **Thread-safety of KD-tree queries (MEDIUM, claimed)**
-   `[HALLUCINATION — DISMISS]` Claims 05-04 mentions parallel mask tile generation. It does not. Phase 05 does not introduce parallelism beyond what Phase 01–04 already established with scipy `cKDTree` (which is thread-safe for read-only queries). No race condition exists.
-
-3. **Deterministic seeding not enforced across all stochastic steps (MEDIUM, claimed)**
-   `[HALLUCINATION — DISMISS]` Lists "train/test split", "coordinate jitter in KD-tree building", "data augmentation in preprocessing". **None of these exist** in this pipeline — Medieval Forge is a deterministic geometric pipeline (Voronoi + Shapely), not an ML training pipeline. The single `rng_seed=42` in `RegionConfig` controls every stochastic step (synthetic toy data generation only). No additional seeding needed.
-
-4. **YAML loading lacks explicit `SafeLoader` in all code paths (MEDIUM, claimed)**
-   `[ALREADY MITIGATED]` Plan 05-01 mandates `yaml.safe_load` with explicit acceptance grep `grep -nE "yaml\.safe_load" region_loader.py` returning ≥1. Threat model T-05-01-01 covers this. DeepSeek's hedge "need to check REVIEWS.md" suggests it didn't fully read the file.
-
-5. **Path traversal via region name in file paths (LOW, claimed)**
-   `[ALREADY MITIGATED]` Plan 05-01 enforces region_key regex `^[a-z0-9_]+$` (rejects `..`, `/`, `\`, etc.) plus `relative_to(region_root)` guard before any path concatenation. T-05-01-02 + T-05-07-02 cover this.
-
-6. **No verification that France 1066 demo uses independent 2× masks (MEDIUM, claimed)**
-   `[MISREADING — DISMISS]` "Independent 2× masks" in CLAUDE.md rule 6 means *independent renders at 2× resolution* (mountains_mask.png and rivers_overlay.png rendered fresh at 3840×2160, NOT upscaled from the 1× lookup). It does NOT mean train/test statistical independence. DeepSeek imported ML semantics. 05-10 already asserts the 12 files exist with correct dimensions; no statistical independence test applies.
-
-### Net actionable from DeepSeek
-
-**Zero new actionable findings.** All 6 concerns are either hallucinated (1, 2, 3, 6) or already mitigated in the plans deepseek did not read carefully (4, 5).
-
-### Suggestions
-
-DeepSeek suggests a "concurrency test" and "pixel-wise correlation near zero between the two masks" — both follow from the hallucinated concerns and should not be implemented.
-
-### Risk Assessment
-
-DeepSeek-v4-flash overall: MEDIUM — based on hallucinated KD-tree replacement. Confidence in this verdict: **very low**. The reviewer apparently inferred a generic ML/spatial-ML pipeline from the file names and did not anchor on CONTEXT.md or RESEARCH.md content.
-
-### Lesson Learned
-
-DeepSeek-v4-flash via `deepseek exec` reads files as an agent but does not appear to deeply ingest CONTEXT/RESEARCH content within the prompt budget for this kind of long-form plan review. For future runs:
-- Provide the full prompt (not a file-pointer prompt) so the model sees the verbatim invariants.
-- Prefer `deepseek-v4-pro` (default model) over `-v4-flash` for review tasks where the cost of hallucination > the cost of tokens.
-- Alternatively, restrict deepseek's scope to one plan at a time so it can't confuse cross-plan semantics.
-
----
-
-## Updated Consensus (after DeepSeek)
-
-DeepSeek's review adds **zero new actionable items** to the prior consensus. The HIGH-priority list for `/gsd-plan-phase 05 --reviews` remains:
-
-1. HIGH — 05-02 migration script: dataset dict construction, `cfg.output_dir` assert, `original_idx=i+1` per condado.
-2. HIGH — 05-10 E2E: verify `run_pipeline` async signature.
-3. MEDIUM — 05-01 schema: dataset fields optional with explicit FileNotFoundError.
-4. MEDIUM — 05-04 / 05-07: permanent `parents[4]` anchor comment.
-5. LOW — 05-08 / 05-10 / 05-09 / 05-08 minor items as previously listed.
-
----
-
-## Qwen3-30B-A3B-Thinking-2507 Local Review (appended 2026-05-12)
-
-> Run on RTX 4070 Ti SUPER 16GB via llama.cpp + Vulkan. MoE 30B/3B-active with experts pinned to CPU (`-ncmoe 48`), shared layers + KV cache on GPU. Q4_K_M model, Q8 KV cache, 64k context, FA on. Prompt was reduced version (no RESEARCH.md; full plans + CONTEXT + REVIEWS + ROADMAP).
->
-> Throughput: prompt 307 tok/s, generation 16.4 tok/s.
-
-### Summary
-
-Qwen3 review identifies three "complementary" concerns. Verified against codebase:
-
-- **Concern 1 (HIGH — Windows path handling)**: **MISDIAGNOSED — DISMISS**. Qwen3 claims `Path(__file__).resolve().parents[4]` fails on Windows due to case-insensitivity. Python's `pathlib.PureWindowsPath` and `Path.resolve()` already handle Windows path semantics correctly. The actual `parents[4]` depth concern is already addressed by R-04 with anchor comments. The proposed `.as_posix().replace('\\', '/')` workaround is unnecessary and potentially harmful.
-
-- **Concern 2 (MEDIUM — pt_duchies set vs list)**: **PARTIALLY VALID — ALREADY MITIGATED**. The structural mismatch is real:
-  - `backend/medieval_forge/services/pipeline/contracts.py:78` — `pt_duchies: set = field(default_factory=set)`
-  - Plan 05-01 line 222 — schema declares `pt_duchies: list[str] = Field(default_factory=list)`
-  - Plan 05-01 line 286 — schema→dataclass converts via `kwargs['pt_duchies'] = set(kwargs.get('pt_duchies') or [])`
-  - Plan 05-02 line 140 — dataclass→YAML reverses via `"pt_duchies": sorted(cfg.pt_duchies)`
-
-  The conversion is bidirectional and ordering is preserved by `sorted()` in 05-02. Not "silent data loss" as claimed. **However**, the observation is worth adding as a code comment near the conversion site so future contributors understand why the set→list→set round-trip exists.
-
-  **Lightweight follow-up:** add inline comment in 05-01 Task 2 `__post_init__` migration:
-  ```python
-  # pt_duchies is a set in RegionConfig (membership lookup hot path in voronoi.py)
-  # but a list in YAML for deterministic key ordering. sorted() in 05-02 preserves it.
-  kwargs['pt_duchies'] = set(kwargs.get('pt_duchies') or [])
-  ```
-  Optional grep gate: `grep -n "pt_duchies is a set" backend/medieval_forge/services/pipeline/region_loader.py` returns 1.
-
-- **Concern 3 (MEDIUM — no YAML schema evolution strategy)**: **VALID FUTURE-PROOFING — DEFER**. `extra='forbid'` plus no `schema_version` field means any added field breaks existing YAMLs. Real concern, but premature for Phase 05 (only 3 regions exist). Defer to a follow-up phase that introduces actual schema breaking changes. Not actionable now.
-
-### Verdict
-
-Qwen3 produces 1 valid-but-low-impact suggestion (Concern 2 comment) and 2 dismiss-or-defer items. Net actionable additions to consensus: **R-15 (LOW) — inline comment explaining pt_duchies set/list duality** (optional; not blocking execution).
-
-### Reviewer Notes
-
-- Qwen3-30B-A3B-Thinking-2507 ran in ~7 min wall time on 16GB VRAM via MoE CPU offload. Quality competitive with cloud DeepSeek-v4-flash; slightly more verbose; one Windows-path hallucination (similar pattern to deepseek-flash ML hallucinations — local models tend to over-generalize from training).
-- Thinking variant did include CoT reasoning in its planning, but final markdown answer kept thinking tokens implicit (Qwen3 Thinking-2507 emits `<think>...</think>` blocks which the OpenAI-compatible /v1/chat/completions endpoint strips by default).
-- For future runs: prefer Qwen3-235B-A22B (if downloadable & enough disk) for higher signal-to-noise. 30B/3B-active gives speed but missed several of the items gemini+opencode caught.
-
-### Updated Consensus
-
-Adding R-15 to the actionable backlog:
-
-**R-15 (LOW, NICE-TO-HAVE) — Plan 05-01:** Add inline comment in `__post_init__` (or wherever schema→dataclass conversion happens) explaining the `pt_duchies` set ↔ list duality. Acceptance: `grep -n "pt_duchies is a set" backend/medieval_forge/services/pipeline/region_loader.py` returns 1.
-
-This is opt-in; deferring it does not block execution.
