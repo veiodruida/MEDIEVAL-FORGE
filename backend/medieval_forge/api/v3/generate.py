@@ -24,6 +24,7 @@ import asyncio
 import json
 import logging
 import uuid
+from dataclasses import replace
 from datetime import datetime, timezone
 from typing import AsyncIterator, Callable
 
@@ -36,7 +37,7 @@ from ...models import Project
 from ...services.paths import is_valid_uuid, project_dir
 from ...services.pipeline import run_pipeline
 from ...services.pipeline.cache import cache_clear_project
-from ...services.pipeline.regions import iberia_config
+from ...services.pipeline.region_loader import load_region
 from ._run_state import _RUN_QUEUES, _RUN_TASKS, _RUN_KIND, _RUN_STOP_EVENTS, is_run_alive  # noqa: F401
 
 logger = logging.getLogger(__name__)
@@ -112,10 +113,17 @@ def _make_on_stage(
 
 async def _generate_producer(
     project_id: str,
+    region_key: str,
     queue: asyncio.Queue[str | None],
     sf: async_sessionmaker,
 ) -> None:
-    """Producer task. ALWAYS puts None sentinel before returning."""
+    """Producer task. ALWAYS puts None sentinel before returning.
+
+    region_key is fetched at the endpoint (project.region_key) and passed in
+    as a plain string — do NOT call db.get(Project) inside the producer thread.
+    cfg is built via dataclasses.replace(load_region(region_key), ...) to avoid
+    mutating the cached singleton (RESEARCH Pitfall 9 / T-05-04-04).
+    """
     try:
         _emit(
             queue,
@@ -125,11 +133,13 @@ async def _generate_producer(
             0.0,
         )
 
-        # Build cfg using iberia_config()-equivalent + override output_dir.
-        # (Phase 05 will swap this for a region YAML loader.)
-        cfg = iberia_config()
-        cfg.output_dir = str(project_dir(project_id) / "output")
-        cfg.on_stage = _make_on_stage(queue, asyncio.get_running_loop())
+        # AFTER (immutable per-call copy — RESEARCH Pitfall 9 / T-05-04-04):
+        # load_region returns a cached singleton; replace() builds a fresh copy.
+        cfg = replace(
+            load_region(region_key),
+            output_dir=str(project_dir(project_id) / "output"),
+            on_stage=_make_on_stage(queue, asyncio.get_running_loop()),
+        )
 
         # D-03: fresh /generate always starts from a clean cache so stale
         # intermediate arrays from a previous /render don't bleed into the new run.
@@ -186,11 +196,15 @@ async def trigger_generate(
     project.status = "generating"
     await db.commit()
 
+    # Fetch region_key here (endpoint has the project row) — do NOT query DB
+    # again inside the producer thread.
+    region_key = project.region_key
+
     queue: asyncio.Queue[str | None] = asyncio.Queue()
     _RUN_QUEUES[project_id] = queue
     _RUN_KIND[project_id] = "generate"  # must be set before task creation (D-04 race guard)
     task = asyncio.create_task(
-        _generate_producer(project_id, queue, AsyncSessionLocal)
+        _generate_producer(project_id, region_key, queue, AsyncSessionLocal)
     )
     _RUN_TASKS[project_id] = task
 

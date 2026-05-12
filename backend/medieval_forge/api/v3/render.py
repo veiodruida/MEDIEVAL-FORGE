@@ -6,7 +6,8 @@ POST   /api/v3/projects/{id}/render/cancel   → 200 {status: cancel_requested}
 GET    /api/v3/projects/{id}/stage/{name}.png → 200 PNG of cached stage array (allowlist)
 
 Reuses _RUN_QUEUES/_RUN_TASKS from _run_state.py for cross-router 409 (D-04 single-flight).
-Builds a fresh cfg from iberia_config() on every call (D-18 — never mutates persisted cfg).
+Builds a fresh cfg from load_region(project.region_key) on every call via dataclasses.replace
+(D-18 — never mutates the cached singleton; RESEARCH Pitfall 9 / T-05-04-04).
 
 Security mitigations (threat register T-04-02-01 through T-04-02-06):
   T-04-02-01: is_run_alive() checks both generate + render slots (DoS 409 gate)
@@ -23,6 +24,7 @@ import json
 import logging
 import threading
 import uuid
+from dataclasses import replace
 from datetime import datetime, timezone
 from typing import AsyncIterator, Optional
 
@@ -39,7 +41,7 @@ from ...services.paths import is_valid_uuid, project_dir
 from ...services.pipeline import run_pipeline_incremental
 from ...services.pipeline.cache import cache_get
 from ...services.pipeline.cleanup import StageCancelled
-from ...services.pipeline.regions import iberia_config
+from ...services.pipeline.region_loader import load_region
 from ._run_state import (
     _RUN_QUEUES, _RUN_TASKS, _RUN_STOP_EVENTS, _RUN_KIND, is_run_alive,
 )
@@ -103,11 +105,17 @@ def _make_on_stage(queue: asyncio.Queue, loop: asyncio.AbstractEventLoop):
 
 async def _render_producer(
     project_id: str,
+    region_key: str,
     overrides: dict,
     queue: asyncio.Queue,
     sf,
 ) -> None:
     """Producer task. ALWAYS puts None sentinel before returning.
+
+    region_key is fetched at the endpoint (project.region_key) and passed in
+    as a plain string — do NOT call db.get(Project) inside the producer thread.
+    cfg is built via dataclasses.replace(load_region(region_key), ...) — never
+    mutates the cached singleton (RESEARCH Pitfall 9 / T-05-04-04).
 
     On StageCancelled:
       - Emits stage_cancel per affected stage, carrying prior_token in message (D-13)
@@ -124,12 +132,17 @@ async def _render_producer(
     try:
         _emit(queue, "started", None, f"Render iniciado para projeto {project_id}", 0.0)
 
-        # Build fresh cfg per D-18 — NEVER mutates the persisted iberia_config() singleton.
-        cfg = iberia_config()
-        cfg.output_dir = str(project_dir(project_id) / "output")
-        cfg.stop_event = stop_event
+        # AFTER (immutable per-call copy — RESEARCH Pitfall 9 / T-05-04-04):
+        # load_region returns a cached singleton; replace() builds a fresh copy.
+        cfg = replace(
+            load_region(region_key),
+            output_dir=str(project_dir(project_id) / "output"),
+            stop_event=stop_event,
+        )
 
-        # Apply validated overrides from slider
+        # Apply validated overrides from slider.
+        # Mutates the LOCAL cfg copy — safe because replace() already gave us
+        # a fresh instance; the cached singleton is untouched (RESEARCH line 800-803).
         for k, v in overrides.items():
             if v is not None:
                 setattr(cfg, k, v)
@@ -195,7 +208,8 @@ async def trigger_render(
     """Schedule an incremental render run; return 202 + run_id immediately.
 
     D-04: cross-router 409 if /generate or /render is alive for the same project.
-    D-18: fresh cfg from iberia_config() per call (producer task owns it).
+    D-18: fresh cfg from load_region(project.region_key) via dataclasses.replace
+          per call (producer task owns it; cached singleton never mutated).
     """
     if not is_valid_uuid(project_id):
         raise HTTPException(status_code=400, detail="project_id must be a valid UUID")
@@ -212,13 +226,17 @@ async def trigger_render(
             detail=f"project is already {alive_kind}; subscribe to /{alive_kind}/stream",
         )
 
+    # Fetch region_key here (endpoint has the project row) — do NOT query DB
+    # again inside the producer thread.
+    region_key = project.region_key
+
     queue: asyncio.Queue = asyncio.Queue()
     _RUN_QUEUES[project_id] = queue
     _RUN_KIND[project_id] = "render"  # set BEFORE task creation (race guard)
 
     overrides = body.cfg_overrides.model_dump(exclude_none=True)
     task = asyncio.create_task(
-        _render_producer(project_id, overrides, queue, AsyncSessionLocal),
+        _render_producer(project_id, region_key, overrides, queue, AsyncSessionLocal),
     )
     _RUN_TASKS[project_id] = task
 
