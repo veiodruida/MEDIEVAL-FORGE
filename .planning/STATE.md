@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: + bootstrap v3 infrastructure
 status: executing
-stopped_at: Completed 05-04-PLAN.md
-last_updated: "2026-05-12T12:51:06.089Z"
+stopped_at: Completed 05-09-PLAN.md
+last_updated: "2026-05-12T12:54:49.789Z"
 last_activity: 2026-05-12
 progress:
   total_phases: 10
   completed_phases: 5
   total_plans: 37
-  completed_plans: 33
-  percent: 89
+  completed_plans: 34
+  percent: 92
 ---
 
 # Project State (v3)
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md
 ## Current Position
 
 Phase: 05 (region-generalization) — EXECUTING
-Plan: 7 of 10
+Plan: 8 of 10
 Status: Ready to execute
 Last activity: 2026-05-12
 
@@ -92,6 +92,7 @@ See `.planning/PROJECT.md` Key Decisions table (D-V3-01 through D-V3-07).
 - [Phase 05]: Router prefix /v3/projects (not /api/v3/projects) — plan snippet had wrong prefix; main.py adds /api at mount time
 - [Phase 05]: Migration 0005 added: v1 legacy fields (country_qid/period_start/period_end) made nullable for v3 project creation
 - [Phase 05]: region_key threaded from endpoint to producer as plain str — no DB access in worker thread (generate.py + render.py)
+- [Phase 05]: england_1216.yaml YAML-only template (no inputs dir): loader raises FileNotFoundError with actionable message; GET /api/v3/regions reports has_dataset=false
 
 ### Blockers/Concerns
 
@@ -111,6 +112,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-12T12:51:06.087Z
-Stopped at: Completed 05-04-PLAN.md
+Last session: 2026-05-12T12:54:49.786Z
+Stopped at: Completed 05-09-PLAN.md
 Resume file: None

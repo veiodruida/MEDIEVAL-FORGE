@@ -133,7 +133,7 @@ Plans:
 - [x] 05-06-PLAN.md — Wave 2: scripts/gen_toy_france.py + data/regions/france_1066.yaml + toy inputs + autogen loader test
 - [x] 05-07-PLAN.md — Wave 3: GET /api/v3/regions endpoint + alphabetical order + has_dataset flag
 - [ ] 05-08-PLAN.md — Wave 5: NewProjectModal.tsx + useRegions hook + useCreateV3Project + ProjectList trigger swap (per 05-UI-SPEC)
-- [ ] 05-09-PLAN.md — Wave 2: data/regions/england_1216.yaml (YAML-only) + loader FileNotFoundError contract test
+- [x] 05-09-PLAN.md — Wave 2: data/regions/england_1216.yaml (YAML-only) + loader FileNotFoundError contract test
 - [ ] 05-10-PLAN.md — Wave 5: SC-3 backend E2E (12-file contract) + Playwright UAT (France create+generate flow)
 
 ### Phase 06: Export contract + validation gate (merged)
