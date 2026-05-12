@@ -36,8 +36,10 @@ if str(_BACKEND) not in sys.path:
 from medieval_forge.api.v3.artifacts import ARTIFACT_FILES  # noqa: E402
 from medieval_forge.database import DATA_DIR, engine  # noqa: E402
 from medieval_forge.models import Base, Project  # noqa: E402
+from dataclasses import replace  # noqa: E402
+
 from medieval_forge.services.pipeline import run_pipeline  # noqa: E402
-from medieval_forge.services.pipeline.regions import REGIONS  # noqa: E402
+from medieval_forge.services.pipeline.region_loader import load_region  # noqa: E402
 
 from tests.fixtures.seed_phase01_artifacts import seed_phase01_artifacts  # noqa: E402
 
@@ -60,8 +62,7 @@ def _ensure_pipeline_output() -> Path:
         shutil.rmtree(UAT_CACHE_DIR)
     UAT_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
-    cfg = REGIONS["iberia_868"]()
-    cfg.output_dir = str(UAT_CACHE_DIR)
+    cfg = replace(load_region("iberia_868"), output_dir=str(UAT_CACHE_DIR))
     run_pipeline(cfg)
 
     if not _has_full_artifact_set(UAT_CACHE_DIR):

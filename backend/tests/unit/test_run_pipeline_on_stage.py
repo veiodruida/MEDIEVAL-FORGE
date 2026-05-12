@@ -15,9 +15,11 @@ from pathlib import Path
 
 import pytest
 
+from dataclasses import replace
+
 from medieval_forge.services.pipeline import run_pipeline
 from medieval_forge.services.pipeline.contracts import RegionConfig
-from medieval_forge.services.pipeline.regions import REGIONS
+from medieval_forge.services.pipeline.region_loader import load_region
 
 
 CANONICAL_STAGES = (
@@ -40,8 +42,7 @@ def test_run_pipeline_emits_22_events_in_canonical_order(
 ) -> None:
     """12 stages × {start, done} = 24 events, exact canonical order (Plan 04-01 split)."""
     out: Path = tmp_path_factory.mktemp("on_stage_full_run")
-    cfg = REGIONS["iberia_868"]()
-    cfg.output_dir = str(out)
+    cfg = replace(load_region("iberia_868"), output_dir=str(out))
 
     events: list[tuple[str, str]] = []
     cfg.on_stage = lambda stage, evt: events.append((stage, evt))
@@ -65,8 +66,7 @@ def test_run_pipeline_propagates_callback_exception(
 ) -> None:
     """Exceptions raised inside on_stage MUST surface — Plan 02 SSE wraps them."""
     out: Path = tmp_path_factory.mktemp("on_stage_raise")
-    cfg = REGIONS["iberia_868"]()
-    cfg.output_dir = str(out)
+    cfg = replace(load_region("iberia_868"), output_dir=str(out))
 
     class _Boom(RuntimeError):
         pass

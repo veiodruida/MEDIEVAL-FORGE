@@ -45,9 +45,11 @@ def test_render_at_default_cfg_matches_generate_byte_equal(tmp_path):
     """D-17: run_pipeline (full path) byte-equals run_pipeline_incremental
     (incremental path) at default iberia_config(). Both use tmp_path subdirs
     so they don't interfere with each other or with the parity golden dir."""
+    from dataclasses import replace
+
     from medieval_forge.services.pipeline import run_pipeline, run_pipeline_incremental
     from medieval_forge.services.pipeline.cache import cache_clear_project
-    from medieval_forge.services.pipeline.regions import iberia_config
+    from medieval_forge.services.pipeline.region_loader import load_region
 
     # Use a fake project_id for cache operations
     project_id = "d17-parity-test-00000000-0000"
@@ -55,8 +57,7 @@ def test_render_at_default_cfg_matches_generate_byte_equal(tmp_path):
     # Run 1: full /generate path (run_pipeline)
     gen_dir = tmp_path / "generate_out"
     gen_dir.mkdir()
-    cfg_gen = iberia_config()
-    cfg_gen.output_dir = str(gen_dir)
+    cfg_gen = replace(load_region("iberia_868"), output_dir=str(gen_dir))
     cache_clear_project(project_id)
     run_pipeline(cfg_gen, project_id=project_id)
 
@@ -70,8 +71,7 @@ def test_render_at_default_cfg_matches_generate_byte_equal(tmp_path):
     # Run 2: incremental /render path (cold cache — all stages must run)
     render_dir = tmp_path / "render_out"
     render_dir.mkdir()
-    cfg_render = iberia_config()
-    cfg_render.output_dir = str(render_dir)
+    cfg_render = replace(load_region("iberia_868"), output_dir=str(render_dir))
     cache_clear_project(project_id)
     affected = run_pipeline_incremental(cfg_render, project_id)
 

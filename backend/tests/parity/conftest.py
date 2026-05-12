@@ -49,7 +49,7 @@ import pytest
 from PIL import Image
 
 from medieval_forge.services.pipeline import run_pipeline
-from medieval_forge.services.pipeline.regions import REGIONS
+from medieval_forge.services.pipeline.region_loader import load_region
 
 # backend/tests/parity/conftest.py -> repo root (parents[3])
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -93,8 +93,8 @@ def _resolve_golden_dir(config: pytest.Config) -> Path:
 def pipeline_output(tmp_path_factory: pytest.TempPathFactory) -> Path:
     """Run the v3 pipeline once for the session and return its output dir."""
     out = tmp_path_factory.mktemp("iberia_868_actual")
-    cfg = REGIONS["iberia_868"]()
-    cfg.output_dir = str(out)
+    from dataclasses import replace
+    cfg = replace(load_region("iberia_868"), output_dir=str(out))
     run_pipeline(cfg)
     return out
 

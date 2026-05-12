@@ -42,9 +42,11 @@ import pytest
 from PIL import Image
 from skimage.metrics import structural_similarity as ssim
 
+from dataclasses import replace
+
 from medieval_forge.services.pipeline import run_pipeline
 from medieval_forge.services.pipeline.contracts import ProjectDataset
-from medieval_forge.services.pipeline.regions import iberia_config
+from medieval_forge.services.pipeline.region_loader import load_region
 
 pytestmark = [
     pytest.mark.parity,
@@ -77,14 +79,16 @@ def live_pipeline_output(tmp_path_factory: pytest.TempPathFactory) -> Path:
             f"Then commit with: docs(parity): refresh live snapshot"
         )
 
-    cfg = iberia_config()
-    cfg.dataset = ProjectDataset(
-        pt_geojson=pt_path,
-        es_input=es_path,
-        mountain_river_json=VENDORED_MOUNTAIN_RIVER,  # D-13: terrain stub uses vendored
-    )
     out = tmp_path_factory.mktemp("iberia_868_live_actual")
-    cfg.output_dir = str(out)
+    cfg = replace(
+        load_region("iberia_868"),
+        dataset=ProjectDataset(
+            pt_geojson=pt_path,
+            es_input=es_path,
+            mountain_river_json=VENDORED_MOUNTAIN_RIVER,  # D-13: terrain stub uses vendored
+        ),
+        output_dir=str(out),
+    )
     run_pipeline(cfg)
     return out
 

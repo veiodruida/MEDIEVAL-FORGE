@@ -242,12 +242,13 @@ async def test_render_does_not_mutate_persisted_cfg(client, in_memory_db, monkey
     """Each /render call builds a fresh cfg from iberia_config(); the project's
     persisted cfg state is NEVER mutated (D-18)."""
     from medieval_forge.api.v3 import render as v3_render_mod
-    from medieval_forge.services.pipeline.regions import iberia_config
+    from medieval_forge.services.pipeline.region_loader import load_region, clear_region_cache
 
     pid = await _make_project(in_memory_db)
 
-    # Capture the baseline sigma from a fresh iberia_config.
-    baseline = iberia_config()
+    # Capture the baseline sigma from a fresh load_region (D-18: cached singleton).
+    clear_region_cache()
+    baseline = load_region("iberia_868")
     baseline_sigma = baseline.smooth_sigma
 
     captured_sigmas = []
@@ -269,8 +270,8 @@ async def test_render_does_not_mutate_persisted_cfg(client, in_memory_db, monkey
     assert len(captured_sigmas) == 1
     assert captured_sigmas[0] == 4.0
 
-    # A fresh iberia_config() must still return the original sigma (D-18)
-    fresh = iberia_config()
+    # A fresh load_region must still return the original sigma (D-18)
+    fresh = load_region("iberia_868")
     assert fresh.smooth_sigma == baseline_sigma
 
 
