@@ -211,9 +211,11 @@ def load_region(key: str, regions_dir: Optional[Path] = None) -> RegionConfig:
     # Convert pt_duchies list→set (contracts.py: pt_duchies: set)
     kwargs["pt_duchies"] = set(kwargs.get("pt_duchies") or [])
 
-    # Convert kingdom_colors values list→tuple
+    # Convert kingdom_colors: str keys → int keys, values list→tuple.
+    # YAML emits str keys (pydantic dict[str,list[int]] contract); render.py
+    # indexes with integer ki (kingdom index array), so keys must be int.
     kwargs["kingdom_colors"] = {
-        k: tuple(v) for k, v in (kwargs.get("kingdom_colors") or {}).items()
+        int(k): tuple(v) for k, v in (kwargs.get("kingdom_colors") or {}).items()
     }
 
     # Autogen territories if empty (D-03)
@@ -221,12 +223,71 @@ def load_region(key: str, regions_dir: Optional[Path] = None) -> RegionConfig:
         kwargs["kingdoms"], kwargs["duchies"], kwargs["condados"] = (
             _autogen_territories(dataset, kwargs["rng_seed"])
         )
+    else:
+        # Convert list[dict] → the in-memory shapes expected by voronoi.py
+        # (RESEARCH Pitfall 3: voronoi.py:setup_baronies indexes condados
+        # positionally c[4]/c[5] and treats duchies/kingdoms as dicts)
+        kwargs["kingdoms"], kwargs["duchies"], kwargs["condados"] = (
+            _convert_territory_data(
+                kwargs.get("kingdoms") or [],
+                kwargs.get("duchies") or [],
+                kwargs.get("condados") or [],
+            )
+        )
 
     kwargs["dataset"] = dataset
 
     cfg = RegionConfig(**kwargs)
     _REGION_CACHE[cache_key] = cfg
     return cfg
+
+
+# ---------------------------------------------------------------------------
+# Territory data converter (RESEARCH Pitfall 3)
+# ---------------------------------------------------------------------------
+
+
+def _convert_territory_data(
+    kingdoms_raw: list,
+    duchies_raw: list,
+    condados_raw: list,
+) -> tuple[dict, dict, list]:
+    """Convert list[dict] territory data to the shapes voronoi.py expects.
+
+    voronoi.py:setup_baronies accesses:
+      - kingdoms  as dict[id, display_name]
+      - duchies   as dict[id, (kingdom_id, display_name)]
+      - condados  as list[tuple(id, name, lon, lat, duchy_id, [(barony_name, lon, lat), ...])]
+
+    YAML/pydantic delivers list[dict] for all three. This converter bridges
+    the gap so load_region output feeds voronoi.py without modification.
+    """
+    # kingdoms: list[{id, name}] → dict[str, str]
+    kingdoms: dict[str, str] = {k["id"]: k["name"] for k in kingdoms_raw}
+
+    # duchies: list[{id, kingdom_id, name}] → dict[str, tuple[str, str]]
+    duchies: dict[str, tuple] = {
+        d["id"]: (d["kingdom_id"], d["name"]) for d in duchies_raw
+    }
+
+    # condados: list[dict] → list[tuple(id, name, lon, lat, duchy_id, baronies)]
+    # baronies: list[dict{name,lon,lat}] → list[tuple(name, lon, lat)]
+    condados: list = []
+    for c in condados_raw:
+        barony_list = c.get("baronies") or []
+        barony_tuples = [
+            (b["name"], float(b["lon"]), float(b["lat"])) for b in barony_list
+        ]
+        condados.append((
+            c["id"],
+            c["name"],
+            float(c["lon"]),
+            float(c["lat"]),
+            c["duchy_id"],
+            barony_tuples,
+        ))
+
+    return kingdoms, duchies, condados
 
 
 # ---------------------------------------------------------------------------
