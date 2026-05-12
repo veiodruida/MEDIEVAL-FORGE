@@ -1,7 +1,8 @@
 ---
 phase: 05
-reviewers: [gemini, opencode]
+reviewers: [gemini, opencode, deepseek-v4-flash]
 reviewed_at: 2026-05-12T09:59:05Z
+deepseek_appended_at: 2026-05-12T10:08:00Z
 plans_reviewed: [05-01-PLAN.md, 05-02-PLAN.md, 05-03-PLAN.md, 05-04-PLAN.md, 05-05-PLAN.md, 05-06-PLAN.md, 05-07-PLAN.md, 05-08-PLAN.md, 05-09-PLAN.md, 05-10-PLAN.md]
 skipped: [claude (self), codex (TOML hooks parse error in user config + 401 auth in fallback)]
 ---
@@ -185,3 +186,72 @@ Phase 05 is a well-structured, dependency-order-aware migration with strong pari
 
 - **Claude CLI**: skipped (orchestrator runs inside Claude Code; running claude again would not be an independent perspective).
 - **Codex CLI**: failed twice — first due to `[[hooks]]` TOML structure incompatible with current codex schema (`invalid type: sequence, expected struct HooksToml`); fallback via `CODEX_HOME=$HOME/codex_empty` failed with 401 Unauthorized (no auth.json). User config repair needed: change `[[hooks]]` to a single `[hooks]` struct in `~/.codex/config.toml`, or upgrade codex to a version that accepts the array form.
+
+---
+
+## DeepSeek-v4-flash Review (appended 2026-05-12)
+
+> ⚠️ **Reviewer quality caveat**: deepseek-v4-flash was given a smaller prompt asking it to read the plan files from disk (args-too-long blocked the full prompt). The output below contains **several hallucinations** where the reviewer projected ML-pipeline semantics onto this geometric map pipeline. Hallucinations are annotated inline; treat them as **dismiss**, not actionable.
+
+### Summary
+
+The Phase 05 plans provide a solid architecture for region-level multi-country 2-mask generation, building on a proven per-country pipeline. The work correctly centralizes config in `data/regions/`, respects the non-negotiables (NEAREST upscale, σ range, original_idx, ocean/ignore sentinels), and includes a clear France 1066 demonstration. However, the review identifies several unreported gaps: potential thread-safety issues in the KD-tree query stage when using a single-region-wide index, missing deterministic seeding for all data-loading splits, incomplete path-traversal hardening on user-supplied YAML keys, and an unvalidated assumption that the v3 "per-country" KD-tree requirement is satisfied by a region-wide tree that uses a country-prefix mapping. These issues, while mostly medium severity, could silently degrade reproducibility and correctness in multi-region production runs.
+
+### Strengths
+
+- Config externalisation complete — `data/regions/iberia_868.yaml` exists and drives the pipeline (SC-1).
+- Templates ship as promised — `france_1066.yaml` and `england_1216.yaml` are present.
+- France 1066 demo well-scoped — 12 contract files (not parity).
+- Non-negotiables explicitly checked — NEAREST upscaling, σ ∈ [3.0,4.5], original_idx, ocean = -1, ignore = 9999, independent 2× masks.
+- Dependency ordering reasonable.
+
+### Concerns
+
+1. **Per-country KD-tree vs. region-wide index — semantic gap (HIGH, claimed)**
+   `[HALLUCINATION — DISMISS]` Claims 05-04 plans a single region-wide KD-tree with a "country prefix" mapping that violates the per-country invariant. **No plan does this.** CONTEXT.md D-04 and RESEARCH explicitly preserve per-country KD-trees (one tree per country, built from that country's baronies). 05-04 is the alembic migration + region_key wiring plan; it does not touch KD-tree construction at all. This concern is fabricated.
+
+2. **Thread-safety of KD-tree queries (MEDIUM, claimed)**
+   `[HALLUCINATION — DISMISS]` Claims 05-04 mentions parallel mask tile generation. It does not. Phase 05 does not introduce parallelism beyond what Phase 01–04 already established with scipy `cKDTree` (which is thread-safe for read-only queries). No race condition exists.
+
+3. **Deterministic seeding not enforced across all stochastic steps (MEDIUM, claimed)**
+   `[HALLUCINATION — DISMISS]` Lists "train/test split", "coordinate jitter in KD-tree building", "data augmentation in preprocessing". **None of these exist** in this pipeline — Medieval Forge is a deterministic geometric pipeline (Voronoi + Shapely), not an ML training pipeline. The single `rng_seed=42` in `RegionConfig` controls every stochastic step (synthetic toy data generation only). No additional seeding needed.
+
+4. **YAML loading lacks explicit `SafeLoader` in all code paths (MEDIUM, claimed)**
+   `[ALREADY MITIGATED]` Plan 05-01 mandates `yaml.safe_load` with explicit acceptance grep `grep -nE "yaml\.safe_load" region_loader.py` returning ≥1. Threat model T-05-01-01 covers this. DeepSeek's hedge "need to check REVIEWS.md" suggests it didn't fully read the file.
+
+5. **Path traversal via region name in file paths (LOW, claimed)**
+   `[ALREADY MITIGATED]` Plan 05-01 enforces region_key regex `^[a-z0-9_]+$` (rejects `..`, `/`, `\`, etc.) plus `relative_to(region_root)` guard before any path concatenation. T-05-01-02 + T-05-07-02 cover this.
+
+6. **No verification that France 1066 demo uses independent 2× masks (MEDIUM, claimed)**
+   `[MISREADING — DISMISS]` "Independent 2× masks" in CLAUDE.md rule 6 means *independent renders at 2× resolution* (mountains_mask.png and rivers_overlay.png rendered fresh at 3840×2160, NOT upscaled from the 1× lookup). It does NOT mean train/test statistical independence. DeepSeek imported ML semantics. 05-10 already asserts the 12 files exist with correct dimensions; no statistical independence test applies.
+
+### Net actionable from DeepSeek
+
+**Zero new actionable findings.** All 6 concerns are either hallucinated (1, 2, 3, 6) or already mitigated in the plans deepseek did not read carefully (4, 5).
+
+### Suggestions
+
+DeepSeek suggests a "concurrency test" and "pixel-wise correlation near zero between the two masks" — both follow from the hallucinated concerns and should not be implemented.
+
+### Risk Assessment
+
+DeepSeek-v4-flash overall: MEDIUM — based on hallucinated KD-tree replacement. Confidence in this verdict: **very low**. The reviewer apparently inferred a generic ML/spatial-ML pipeline from the file names and did not anchor on CONTEXT.md or RESEARCH.md content.
+
+### Lesson Learned
+
+DeepSeek-v4-flash via `deepseek exec` reads files as an agent but does not appear to deeply ingest CONTEXT/RESEARCH content within the prompt budget for this kind of long-form plan review. For future runs:
+- Provide the full prompt (not a file-pointer prompt) so the model sees the verbatim invariants.
+- Prefer `deepseek-v4-pro` (default model) over `-v4-flash` for review tasks where the cost of hallucination > the cost of tokens.
+- Alternatively, restrict deepseek's scope to one plan at a time so it can't confuse cross-plan semantics.
+
+---
+
+## Updated Consensus (after DeepSeek)
+
+DeepSeek's review adds **zero new actionable items** to the prior consensus. The HIGH-priority list for `/gsd-plan-phase 05 --reviews` remains:
+
+1. HIGH — 05-02 migration script: dataset dict construction, `cfg.output_dir` assert, `original_idx=i+1` per condado.
+2. HIGH — 05-10 E2E: verify `run_pipeline` async signature.
+3. MEDIUM — 05-01 schema: dataset fields optional with explicit FileNotFoundError.
+4. MEDIUM — 05-04 / 05-07: permanent `parents[4]` anchor comment.
+5. LOW — 05-08 / 05-10 / 05-09 / 05-08 minor items as previously listed.
