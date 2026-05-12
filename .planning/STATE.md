@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: + bootstrap v3 infrastructure
 status: executing
-stopped_at: Phase 05 context gathered
-last_updated: "2026-05-11T21:44:36.848Z"
-last_activity: 2026-05-11
+stopped_at: Completed 05-01-PLAN.md
+last_updated: "2026-05-12T12:06:50.929Z"
+last_activity: 2026-05-12
 progress:
   total_phases: 10
   completed_phases: 5
-  total_plans: 27
-  completed_plans: 27
-  percent: 100
+  total_plans: 37
+  completed_plans: 28
+  percent: 76
 ---
 
 # Project State (v3)
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md
 
 **Core value:** A Game Designer goes from "country + historical period" to a validated, Unity-ready map package — driven by geometry, with LLM as opt-in metadata.
-**Current focus:** Phase 04.1 — parameter-studio-polish-cancel-race-hardening
+**Current focus:** Phase 05 — region-generalization
 
 ## Current Position
 
-Phase: 05
-Plan: Not started
+Phase: 05 (region-generalization) — EXECUTING
+Plan: 2 of 10
 Status: Ready to execute
-Last activity: 2026-05-11
+Last activity: 2026-05-12
 
 Progress: [█████████░] 93% (25 of 27 plans complete)
 
@@ -80,6 +80,9 @@ See `.planning/PROJECT.md` Key Decisions table (D-V3-01 through D-V3-07).
 - [Phase 04.1]: Plan 04.1-03: D-01 + D-02 closed at unit-test level. CanvasViewer.tsx: (a) replaced !projection guard with metaBoundsKey memo + bounds-keyed setProjection effect; (b) added projectionBoundsKey memo + prevBoundsKeyRef gating fitToView on real bounds change only; (c) split auto-fit into two effects (bounds-key + viewport-key) so slider re-renders with identical bounds preserve zoom (UAT gap #1); (d) added previousCacheVersion state + lastCacheVersionRef + window keydown/keyup/blur listeners + 3-way effectiveCacheVersion precedence (gesture > D-13 cancel revert > cacheVersion) + 'Anterior' PT-BR badge for hold-spacebar before/after preview (UAT gap #2). 10 new vitest cases in 2 split test files; 210/210 frontend tests + tsc clean. D-13 fallback preserved (Test 7 regression guard).
 - [Phase 04.1]: Plan 04.1-05: SC-1 E2E gate caught two production bugs in Plan 04.1-03 — viewport-key effect clobbering user zoom on every workspace layout micro-oscillation, and useCanvasArtifacts queries dropping CanvasViewer into the loading branch on every cacheVersion refetch. Both fixed inline as Rule 1 deviations via (a) Math.abs(currentScale - minScale) < 1e-6 guard in viewport-key effect, (b) placeholderData: keepPreviousData on all 5 useQueries. Unit tests passed because they mocked rather than reproduced real ResizeObserver oscillation + real refetch loading branch. 5/5 Playwright specs green (3 new + 2 Phase 04); 210/210 frontend vitest; 38 backend pytest green; xfail/xpass unchanged.
 - [Phase 04.1]: Plan 04.1-05: Dev-only window escape hatches (__forgeStageScale + __forgeSelectBarony) added to CanvasViewer + BaronyLayer; gated on import.meta.env.DEV per T-04.1-05-01 disposition. Pattern reusable for any future E2E spec needing deterministic access to runtime state.
+- [Phase 05]: pyproject.toml is at repo root (not backend/); PyYAML added there
+- [Phase 05]: region_loader cache keyed by (key, regions_dir) for test isolation
+- [Phase 05]: Plan 05-01: explicit-only cache (no mtime) per RESEARCH D-15 recommendation
 
 ### Blockers/Concerns
 
@@ -99,6 +102,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-11T21:44:36.845Z
-Stopped at: Phase 05 context gathered
-Resume file: .planning/phases/05-region-generalization/05-CONTEXT.md
+Last session: 2026-05-12T12:06:50.926Z
+Stopped at: Completed 05-01-PLAN.md
+Resume file: None
