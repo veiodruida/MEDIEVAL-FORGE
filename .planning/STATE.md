@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: + bootstrap v3 infrastructure
 status: executing
-stopped_at: Completed 05-09-PLAN.md
-last_updated: "2026-05-12T12:54:49.789Z"
+stopped_at: Completed 05-05-PLAN.md
+last_updated: "2026-05-12T13:57:03.208Z"
 last_activity: 2026-05-12
 progress:
   total_phases: 10
   completed_phases: 5
   total_plans: 37
-  completed_plans: 34
-  percent: 92
+  completed_plans: 35
+  percent: 95
 ---
 
 # Project State (v3)
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md
 ## Current Position
 
 Phase: 05 (region-generalization) — EXECUTING
-Plan: 8 of 10
+Plan: 9 of 10
 Status: Ready to execute
 Last activity: 2026-05-12
 
@@ -93,6 +93,7 @@ See `.planning/PROJECT.md` Key Decisions table (D-V3-01 through D-V3-07).
 - [Phase 05]: Migration 0005 added: v1 legacy fields (country_qid/period_start/period_end) made nullable for v3 project creation
 - [Phase 05]: region_key threaded from endpoint to producer as plain str — no DB access in worker thread (generate.py + render.py)
 - [Phase 05]: england_1216.yaml YAML-only template (no inputs dir): loader raises FileNotFoundError with actionable message; GET /api/v3/regions reports has_dataset=false
+- [Phase 05]: All 5 planned migrations + 3 extras (audit found __main__.py + 2 unit tests) done in commit 6a388a2; 3 retirements in same commit; D-13+D-17 step 5 locked by c0be89e
 
 ### Blockers/Concerns
 
@@ -112,6 +113,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-12T12:54:49.786Z
-Stopped at: Completed 05-09-PLAN.md
+Last session: 2026-05-12T13:57:03.206Z
+Stopped at: Completed 05-05-PLAN.md
 Resume file: None
