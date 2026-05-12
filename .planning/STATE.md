@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: + bootstrap v3 infrastructure
 status: executing
-stopped_at: Completed 05-07-PLAN.md
-last_updated: "2026-05-12T12:36:34.046Z"
+stopped_at: Completed 05-04-PLAN.md
+last_updated: "2026-05-12T12:51:06.089Z"
 last_activity: 2026-05-12
 progress:
   total_phases: 10
   completed_phases: 5
   total_plans: 37
-  completed_plans: 32
-  percent: 86
+  completed_plans: 33
+  percent: 89
 ---
 
 # Project State (v3)
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md
 ## Current Position
 
 Phase: 05 (region-generalization) — EXECUTING
-Plan: 6 of 10
+Plan: 7 of 10
 Status: Ready to execute
 Last activity: 2026-05-12
 
@@ -89,6 +89,9 @@ See `.planning/PROJECT.md` Key Decisions table (D-V3-01 through D-V3-07).
 - [Phase 05]: _convert_territory_data added to region_loader.py: load_region must produce voronoi-compatible shapes before any parity test can pass
 - [Phase 05]: kingdom_colors keys converted int(k): render.py indexes with integer ki; YAML emits str keys by pydantic contract
 - [Phase 05]: Router prefix is /v3/regions (not /api/v3/regions) — main.py adds prefix=/api, same as all other v3 routers; plan code snippet had wrong prefix that would double-prefix to /api/api/v3/regions
+- [Phase 05]: Router prefix /v3/projects (not /api/v3/projects) — plan snippet had wrong prefix; main.py adds /api at mount time
+- [Phase 05]: Migration 0005 added: v1 legacy fields (country_qid/period_start/period_end) made nullable for v3 project creation
+- [Phase 05]: region_key threaded from endpoint to producer as plain str — no DB access in worker thread (generate.py + render.py)
 
 ### Blockers/Concerns
 
@@ -108,6 +111,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-12T12:36:34.043Z
-Stopped at: Completed 05-07-PLAN.md
+Last session: 2026-05-12T12:51:06.087Z
+Stopped at: Completed 05-04-PLAN.md
 Resume file: None
