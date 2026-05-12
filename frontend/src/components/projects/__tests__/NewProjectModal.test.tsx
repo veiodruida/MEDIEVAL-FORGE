@@ -77,6 +77,8 @@ function makeWrapper() {
           React.createElement(BrowserRouter, null, children),
         ),
       ),
+      // Viewport must be mounted for Toast.Root content to be rendered into the DOM
+      React.createElement(Toast.Viewport),
     )
   }
 }

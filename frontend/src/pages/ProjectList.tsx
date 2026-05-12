@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { Box, Button, Card, Flex, Heading, Text } from '@radix-ui/themes'
 import { useDeleteProject, useProjects } from '../api/client'
+import { NewProjectModal } from '../components/projects/NewProjectModal'
 
 const STATUS_LABEL: Record<string, string> = {
   created: 'Criado',
@@ -20,9 +21,7 @@ export function ProjectList() {
     <Box p="6">
       <Flex justify="between" align="center" mb="4">
         <Heading>Projetos de Mapa</Heading>
-        <Link to="/projects/new">
-          <Button>+ Novo projeto</Button>
-        </Link>
+        <NewProjectModal />
       </Flex>
       {isLoading && <Text>Carregando…</Text>}
       {error && <Text color="red">{(error as Error).message}</Text>}
