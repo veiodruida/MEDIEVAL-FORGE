@@ -130,7 +130,7 @@ Plans:
 - [ ] 05-03-PLAN.md — Wave 3: tests/parity/test_iberia_868_yaml.py — hard parity gate (D-14) proving YAML cfg byte-equal to legacy
 - [ ] 05-04-PLAN.md — Wave 4: Alembic region_key column + Project.region_key field + POST /api/v3/projects + generate.py/render.py swap to load_region
 - [ ] 05-05-PLAN.md — Wave 5: delete regions.py + territory_data.py + retire legacy test_iberia_868.py (D-13)
-- [ ] 05-06-PLAN.md — Wave 2: scripts/gen_toy_france.py + data/regions/france_1066.yaml + toy inputs + autogen loader test
+- [x] 05-06-PLAN.md — Wave 2: scripts/gen_toy_france.py + data/regions/france_1066.yaml + toy inputs + autogen loader test
 - [ ] 05-07-PLAN.md — Wave 3: GET /api/v3/regions endpoint + alphabetical order + has_dataset flag
 - [ ] 05-08-PLAN.md — Wave 5: NewProjectModal.tsx + useRegions hook + useCreateV3Project + ProjectList trigger swap (per 05-UI-SPEC)
 - [ ] 05-09-PLAN.md — Wave 2: data/regions/england_1216.yaml (YAML-only) + loader FileNotFoundError contract test
