@@ -193,3 +193,7 @@ T-05-10-01: E2E test only — no new production attack surface introduced.
 | No `test.skip` in Playwright spec | CONFIRMED |
 | Commit 6e4ae89 (Task 1) | FOUND |
 | Commit f7bd39f (Task 2) | FOUND |
+
+## Checkpoint Disposition
+
+**Task 2 checkpoint (human-verify):** User approved without live UAT ("approved" response). The Playwright spec was reviewed as committed work and accepted as complete. No browser session was run against a live server — spec correctness validated via code review + selector analysis only.

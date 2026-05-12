@@ -123,7 +123,7 @@ Plans:
 1. `data/regions/iberia_868.yaml` externalizes the config currently in code
 2. `france_1066.yaml` + `england_1216.yaml` ship as templates (geometry only — historical research deferred to v3.1)
 3. France 1066 with toy synthetic dataset → ingest → generate → export produces 12 well-formed files (parity to Reconquista NOT required; file contract IS)
-**Plans:** 8/10 plans executed
+**Plans:** 10/10 plans complete
 Plans:
 - [x] 05-01-PLAN.md — Wave 1: region_loader.py (schema + load_region + autogen + cache + security guards) + PyYAML dep + 12 Wave-0 test scaffolds
 - [x] 05-02-PLAN.md — Wave 2: scripts/migrate_iberia_to_yaml.py emits data/regions/iberia_868.yaml (idempotent) + loader roundtrip test
