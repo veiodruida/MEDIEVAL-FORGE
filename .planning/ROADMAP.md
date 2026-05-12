@@ -126,7 +126,7 @@ Plans:
 **Plans:** 10 plans
 Plans:
 - [x] 05-01-PLAN.md — Wave 1: region_loader.py (schema + load_region + autogen + cache + security guards) + PyYAML dep + 12 Wave-0 test scaffolds
-- [ ] 05-02-PLAN.md — Wave 2: scripts/migrate_iberia_to_yaml.py emits data/regions/iberia_868.yaml (idempotent) + loader roundtrip test
+- [x] 05-02-PLAN.md — Wave 2: scripts/migrate_iberia_to_yaml.py emits data/regions/iberia_868.yaml (idempotent) + loader roundtrip test
 - [ ] 05-03-PLAN.md — Wave 3: tests/parity/test_iberia_868_yaml.py — hard parity gate (D-14) proving YAML cfg byte-equal to legacy
 - [ ] 05-04-PLAN.md — Wave 4: Alembic region_key column + Project.region_key field + POST /api/v3/projects + generate.py/render.py swap to load_region
 - [ ] 05-05-PLAN.md — Wave 5: delete regions.py + territory_data.py + retire legacy test_iberia_868.py (D-13)

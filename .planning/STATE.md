@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: + bootstrap v3 infrastructure
 status: executing
-stopped_at: Completed 05-01-PLAN.md
-last_updated: "2026-05-12T12:06:50.929Z"
+stopped_at: Completed 05-02-PLAN.md
+last_updated: "2026-05-12T12:13:32.634Z"
 last_activity: 2026-05-12
 progress:
   total_phases: 10
   completed_phases: 5
   total_plans: 37
-  completed_plans: 28
-  percent: 76
+  completed_plans: 29
+  percent: 78
 ---
 
 # Project State (v3)
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md
 ## Current Position
 
 Phase: 05 (region-generalization) — EXECUTING
-Plan: 2 of 10
+Plan: 3 of 10
 Status: Ready to execute
 Last activity: 2026-05-12
 
@@ -83,6 +83,8 @@ See `.planning/PROJECT.md` Key Decisions table (D-V3-01 through D-V3-07).
 - [Phase 05]: pyproject.toml is at repo root (not backend/); PyYAML added there
 - [Phase 05]: region_loader cache keyed by (key, regions_dir) for test isolation
 - [Phase 05]: Plan 05-01: explicit-only cache (no mtime) per RESEARCH D-15 recommendation
+- [Phase 05]: KINGDOMS/DUCHIES/CONDADOS converted from native dict/tuple formats to list[dict] matching RegionConfigSchema (plan literal dict(raw_condado) crashed on tuple input)
+- [Phase 05]: kingdom_colors int keys emitted as str keys — pydantic v2 rejects int keys in dict[str, list[int]]
 
 ### Blockers/Concerns
 
@@ -102,6 +104,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-12T12:06:50.926Z
-Stopped at: Completed 05-01-PLAN.md
+Last session: 2026-05-12T12:13:32.631Z
+Stopped at: Completed 05-02-PLAN.md
 Resume file: None
