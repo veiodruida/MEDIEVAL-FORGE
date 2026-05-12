@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: + bootstrap v3 infrastructure
 status: executing
-stopped_at: Completed 05-06-PLAN.md
-last_updated: "2026-05-12T12:18:26.852Z"
+stopped_at: Completed 05-03-PLAN.md
+last_updated: "2026-05-12T12:26:41.528Z"
 last_activity: 2026-05-12
 progress:
   total_phases: 10
   completed_phases: 5
   total_plans: 37
-  completed_plans: 30
-  percent: 81
+  completed_plans: 31
+  percent: 84
 ---
 
 # Project State (v3)
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md
 ## Current Position
 
 Phase: 05 (region-generalization) — EXECUTING
-Plan: 4 of 10
+Plan: 5 of 10
 Status: Ready to execute
 Last activity: 2026-05-12
 
@@ -86,6 +86,8 @@ See `.planning/PROJECT.md` Key Decisions table (D-V3-01 through D-V3-07).
 - [Phase 05]: KINGDOMS/DUCHIES/CONDADOS converted from native dict/tuple formats to list[dict] matching RegionConfigSchema (plan literal dict(raw_condado) crashed on tuple input)
 - [Phase 05]: kingdom_colors int keys emitted as str keys — pydantic v2 rejects int keys in dict[str, list[int]]
 - [Phase 05]: parents[3] is correct repo root anchor for test files in backend/tests/unit/ (not parents[4])
+- [Phase 05]: _convert_territory_data added to region_loader.py: load_region must produce voronoi-compatible shapes before any parity test can pass
+- [Phase 05]: kingdom_colors keys converted int(k): render.py indexes with integer ki; YAML emits str keys by pydantic contract
 
 ### Blockers/Concerns
 
@@ -105,6 +107,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-12T12:18:26.850Z
-Stopped at: Completed 05-06-PLAN.md
+Last session: 2026-05-12T12:26:41.526Z
+Stopped at: Completed 05-03-PLAN.md
 Resume file: None
