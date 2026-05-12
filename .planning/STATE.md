@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: + bootstrap v3 infrastructure
-status: executing
-stopped_at: Completed 05-08-PLAN.md
-last_updated: "2026-05-12T14:07:35.667Z"
+status: verifying
+stopped_at: Completed 05-10-PLAN.md
+last_updated: "2026-05-12T14:32:52.298Z"
 last_activity: 2026-05-12
 progress:
   total_phases: 10
-  completed_phases: 5
+  completed_phases: 6
   total_plans: 37
-  completed_plans: 36
-  percent: 97
+  completed_plans: 37
+  percent: 100
 ---
 
 # Project State (v3)
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md
 
 Phase: 05 (region-generalization) — EXECUTING
 Plan: 10 of 10
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-05-12
 
 Progress: [█████████░] 93% (25 of 27 plans complete)
@@ -95,6 +95,9 @@ See `.planning/PROJECT.md` Key Decisions table (D-V3-01 through D-V3-07).
 - [Phase 05]: england_1216.yaml YAML-only template (no inputs dir): loader raises FileNotFoundError with actionable message; GET /api/v3/regions reports has_dataset=false
 - [Phase 05]: All 5 planned migrations + 3 extras (audit found __main__.py + 2 unit tests) done in commit 6a388a2; 3 retirements in same commit; D-13+D-17 step 5 locked by c0be89e
 - [Phase 05]: Dialog.Trigger without asChild: @radix-ui/themes DialogTriggerProps doesn't include asChild; data-testid placed on inner Button instead
+- [Phase 05]: 10-file EXPORT_FILE_CONTRACT (not 12): terrain_lookup.png + terrain_types.json deferred to Phase 06 (P-2); E2E test asserts 10-file contract per EXPORT_FILE_CONTRACT constant
+- [Phase 05]: original_idx emitted conditionally in export.py: len(c)>6 gate lets Iberia parity stay green while autogen regions gain CLAUDE.md rule 4 compliance
+- [Phase 05]: autogen baronies: 1 barony per condado at centroid — voronoi KD-trees require non-empty baronies list; autogen path previously left bars=[] → blank map
 
 ### Blockers/Concerns
 
@@ -114,6 +117,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-12T14:07:35.664Z
-Stopped at: Completed 05-08-PLAN.md
+Last session: 2026-05-12T14:32:45.525Z
+Stopped at: Completed 05-10-PLAN.md
 Resume file: None
