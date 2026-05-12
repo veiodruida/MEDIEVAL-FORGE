@@ -1,0 +1,56 @@
+name: england_1216
+display_name: "England 1216 AD"
+map_w: 1920
+map_h: 1080
+upscale: 2
+lon_min: -6.0
+lon_max: 2.0
+lat_min: 49.5
+lat_max: 56.0
+output_dir: "../Assets/StreamingAssets/Maps"
+dataset:
+  pt_geojson: inputs/england_municipalities.geojson  # intentionally absent (D-12)
+  es_input: inputs/england_municipalities.geojson
+  mountain_river_json: inputs/mountain_river_data.json
+border_polygon: []
+pt_duchies: []
+kingdom_colors: {}
+ocean_near:
+- 45
+- 90
+- 140
+ocean_far:
+- 70
+- 130
+- 180
+ocean_gradient_dist: 150.0
+coast_inner_width: 2
+coast_inner_color:
+- 15
+- 10
+- 5
+island_min_px: 300
+fragment_min_px: 600
+blob_merge_px: 200
+median_passes: 8
+smooth_sigma: 3.0
+mountain_threshold: 1500
+mountain_color_visual:
+- 118
+- 100
+- 80
+mountain_color_lookup:
+- 50
+- 45
+- 40
+mountain_noise: 20
+river_color:
+- 74
+- 144
+- 217
+river_width: 2
+rng_seed: 42
+draw_names: false
+kingdoms: []
+duchies: []
+condados: []
