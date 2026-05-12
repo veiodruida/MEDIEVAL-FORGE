@@ -186,10 +186,37 @@ def point_in_polygon(x: float, y: float, polygon: list) -> bool:
     return inside
 
 
+# R-14 (05-10): single source of truth for the 12-file Unity export contract.
+# Two files (terrain_lookup.png + terrain_types.json) are deferred to Phase 06
+# (P-2 in inicio/licoes). The pipeline currently produces 10 files; the terrain
+# pair is listed here so callers can distinguish present vs deferred.
+# Tests import EXPORT_FILE_CONTRACT to guard against silent rename drift.
+EXPORT_FILE_CONTRACT: tuple[str, ...] = (
+    "lookup_barony.png",
+    "lookup_condado.png",
+    "lookup_barony_colors.json",
+    "lookup_condado_colors.json",
+    "territory_metadata.json",
+    "visual_condado.png",
+    "visual_barony.png",
+    "mountains_mask.png",
+    "rivers_overlay.png",
+    "mountain_river_data.json",
+)
+
+# Files in the full 12-file contract deferred to Phase 06 (P-2 terrain pipeline).
+EXPORT_FILE_CONTRACT_DEFERRED: tuple[str, ...] = (
+    "terrain_lookup.png",
+    "terrain_types.json",
+)
+
+
 __all__ = [
     "ProjectDataset",
     "RegionConfig",
     "geo_to_pixel",
     "pixel_to_geo",
     "point_in_polygon",
+    "EXPORT_FILE_CONTRACT",
+    "EXPORT_FILE_CONTRACT_DEFERRED",
 ]

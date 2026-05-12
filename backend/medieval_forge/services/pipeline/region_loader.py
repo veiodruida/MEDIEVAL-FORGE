@@ -220,8 +220,14 @@ def load_region(key: str, regions_dir: Optional[Path] = None) -> RegionConfig:
 
     # Autogen territories if empty (D-03)
     if not kwargs.get("condados"):
+        kg_raw, du_raw, co_raw = _autogen_territories(dataset, kwargs["rng_seed"])
+        # Route through same converter as explicit YAML data so voronoi.py receives
+        # the expected positional-tuple format. _autogen_territories returns
+        # list[dict] (same format _convert_territory_data consumes).
+        # [Rule 3 - Blocker 05-10] autogen path previously set cfg.condados to
+        # list[dict] directly, which crashed voronoi.py:41 (duchies.keys() on list).
         kwargs["kingdoms"], kwargs["duchies"], kwargs["condados"] = (
-            _autogen_territories(dataset, kwargs["rng_seed"])
+            _convert_territory_data(kg_raw, du_raw, co_raw)
         )
     else:
         # Convert list[dict] → the in-memory shapes expected by voronoi.py
@@ -270,22 +276,38 @@ def _convert_territory_data(
         d["id"]: (d["kingdom_id"], d["name"]) for d in duchies_raw
     }
 
-    # condados: list[dict] → list[tuple(id, name, lon, lat, duchy_id, baronies)]
+    # condados: list[dict] → list[tuple(id, name, lon, lat, duchy_id, baronies[, original_idx])]
     # baronies: list[dict{name,lon,lat}] → list[tuple(name, lon, lat)]
+    # original_idx preserved as 7th element when present (CLAUDE.md rule 4).
+    # voronoi.py only accesses c[0..5] positionally — c[6] is ignored there.
+    # export.py emits it conditionally so Iberia parity (no original_idx) stays green.
     condados: list = []
     for c in condados_raw:
         barony_list = c.get("baronies") or []
         barony_tuples = [
             (b["name"], float(b["lon"]), float(b["lat"])) for b in barony_list
         ]
-        condados.append((
-            c["id"],
-            c["name"],
-            float(c["lon"]),
-            float(c["lat"]),
-            c["duchy_id"],
-            barony_tuples,
-        ))
+        row: tuple
+        if "original_idx" in c:
+            row = (
+                c["id"],
+                c["name"],
+                float(c["lon"]),
+                float(c["lat"]),
+                c["duchy_id"],
+                barony_tuples,
+                c["original_idx"],
+            )
+        else:
+            row = (
+                c["id"],
+                c["name"],
+                float(c["lon"]),
+                float(c["lat"]),
+                c["duchy_id"],
+                barony_tuples,
+            )
+        condados.append(row)
 
     return kingdoms, duchies, condados
 
@@ -402,6 +424,11 @@ def _autogen_territories(
                 "kingdom_id": "unnamed",
                 "lon": feat["lon"],
                 "lat": feat["lat"],
+                # One synthetic barony per condado so voronoi KD-trees have real
+                # sample points. Without baronies, bars=[] → tp=te=None → blank map.
+                "baronies": [
+                    {"name": f"barony_{i:03d}", "lon": feat["lon"], "lat": feat["lat"]}
+                ],
             }
         )
 

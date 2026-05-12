@@ -57,7 +57,13 @@ def test_valid_polygons():
 
 
 def test_load_region_autogen():
-    """load_region('france_1066') must fire autogen: >=40 condados, unique original_idx, 1 kingdom 'unnamed'."""
+    """load_region('france_1066') must fire autogen: >=40 condados, unique original_idx, 1 kingdom 'unnamed'.
+
+    After the 05-10 autogen fix, load_region routes autogen output through
+    _convert_territory_data so cfg.condados is a list of tuples (voronoi-ready
+    positional format) and cfg.kingdoms/cfg.duchies are dicts.
+    Tuple layout: (id, name, lon, lat, duchy_id, baronies[, original_idx])
+    """
     from medieval_forge.services.pipeline.region_loader import (  # noqa: PLC0415
         clear_region_cache,
         load_region,
@@ -67,11 +73,17 @@ def test_load_region_autogen():
     cfg = load_region("france_1066")
 
     assert len(cfg.condados) >= 40, f"Expected >=40 condados, got {len(cfg.condados)}"
-    idxs = [c["original_idx"] for c in cfg.condados]
+    # After _convert_territory_data, condados are tuples. original_idx is c[6].
+    idxs = [c[6] for c in cfg.condados if len(c) > 6]
+    assert len(idxs) == len(cfg.condados), (
+        f"Expected all {len(cfg.condados)} condados to carry original_idx at c[6], "
+        f"but only {len(idxs)} had it"
+    )
     assert len(set(idxs)) == len(idxs), "original_idx values must be unique (CLAUDE.md rule 4)"
-    assert len(cfg.kingdoms) == 1, f"Expected 1 autogen kingdom, got {len(cfg.kingdoms)}"
-    assert cfg.kingdoms[0]["id"] == "unnamed", (
-        f"Expected kingdom id 'unnamed', got {cfg.kingdoms[0]['id']!r}"
+    # kingdoms is now a dict after _convert_territory_data: {"unnamed": "Unnamed Kingdom"}
+    assert isinstance(cfg.kingdoms, dict), f"Expected kingdoms dict, got {type(cfg.kingdoms)}"
+    assert "unnamed" in cfg.kingdoms, (
+        f"Expected 'unnamed' kingdom key, got keys: {list(cfg.kingdoms.keys())}"
     )
 
 

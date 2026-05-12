@@ -75,4 +75,5 @@ markers = [
     "parity: parity tests against Reconquista exports (non-skippable from Phase 01)",
     "integration: integration tests across services",
     "uat: user acceptance tests via Playwright",
+    "e2e: end-to-end pipeline contract tests (run full pipeline, check output files)",
 ]

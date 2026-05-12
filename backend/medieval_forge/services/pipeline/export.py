@@ -52,7 +52,7 @@ def export_metadata(condados, duchies, kingdoms, bars, result: np.ndarray,
         if npx == 0:
             continue
         ys, xs = np.where(pc == ci)
-        metadata["condados"].append({
+        condado_entry: dict = {
             "id": c[0],
             "name": c[1],
             "lon": c[2], "lat": c[3],
@@ -62,7 +62,13 @@ def export_metadata(condados, duchies, kingdoms, bars, result: np.ndarray,
             "pixel_center": [int(xs.mean()), int(ys.mean())],
             "pixel_count": npx,
             "baronies": [b[0] for b in c[5]],
-        })
+        }
+        # CLAUDE.md rule 4: emit original_idx when present (c[6] for autogen condados).
+        # Iberia condados have no original_idx (verbatim inicio) — conditional emit
+        # keeps the Iberia deep-equal parity test green (no field added to Iberia output).
+        if len(c) > 6:
+            condado_entry["original_idx"] = c[6]
+        metadata["condados"].append(condado_entry)
 
     for bi, b in enumerate(bars):
         npx = int(np.sum(result == bi))

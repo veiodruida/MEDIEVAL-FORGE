@@ -140,7 +140,8 @@
         "Grado",
         "Siero",
         "Mieres"
-      ]
+      ],
+      "original_idx": 1
     },
     {
       "id": "pravia",
@@ -159,7 +160,8 @@
         "Salas",
         "Tineo",
         "Luarca"
-      ]
+      ],
+      "original_idx": 2
     },
     {
       "id": "gijon",
@@ -177,7 +179,8 @@
         "Gijón",
         "Villaviciosa",
         "Avilés"
-      ]
+      ],
+      "original_idx": 3
     },
     {
       "id": "liebana",
@@ -195,7 +198,8 @@
         "Cangas de Onís",
         "Liébana",
         "Picos"
-      ]
+      ],
+      "original_idx": 4
     },
     {
       "id": "coruna",
@@ -213,7 +217,8 @@
         "Coruña",
         "Betanzos",
         "Ferrol"
-      ]
+      ],
+      "original_idx": 5
     },
     {
       "id": "compostela",
@@ -231,7 +236,8 @@
         "Santiago",
         "Padrón",
         "Noia"
-      ]
+      ],
+      "original_idx": 6
     },
     {
       "id": "lugo",
@@ -249,7 +255,8 @@
         "Lugo",
         "Sarria",
         "Monforte"
-      ]
+      ],
+      "original_idx": 7
     },
     {
       "id": "ourense",
@@ -267,7 +274,8 @@
         "Ourense",
         "Celanova",
         "Verín"
-      ]
+      ],
+      "original_idx": 8
     },
     {
       "id": "tui",
@@ -285,7 +293,8 @@
         "Tui",
         "Vigo",
         "Pontevedra"
-      ]
+      ],
+      "original_idx": 9
     },
     {
       "id": "porto",
@@ -304,7 +313,8 @@
         "Maia",
         "Matosinhos",
         "Vila do Conde"
-      ]
+      ],
+      "original_idx": 10
     },
     {
       "id": "braga",
@@ -323,7 +333,8 @@
         "Guimarães",
         "Barcelos",
         "Famalicão"
-      ]
+      ],
+      "original_idx": 11
     },
     {
       "id": "viana",
@@ -341,7 +352,8 @@
         "Viana do Castelo",
         "Ponte de Lima",
         "Caminha"
-      ]
+      ],
+      "original_idx": 12
     },
     {
       "id": "chaves",
@@ -360,7 +372,8 @@
         "Montalegre",
         "Vila Pouca",
         "Vila Real"
-      ]
+      ],
+      "original_idx": 13
     },
     {
       "id": "braganca",
@@ -379,7 +392,8 @@
         "Miranda do Douro",
         "Vimioso",
         "Mogadouro"
-      ]
+      ],
+      "original_idx": 14
     },
     {
       "id": "leon",
@@ -397,7 +411,8 @@
         "León",
         "Mansilla",
         "Sahagún"
-      ]
+      ],
+      "original_idx": 15
     },
     {
       "id": "astorga",
@@ -415,7 +430,8 @@
         "Astorga",
         "Ponferrada",
         "Bembibre"
-      ]
+      ],
+      "original_idx": 16
     },
     {
       "id": "benavente",
@@ -432,7 +448,8 @@
       "baronies": [
         "Benavente",
         "Villalpando"
-      ]
+      ],
+      "original_idx": 17
     },
     {
       "id": "zamora",
@@ -449,7 +466,8 @@
       "baronies": [
         "Zamora",
         "Toro"
-      ]
+      ],
+      "original_idx": 18
     },
     {
       "id": "salamanca",
@@ -467,7 +485,8 @@
         "Salamanca",
         "Ciudad Rodrigo",
         "Alba de Tormes"
-      ]
+      ],
+      "original_idx": 19
     },
     {
       "id": "burgos",
@@ -484,7 +503,8 @@
       "baronies": [
         "Burgos",
         "Lerma"
-      ]
+      ],
+      "original_idx": 20
     },
     {
       "id": "amaya",
@@ -502,7 +522,8 @@
         "Amaya",
         "Villadiego",
         "Sedano"
-      ]
+      ],
+      "original_idx": 21
     },
     {
       "id": "osma",
@@ -520,7 +541,8 @@
         "Osma",
         "San Esteban",
         "El Burgo"
-      ]
+      ],
+      "original_idx": 22
     },
     {
       "id": "palencia",
@@ -538,7 +560,8 @@
         "Palencia",
         "Carrión",
         "Aguilar"
-      ]
+      ],
+      "original_idx": 23
     },
     {
       "id": "najera",
@@ -556,7 +579,8 @@
         "Nájera",
         "Logroño",
         "Calahorra"
-      ]
+      ],
+      "original_idx": 24
     },
     {
       "id": "valladolid",
@@ -574,7 +598,8 @@
         "Valladolid",
         "Medina del Campo",
         "Olmedo"
-      ]
+      ],
+      "original_idx": 25
     },
     {
       "id": "alava",
@@ -591,7 +616,8 @@
       "baronies": [
         "Vitoria",
         "Salvatierra"
-      ]
+      ],
+      "original_idx": 26
     },
     {
       "id": "cantabria",
@@ -609,7 +635,8 @@
         "Santander",
         "Laredo",
         "Castro Urdiales"
-      ]
+      ],
+      "original_idx": 27
     },
     {
       "id": "lamego",
@@ -628,7 +655,8 @@
         "Resende",
         "Tarouca",
         "S.J.Pesqueira"
-      ]
+      ],
+      "original_idx": 28
     },
     {
       "id": "viseu",
@@ -647,7 +675,8 @@
         "Mangualde",
         "Tondela",
         "Aveiro"
-      ]
+      ],
+      "original_idx": 29
     },
     {
       "id": "coimbra",
@@ -666,7 +695,8 @@
         "Montemor-o-Velho",
         "Figueira da Foz",
         "Ovar"
-      ]
+      ],
+      "original_idx": 30
     },
     {
       "id": "leiria",
@@ -684,7 +714,8 @@
         "Leiria",
         "Pombal",
         "Óbidos"
-      ]
+      ],
+      "original_idx": 31
     },
     {
       "id": "idanha",
@@ -702,7 +733,8 @@
         "Idanha-a-Nova",
         "Guarda",
         "Covilhã"
-      ]
+      ],
+      "original_idx": 32
     },
     {
       "id": "pamplona",
@@ -720,7 +752,8 @@
         "Pamplona",
         "Puente la Reina",
         "Estella"
-      ]
+      ],
+      "original_idx": 33
     },
     {
       "id": "sanguesa",
@@ -737,7 +770,8 @@
       "baronies": [
         "Sangüesa",
         "Lumbier"
-      ]
+      ],
+      "original_idx": 34
     },
     {
       "id": "vizcaya",
@@ -755,7 +789,8 @@
         "Bilbao",
         "Durango",
         "Guernica"
-      ]
+      ],
+      "original_idx": 35
     },
     {
       "id": "jaca",
@@ -772,7 +807,8 @@
       "baronies": [
         "Jaca",
         "Canfranc"
-      ]
+      ],
+      "original_idx": 36
     },
     {
       "id": "sobrarbe",
@@ -789,7 +825,8 @@
       "baronies": [
         "Aínsa",
         "Boltaña"
-      ]
+      ],
+      "original_idx": 37
     },
     {
       "id": "ribagorza",
@@ -806,7 +843,8 @@
       "baronies": [
         "Benasque",
         "Graus"
-      ]
+      ],
+      "original_idx": 38
     },
     {
       "id": "barcelona",
@@ -824,7 +862,8 @@
         "Barcelona",
         "Terrassa",
         "Sabadell"
-      ]
+      ],
+      "original_idx": 39
     },
     {
       "id": "girona",
@@ -841,7 +880,8 @@
       "baronies": [
         "Girona",
         "Figueres"
-      ]
+      ],
+      "original_idx": 40
     },
     {
       "id": "osona",
@@ -859,7 +899,8 @@
         "Vic",
         "Manresa",
         "Berga"
-      ]
+      ],
+      "original_idx": 41
     },
     {
       "id": "urgell",
@@ -876,7 +917,8 @@
       "baronies": [
         "La Seu d'Urgell",
         "Balaguer"
-      ]
+      ],
+      "original_idx": 42
     },
     {
       "id": "cerdanya",
@@ -893,7 +935,8 @@
       "baronies": [
         "Puigcerdà",
         "Ripoll"
-      ]
+      ],
+      "original_idx": 43
     },
     {
       "id": "empuries",
@@ -911,7 +954,8 @@
         "Empúries",
         "Castelló d'Empúries",
         "Roses"
-      ]
+      ],
+      "original_idx": 44
     },
     {
       "id": "pallars",
@@ -928,7 +972,8 @@
       "baronies": [
         "Sort",
         "Tremp"
-      ]
+      ],
+      "original_idx": 45
     },
     {
       "id": "zaragoza",
@@ -946,7 +991,8 @@
         "Zaragoza",
         "Calatayud",
         "Daroca"
-      ]
+      ],
+      "original_idx": 47
     },
     {
       "id": "huesca",
@@ -964,7 +1010,8 @@
         "Huesca",
         "Barbastro",
         "Monzón"
-      ]
+      ],
+      "original_idx": 48
     },
     {
       "id": "lerida",
@@ -981,7 +1028,8 @@
       "baronies": [
         "Lérida",
         "Fraga"
-      ]
+      ],
+      "original_idx": 49
     },
     {
       "id": "tudela",
@@ -999,7 +1047,8 @@
         "Tudela",
         "Cascante",
         "Tarazona"
-      ]
+      ],
+      "original_idx": 50
     },
     {
       "id": "tortosa",
@@ -1016,7 +1065,8 @@
       "baronies": [
         "Tortosa",
         "Amposta"
-      ]
+      ],
+      "original_idx": 51
     },
     {
       "id": "teruel",
@@ -1033,7 +1083,8 @@
       "baronies": [
         "Teruel",
         "Albarracín"
-      ]
+      ],
+      "original_idx": 52
     },
     {
       "id": "toledo",
@@ -1051,7 +1102,8 @@
         "Toledo",
         "Talavera",
         "Consuegra"
-      ]
+      ],
+      "original_idx": 53
     },
     {
       "id": "madrid",
@@ -1069,7 +1121,8 @@
         "Madrid",
         "Alcalá",
         "Guadalajara"
-      ]
+      ],
+      "original_idx": 54
     },
     {
       "id": "segovia",
@@ -1087,7 +1140,8 @@
         "Segovia",
         "Ávila",
         "Sepúlveda"
-      ]
+      ],
+      "original_idx": 55
     },
     {
       "id": "cuenca",
@@ -1105,7 +1159,8 @@
         "Cuenca",
         "Huete",
         "Uclés"
-      ]
+      ],
+      "original_idx": 56
     },
     {
       "id": "medinaceli",
@@ -1123,7 +1178,8 @@
         "Medinaceli",
         "Sigüenza",
         "Molina"
-      ]
+      ],
+      "original_idx": 57
     },
     {
       "id": "merida",
@@ -1140,7 +1196,8 @@
       "baronies": [
         "Mérida",
         "Medellín"
-      ]
+      ],
+      "original_idx": 58
     },
     {
       "id": "badajoz",
@@ -1158,7 +1215,8 @@
         "Badajoz",
         "Olivenza",
         "Alburquerque"
-      ]
+      ],
+      "original_idx": 59
     },
     {
       "id": "caceres",
@@ -1176,7 +1234,8 @@
         "Cáceres",
         "Trujillo",
         "Plasencia"
-      ]
+      ],
+      "original_idx": 60
     },
     {
       "id": "lisboa",
@@ -1194,7 +1253,8 @@
         "Lisboa",
         "Sintra",
         "Almada"
-      ]
+      ],
+      "original_idx": 61
     },
     {
       "id": "santarem",
@@ -1212,7 +1272,8 @@
         "Santarém",
         "Abrantes",
         "Tomar"
-      ]
+      ],
+      "original_idx": 62
     },
     {
       "id": "alcacer",
@@ -1230,7 +1291,8 @@
         "Alcácer do Sal",
         "Setúbal",
         "Grândola"
-      ]
+      ],
+      "original_idx": 63
     },
     {
       "id": "evora",
@@ -1249,7 +1311,8 @@
         "Estremoz",
         "Montemor-o-Novo",
         "Elvas"
-      ]
+      ],
+      "original_idx": 64
     },
     {
       "id": "beja",
@@ -1268,7 +1331,8 @@
         "Serpa",
         "Moura",
         "Mértola"
-      ]
+      ],
+      "original_idx": 65
     },
     {
       "id": "silves",
@@ -1287,7 +1351,8 @@
         "Faro",
         "Tavira",
         "Lagos"
-      ]
+      ],
+      "original_idx": 66
     },
     {
       "id": "cordoba",
@@ -1304,7 +1369,8 @@
       "baronies": [
         "Córdoba",
         "Madinat al-Zahra"
-      ]
+      ],
+      "original_idx": 67
     },
     {
       "id": "cabra",
@@ -1322,7 +1388,8 @@
         "Cabra",
         "Lucena",
         "Priego"
-      ]
+      ],
+      "original_idx": 68
     },
     {
       "id": "ecija",
@@ -1339,7 +1406,8 @@
       "baronies": [
         "Écija",
         "Osuna"
-      ]
+      ],
+      "original_idx": 69
     },
     {
       "id": "sevilla",
@@ -1357,7 +1425,8 @@
         "Sevilha",
         "Carmona",
         "Alcalá de Guadaíra"
-      ]
+      ],
+      "original_idx": 70
     },
     {
       "id": "niebla",
@@ -1376,7 +1445,8 @@
         "Huelva",
         "Moguer",
         "Lepe"
-      ]
+      ],
+      "original_idx": 71
     },
     {
       "id": "cadiz",
@@ -1395,7 +1465,8 @@
         "Cádiz",
         "Medina Sidonia",
         "Sanlúcar"
-      ]
+      ],
+      "original_idx": 72
     },
     {
       "id": "jaen",
@@ -1413,7 +1484,8 @@
         "Jaén",
         "Andújar",
         "Martos"
-      ]
+      ],
+      "original_idx": 73
     },
     {
       "id": "ubeda",
@@ -1431,7 +1503,8 @@
         "Úbeda",
         "Baeza",
         "Linares"
-      ]
+      ],
+      "original_idx": 74
     },
     {
       "id": "elvira",
@@ -1448,7 +1521,8 @@
       "baronies": [
         "Granada",
         "Santa Fe"
-      ]
+      ],
+      "original_idx": 75
     },
     {
       "id": "guadix",
@@ -1465,7 +1539,8 @@
       "baronies": [
         "Guadix",
         "Fiñana"
-      ]
+      ],
+      "original_idx": 76
     },
     {
       "id": "baza",
@@ -1482,7 +1557,8 @@
       "baronies": [
         "Baza",
         "Huéscar"
-      ]
+      ],
+      "original_idx": 77
     },
     {
       "id": "loja",
@@ -1499,7 +1575,8 @@
       "baronies": [
         "Loja",
         "Alhama"
-      ]
+      ],
+      "original_idx": 78
     },
     {
       "id": "malaga",
@@ -1516,7 +1593,8 @@
       "baronies": [
         "Málaga",
         "Vélez-Málaga"
-      ]
+      ],
+      "original_idx": 79
     },
     {
       "id": "ronda",
@@ -1533,7 +1611,8 @@
       "baronies": [
         "Ronda",
         "Antequera"
-      ]
+      ],
+      "original_idx": 80
     },
     {
       "id": "algeciras",
@@ -1551,7 +1630,8 @@
         "Algeciras",
         "Tarifa",
         "Gibraltar"
-      ]
+      ],
+      "original_idx": 81
     },
     {
       "id": "almeria",
@@ -1568,7 +1648,8 @@
       "baronies": [
         "Almería",
         "Berja"
-      ]
+      ],
+      "original_idx": 82
     },
     {
       "id": "vera",
@@ -1585,7 +1666,8 @@
       "baronies": [
         "Vera",
         "Mojácar"
-      ]
+      ],
+      "original_idx": 83
     },
     {
       "id": "murcia",
@@ -1602,7 +1684,8 @@
       "baronies": [
         "Múrcia",
         "Orihuela"
-      ]
+      ],
+      "original_idx": 84
     },
     {
       "id": "lorca",
@@ -1619,7 +1702,8 @@
       "baronies": [
         "Lorca",
         "Caravaca"
-      ]
+      ],
+      "original_idx": 85
     },
     {
       "id": "cartagena",
@@ -1636,7 +1720,8 @@
       "baronies": [
         "Cartagena",
         "Mazarrón"
-      ]
+      ],
+      "original_idx": 86
     },
     {
       "id": "alicante",
@@ -1654,7 +1739,8 @@
         "Alicante",
         "Elche",
         "Dénia"
-      ]
+      ],
+      "original_idx": 87
     },
     {
       "id": "valencia",
@@ -1671,7 +1757,8 @@
       "baronies": [
         "Valência",
         "Sagunto"
-      ]
+      ],
+      "original_idx": 88
     },
     {
       "id": "xativa",
@@ -1689,7 +1776,8 @@
         "Xàtiva",
         "Alcoi",
         "Gandía"
-      ]
+      ],
+      "original_idx": 89
     },
     {
       "id": "castellon",
@@ -1707,7 +1795,8 @@
         "Castellón",
         "Burriana",
         "Segorbe"
-      ]
+      ],
+      "original_idx": 90
     },
     {
       "id": "mallorca",
@@ -1724,7 +1813,8 @@
       "baronies": [
         "Palma",
         "Alcúdia"
-      ]
+      ],
+      "original_idx": 91
     },
     {
       "id": "menorca",
@@ -1741,7 +1831,8 @@
       "baronies": [
         "Maó",
         "Ciutadella"
-      ]
+      ],
+      "original_idx": 92
     }
   ],
   "baronies": [
