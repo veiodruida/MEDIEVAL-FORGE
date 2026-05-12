@@ -827,28 +827,32 @@ for k, v in overrides.items():
 
 **All other claims** are verified against repo source files (regions.py, contracts.py, voronoi.py, border.py, render.py, schemas.py, projects.py, models.py, pyproject.toml, alembic/versions/, data/regions/iberia_868/inputs/mountain_river_data.json).
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **`POST /api/v3/projects` route — extend v1 or introduce v3?**
    - What we know: only `POST /projects` (v1) exists in `api/projects.py:58`; `ProjectCreate` (`schemas.py:32`) takes `country_qid`, period, bbox, generator_config — none of these are `region_key`.
    - What's unclear: CONTEXT.md D-07 says "Submit calls `POST /api/v3/projects` with `{name, region_key}`" — but no such v3 route exists.
    - Recommendation: extend `ProjectCreate` to accept optional `region_key: str = "iberia_868"`; keep `POST /projects`; document that legacy fields (`country_qid`, bbox) remain valid backstops. Cheaper than a new router; consistent with the gradual v3 migration pattern.
    - Decider: Planner with one ASK clarifying which path the user prefers.
+   - **RESOLVED:** Plan 05-07 extended `ProjectCreate` schema and added v3 router prefix `/v3/projects` (main.py adds `/api` at mount). Migration 0005 (commit 6a388a2) made v1 legacy fields (country_qid/period_start/period_end) nullable for v3 project creation. `region_key` threaded from endpoint to producer as plain str — see STATE.md Phase 05 decisions log.
 
 2. **`dataclasses.replace` vs deep copy in render/generate producers.**
    - What we know: After Phase 05, `load_region(...)` returns a cached singleton; mutating fields (`output_dir`, `stop_event`, `on_stage`) on it is unsafe under concurrency.
    - Recommendation: use `dataclasses.replace(base_cfg, ...)` in producers. One-line, shallow, idiomatic.
    - Decider: Planner can pick at task-design time.
+   - **RESOLVED:** Plan 05-14 (Pitfall 9 fix) switches `test_iberia_868_yaml.py:43` and the producers off direct `cfg.output_dir` mutation onto `dataclasses.replace(base_cfg, output_dir=...)`. The cached-singleton mutation hazard recorded in this question was the exact bug 05-14 closes.
 
 3. **Cancel `test_iberia_868.py` after Plan 05-05 — retire, rewrite, or keep both?**
    - What we know: `test_iberia_868.py` imports nothing from `regions.py` (verified — it uses fixtures `pipeline_output` and `golden_dir` from conftest); the conftest is what builds the pipeline.
    - Recommendation: rewrite the conftest to use `load_region('iberia_868')` (Plan 05-04), then `test_iberia_868.py` and `test_iberia_868_yaml.py` both pass through the YAML path. Keep both (defense in depth) OR retire `test_iberia_868.py` since they'd be functionally identical. Recommendation: retire after one CI cycle confirms equivalence.
    - Decider: Planner during Plan 05-05.
+   - **RESOLVED:** Plan 05-05 kept both files. `test_iberia_868_yaml.py` is the canonical YAML-path parity gate; `test_iberia_868.py` remains as a defense-in-depth check on the legacy code path until Phase 06 retires the non-YAML harness entirely.
 
 4. **Voronoi edge cell handling in France toy.**
    - What we know: scipy's `Voronoi` returns `-1` for unbounded regions; ~6-10 of 50 seeds will hit edges.
    - Recommendation: Drop edge cells (naive `continue`). SC-3 doesn't require exactly 50 features; "well-formed 12-file contract" only needs the pipeline to run.
    - Decider: Planner during Plan 05-06; can defer to a follow-up if needed.
+   - **RESOLVED:** Plan 05-06 implemented the naive `continue` for unbounded Voronoi cells. The follow-up bug (Voronoi seed collision in `region_loader.py:_autogen_territories` that produced ~80 condados instead of ~40 for france_1066 — flagged by 05-VERIFICATION) is closed by Plan 05-13, which routes single-country regions through a one-tree path. SC-3 (well-formed 12-file contract) does not depend on exact condado cardinality.
 
 ## Environment Availability
 
