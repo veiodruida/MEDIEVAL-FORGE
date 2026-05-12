@@ -1,10 +1,13 @@
 ---
 phase: 05
-reviewers: [gemini, opencode, deepseek-v4-flash]
+reviewers: [gemini, opencode, deepseek-v4-flash, qwen3-30b-a3b-thinking-2507-local]
 reviewed_at: 2026-05-12T09:59:05Z
 deepseek_appended_at: 2026-05-12T10:08:00Z
+qwen3_local_appended_at: 2026-05-12T12:55:00Z
 plans_reviewed: [05-01-PLAN.md, 05-02-PLAN.md, 05-03-PLAN.md, 05-04-PLAN.md, 05-05-PLAN.md, 05-06-PLAN.md, 05-07-PLAN.md, 05-08-PLAN.md, 05-09-PLAN.md, 05-10-PLAN.md]
 skipped: [claude (self), codex (TOML hooks parse error in user config + 401 auth in fallback)]
+hardware: RTX 4070 Ti SUPER 16GB (Qwen3-30B-A3B Q4_K_M, MoE experts on CPU, 64k ctx q8 KV)
+qwen3_timings: prompt 53263 tok @ 307 tok/s (174s), generation 3812 tok @ 16.4 tok/s (233s)
 ---
 
 # Cross-AI Plan Review — Phase 05
@@ -255,3 +258,53 @@ DeepSeek's review adds **zero new actionable items** to the prior consensus. The
 3. MEDIUM — 05-01 schema: dataset fields optional with explicit FileNotFoundError.
 4. MEDIUM — 05-04 / 05-07: permanent `parents[4]` anchor comment.
 5. LOW — 05-08 / 05-10 / 05-09 / 05-08 minor items as previously listed.
+
+---
+
+## Qwen3-30B-A3B-Thinking-2507 Local Review (appended 2026-05-12)
+
+> Run on RTX 4070 Ti SUPER 16GB via llama.cpp + Vulkan. MoE 30B/3B-active with experts pinned to CPU (`-ncmoe 48`), shared layers + KV cache on GPU. Q4_K_M model, Q8 KV cache, 64k context, FA on. Prompt was reduced version (no RESEARCH.md; full plans + CONTEXT + REVIEWS + ROADMAP).
+>
+> Throughput: prompt 307 tok/s, generation 16.4 tok/s.
+
+### Summary
+
+Qwen3 review identifies three "complementary" concerns. Verified against codebase:
+
+- **Concern 1 (HIGH — Windows path handling)**: **MISDIAGNOSED — DISMISS**. Qwen3 claims `Path(__file__).resolve().parents[4]` fails on Windows due to case-insensitivity. Python's `pathlib.PureWindowsPath` and `Path.resolve()` already handle Windows path semantics correctly. The actual `parents[4]` depth concern is already addressed by R-04 with anchor comments. The proposed `.as_posix().replace('\\', '/')` workaround is unnecessary and potentially harmful.
+
+- **Concern 2 (MEDIUM — pt_duchies set vs list)**: **PARTIALLY VALID — ALREADY MITIGATED**. The structural mismatch is real:
+  - `backend/medieval_forge/services/pipeline/contracts.py:78` — `pt_duchies: set = field(default_factory=set)`
+  - Plan 05-01 line 222 — schema declares `pt_duchies: list[str] = Field(default_factory=list)`
+  - Plan 05-01 line 286 — schema→dataclass converts via `kwargs['pt_duchies'] = set(kwargs.get('pt_duchies') or [])`
+  - Plan 05-02 line 140 — dataclass→YAML reverses via `"pt_duchies": sorted(cfg.pt_duchies)`
+
+  The conversion is bidirectional and ordering is preserved by `sorted()` in 05-02. Not "silent data loss" as claimed. **However**, the observation is worth adding as a code comment near the conversion site so future contributors understand why the set→list→set round-trip exists.
+
+  **Lightweight follow-up:** add inline comment in 05-01 Task 2 `__post_init__` migration:
+  ```python
+  # pt_duchies is a set in RegionConfig (membership lookup hot path in voronoi.py)
+  # but a list in YAML for deterministic key ordering. sorted() in 05-02 preserves it.
+  kwargs['pt_duchies'] = set(kwargs.get('pt_duchies') or [])
+  ```
+  Optional grep gate: `grep -n "pt_duchies is a set" backend/medieval_forge/services/pipeline/region_loader.py` returns 1.
+
+- **Concern 3 (MEDIUM — no YAML schema evolution strategy)**: **VALID FUTURE-PROOFING — DEFER**. `extra='forbid'` plus no `schema_version` field means any added field breaks existing YAMLs. Real concern, but premature for Phase 05 (only 3 regions exist). Defer to a follow-up phase that introduces actual schema breaking changes. Not actionable now.
+
+### Verdict
+
+Qwen3 produces 1 valid-but-low-impact suggestion (Concern 2 comment) and 2 dismiss-or-defer items. Net actionable additions to consensus: **R-15 (LOW) — inline comment explaining pt_duchies set/list duality** (optional; not blocking execution).
+
+### Reviewer Notes
+
+- Qwen3-30B-A3B-Thinking-2507 ran in ~7 min wall time on 16GB VRAM via MoE CPU offload. Quality competitive with cloud DeepSeek-v4-flash; slightly more verbose; one Windows-path hallucination (similar pattern to deepseek-flash ML hallucinations — local models tend to over-generalize from training).
+- Thinking variant did include CoT reasoning in its planning, but final markdown answer kept thinking tokens implicit (Qwen3 Thinking-2507 emits `<think>...</think>` blocks which the OpenAI-compatible /v1/chat/completions endpoint strips by default).
+- For future runs: prefer Qwen3-235B-A22B (if downloadable & enough disk) for higher signal-to-noise. 30B/3B-active gives speed but missed several of the items gemini+opencode caught.
+
+### Updated Consensus
+
+Adding R-15 to the actionable backlog:
+
+**R-15 (LOW, NICE-TO-HAVE) — Plan 05-01:** Add inline comment in `__post_init__` (or wherever schema→dataclass conversion happens) explaining the `pt_duchies` set ↔ list duality. Acceptance: `grep -n "pt_duchies is a set" backend/medieval_forge/services/pipeline/region_loader.py` returns 1.
+
+This is opt-in; deferring it does not block execution.
