@@ -34,6 +34,7 @@ class Project(Base):
     bbox_lat_min: Mapped[float | None] = mapped_column(Float, nullable=True)
     bbox_lat_max: Mapped[float | None] = mapped_column(Float, nullable=True)
     generator_config: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    region_key: Mapped[str] = mapped_column(String(64), nullable=False, default="iberia_868")
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="created")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
