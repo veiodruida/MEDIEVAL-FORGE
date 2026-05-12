@@ -112,6 +112,7 @@ requirements-completed: [SC-3]
 
 1. **Task 1: SC-3 backend E2E + autogen pipeline fix** - `6e4ae89` (feat)
 2. **Task 2: Playwright UAT spec — France 1066 create+generate** - `f7bd39f` (feat)
+3. **Task 2 fix: Playwright spec selector corrections** - `d5687a1` (fix)
 
 ## Files Created/Modified
 
@@ -151,6 +152,15 @@ requirements-completed: [SC-3]
 - **Found during:** Task 1 research (pipeline docstring + smoke check)
 - **Issue:** Plan truth #2 says "all 12 Unity contract files" but the pipeline docstring explicitly defers `terrain_lookup.png` + `terrain_types.json` to Phase 06 (P-2). Current pipeline produces 10 files.
 - **Fix:** E2E test uses `EXPORT_FILE_CONTRACT` (10-file tuple); `EXPORT_FILE_CONTRACT_DEFERRED` tracks the Phase 06 pair. Test comment explains the discrepancy. Plan truths were wrong relative to code-of-record.
+
+**5. [Rule 1 - Bug] Playwright spec: wrong URL regex and inaccessible label selector**
+- **Found during:** Post-commit review of Task 2
+- **Issue 1:** `toHaveURL(/\/projects\/\d+/)` — project IDs are `String(36)` UUIDs per `models.py`; `\d+` never matches
+- **Issue 2:** `getByLabel('Nome do projeto')` — Radix `<Text as="label">` renders a `<span>`, not a `<label for=...>`; Playwright `getByLabel` requires an associated label element
+- **Fix 1:** Regex changed to `/\/projects\/[\w-]+/`
+- **Fix 2:** Selector changed to `getByPlaceholder('Ex.: Reconquista 868')` (matches `TextField.Root placeholder` in component)
+- **Files modified:** `frontend/tests/uat/playwright/france_1066_create_project.spec.ts`
+- **Commit:** `d5687a1`
 
 **4. [Rule 1 - Bug] mountains_mask.png and rivers_overlay.png absent for toy dataset**
 - **Found during:** Task 1 smoke check (12 output files listed only 8 contract files)
