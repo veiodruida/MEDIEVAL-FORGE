@@ -192,6 +192,32 @@ export function useExport(projectId: string | undefined) {
   })
 }
 
+// ---------- Plan 05-08: v3 project creation ----------
+
+export interface V3ProjectCreatePayload {
+  name: string
+  region_key: string
+}
+
+export interface V3ProjectCreateResult {
+  id: string
+  name: string
+  region_key: string
+}
+
+export function useCreateV3Project() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (payload: V3ProjectCreatePayload) =>
+      jsonFetch<V3ProjectCreateResult>('/api/v3/projects', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      }),
+    // Invalidate the exact same queryKey used by useProjects so ProjectList refreshes.
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['projects'] }),
+  })
+}
+
 // ---------------------------------------------------------------------------
 // Etapa 2: Baronies builder
 // ---------------------------------------------------------------------------
