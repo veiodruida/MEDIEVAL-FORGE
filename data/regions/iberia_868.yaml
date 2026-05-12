@@ -1,0 +1,1748 @@
+name: iberia
+display_name: Iberia 868 AD
+map_w: 1920
+map_h: 1080
+upscale: 2
+lon_min: -13.2
+lon_max: 8.2
+lat_min: 35.4
+lat_max: 44.6
+output_dir: ../Assets/StreamingAssets/Maps
+dataset:
+  pt_geojson: inputs/pt_concelhos_wgs84.geojson
+  es_input: inputs/es-atlas-pkg/package/es/municipalities.json
+  mountain_river_json: inputs/mountain_river_data.json
+border_polygon:
+- - -9.5
+  - 42.2
+- - -8.85
+  - 41.88
+- - -8.16
+  - 41.82
+- - -7.92
+  - 41.88
+- - -7.4
+  - 41.87
+- - -7.17
+  - 41.97
+- - -6.93
+  - 41.94
+- - -6.81
+  - 41.95
+- - -6.55
+  - 41.68
+- - -6.38
+  - 41.65
+- - -6.19
+  - 41.57
+- - -6.54
+  - 41.37
+- - -6.8
+  - 41.13
+- - -6.93
+  - 41.03
+- - -6.86
+  - 40.89
+- - -6.86
+  - 40.27
+- - -6.9
+  - 40.11
+- - -6.96
+  - 39.91
+- - -7.04
+  - 39.67
+- - -7.02
+  - 39.47
+- - -7.26
+  - 39.21
+- - -7.42
+  - 39.18
+- - -7.3
+  - 39.05
+- - -7.16
+  - 38.96
+- - -7.07
+  - 38.81
+- - -7.06
+  - 38.65
+- - -7.17
+  - 38.44
+- - -7.25
+  - 38.24
+- - -7.35
+  - 38.14
+- - -7.42
+  - 38.0
+- - -7.48
+  - 37.82
+- - -7.44
+  - 37.65
+- - -7.5
+  - 37.5
+- - -7.46
+  - 37.38
+- - -7.43
+  - 37.26
+- - -7.41
+  - 37.18
+- - -7.38
+  - 37.08
+- - -7.4
+  - 36.9
+- - -9.5
+  - 36.9
+- - -9.5
+  - 42.2
+pt_duchies:
+- d_fronteira
+- d_gharb
+- d_portucale
+kingdom_colors:
+  '0':
+  - 190
+  - 158
+  - 82
+  '1':
+  - 148
+  - 88
+  - 168
+  '2':
+  - 198
+  - 108
+  - 128
+  '3':
+  - 68
+  - 158
+  - 62
+ocean_near:
+- 45
+- 90
+- 140
+ocean_far:
+- 70
+- 130
+- 180
+ocean_gradient_dist: 150.0
+coast_inner_width: 2
+coast_inner_color:
+- 15
+- 10
+- 5
+island_min_px: 300
+fragment_min_px: 600
+blob_merge_px: 200
+median_passes: 8
+smooth_sigma: 3.0
+mountain_threshold: 1500
+mountain_color_visual:
+- 118
+- 100
+- 80
+mountain_color_lookup:
+- 50
+- 45
+- 40
+mountain_noise: 20
+river_color:
+- 74
+- 144
+- 217
+river_width: 2
+rng_seed: 42
+draw_names: false
+kingdoms:
+- id: asturias
+  name: Reino das Astúrias
+- id: pamplona
+  name: Reino de Pamplona
+- id: marca_hispanica
+  name: Marca Hispânica
+- id: emirato
+  name: Emirato de Córdoba
+duchies:
+- id: d_asturias
+  kingdom_id: asturias
+  name: Ducado de Astúrias
+- id: d_galiza
+  kingdom_id: asturias
+  name: Ducado de Galiza
+- id: d_portucale
+  kingdom_id: asturias
+  name: Condado de Portucale
+- id: d_leon
+  kingdom_id: asturias
+  name: Ducado de Leão
+- id: d_castela
+  kingdom_id: asturias
+  name: Condado de Castela
+- id: d_vasconia_ast
+  kingdom_id: asturias
+  name: Territórios Vasconços
+- id: d_fronteira
+  kingdom_id: emirato
+  name: Zona de Expansão / Deserto do Douro
+- id: d_navarra
+  kingdom_id: pamplona
+  name: Navarra Própria
+- id: d_vizcaya
+  kingdom_id: pamplona
+  name: Vizcaya
+- id: d_aragon
+  kingdom_id: marca_hispanica
+  name: Condado de Aragão
+- id: d_barcelona
+  kingdom_id: marca_hispanica
+  name: Condados sob Bernardo
+- id: d_urgell
+  kingdom_id: marca_hispanica
+  name: Condados sob Guifré
+- id: d_cat_indep
+  kingdom_id: marca_hispanica
+  name: Condados Independentes
+- id: d_marca_sup
+  kingdom_id: emirato
+  name: Marca Superior
+- id: d_marca_med
+  kingdom_id: emirato
+  name: Marca Média
+- id: d_marca_inf
+  kingdom_id: emirato
+  name: Marca Inferior
+- id: d_gharb
+  kingdom_id: emirato
+  name: Gharb al-Andalus
+- id: d_cordoba
+  kingdom_id: emirato
+  name: Kura Central
+- id: d_sevilla
+  kingdom_id: emirato
+  name: Kura de Sevilha
+- id: d_jaen
+  kingdom_id: emirato
+  name: Kura de Jaén
+- id: d_granada
+  kingdom_id: emirato
+  name: Kura de Granada
+- id: d_malaga
+  kingdom_id: emirato
+  name: Kura de Málaga
+- id: d_almeria
+  kingdom_id: emirato
+  name: Kura de Almería
+- id: d_tudmir
+  kingdom_id: emirato
+  name: Kura de Tudmir
+- id: d_valencia
+  kingdom_id: emirato
+  name: Kura de Valência
+- id: d_baleares
+  kingdom_id: emirato
+  name: Baleares
+condados:
+- id: oviedo
+  name: Oviedo
+  lon: -5.84
+  lat: 43.36
+  duchy_id: d_asturias
+  kingdom_id: asturias
+  original_idx: 1
+  baronies:
+  - name: Oviedo
+    lon: -5.84
+    lat: 43.36
+  - name: Grado
+    lon: -6.07
+    lat: 43.39
+  - name: Siero
+    lon: -5.66
+    lat: 43.39
+  - name: Mieres
+    lon: -5.77
+    lat: 43.25
+- id: pravia
+  name: Pravia
+  lon: -6.1
+  lat: 43.5
+  duchy_id: d_asturias
+  kingdom_id: asturias
+  original_idx: 2
+  baronies:
+  - name: Pravia
+    lon: -6.1
+    lat: 43.5
+  - name: Salas
+    lon: -6.26
+    lat: 43.41
+  - name: Tineo
+    lon: -6.42
+    lat: 43.33
+  - name: Luarca
+    lon: -6.54
+    lat: 43.54
+- id: gijon
+  name: Gijón
+  lon: -5.66
+  lat: 43.54
+  duchy_id: d_asturias
+  kingdom_id: asturias
+  original_idx: 3
+  baronies:
+  - name: Gijón
+    lon: -5.66
+    lat: 43.54
+  - name: Villaviciosa
+    lon: -5.43
+    lat: 43.48
+  - name: Avilés
+    lon: -5.92
+    lat: 43.56
+- id: liebana
+  name: Liébana
+  lon: -4.73
+  lat: 43.12
+  duchy_id: d_asturias
+  kingdom_id: asturias
+  original_idx: 4
+  baronies:
+  - name: Cangas de Onís
+    lon: -5.13
+    lat: 43.35
+  - name: Liébana
+    lon: -4.73
+    lat: 43.12
+  - name: Picos
+    lon: -4.85
+    lat: 43.2
+- id: coruna
+  name: Coruña
+  lon: -8.4
+  lat: 43.37
+  duchy_id: d_galiza
+  kingdom_id: asturias
+  original_idx: 5
+  baronies:
+  - name: Coruña
+    lon: -8.4
+    lat: 43.37
+  - name: Betanzos
+    lon: -8.21
+    lat: 43.28
+  - name: Ferrol
+    lon: -8.24
+    lat: 43.48
+- id: compostela
+  name: Santiago
+  lon: -8.54
+  lat: 42.88
+  duchy_id: d_galiza
+  kingdom_id: asturias
+  original_idx: 6
+  baronies:
+  - name: Santiago
+    lon: -8.54
+    lat: 42.88
+  - name: Padrón
+    lon: -8.66
+    lat: 42.74
+  - name: Noia
+    lon: -8.84
+    lat: 42.79
+- id: lugo
+  name: Lugo
+  lon: -7.56
+  lat: 43.01
+  duchy_id: d_galiza
+  kingdom_id: asturias
+  original_idx: 7
+  baronies:
+  - name: Lugo
+    lon: -7.56
+    lat: 43.01
+  - name: Sarria
+    lon: -7.42
+    lat: 42.78
+  - name: Monforte
+    lon: -7.52
+    lat: 42.52
+- id: ourense
+  name: Ourense
+  lon: -7.86
+  lat: 42.34
+  duchy_id: d_galiza
+  kingdom_id: asturias
+  original_idx: 8
+  baronies:
+  - name: Ourense
+    lon: -7.86
+    lat: 42.34
+  - name: Celanova
+    lon: -7.96
+    lat: 42.15
+  - name: Verín
+    lon: -7.44
+    lat: 41.94
+- id: tui
+  name: Tui
+  lon: -8.65
+  lat: 42.05
+  duchy_id: d_galiza
+  kingdom_id: asturias
+  original_idx: 9
+  baronies:
+  - name: Tui
+    lon: -8.65
+    lat: 42.05
+  - name: Vigo
+    lon: -8.72
+    lat: 42.23
+  - name: Pontevedra
+    lon: -8.65
+    lat: 42.43
+- id: porto
+  name: Porto
+  lon: -8.61
+  lat: 41.15
+  duchy_id: d_portucale
+  kingdom_id: asturias
+  original_idx: 10
+  baronies:
+  - name: Porto
+    lon: -8.65
+    lat: 41.16
+  - name: Maia
+    lon: -8.6
+    lat: 41.24
+  - name: Matosinhos
+    lon: -8.69
+    lat: 41.21
+  - name: Vila do Conde
+    lon: -8.7
+    lat: 41.35
+- id: braga
+  name: Braga
+  lon: -8.43
+  lat: 41.55
+  duchy_id: d_portucale
+  kingdom_id: asturias
+  original_idx: 11
+  baronies:
+  - name: Braga
+    lon: -8.42
+    lat: 41.56
+  - name: Guimarães
+    lon: -8.28
+    lat: 41.44
+  - name: Barcelos
+    lon: -8.62
+    lat: 41.54
+  - name: Famalicão
+    lon: -8.5
+    lat: 41.4
+- id: viana
+  name: Viana
+  lon: -8.83
+  lat: 41.69
+  duchy_id: d_portucale
+  kingdom_id: asturias
+  original_idx: 12
+  baronies:
+  - name: Viana do Castelo
+    lon: -8.83
+    lat: 41.69
+  - name: Ponte de Lima
+    lon: -8.55
+    lat: 41.78
+  - name: Caminha
+    lon: -8.8
+    lat: 41.9
+- id: chaves
+  name: Chaves
+  lon: -7.47
+  lat: 41.74
+  duchy_id: d_portucale
+  kingdom_id: asturias
+  original_idx: 13
+  baronies:
+  - name: Chaves
+    lon: -7.47
+    lat: 41.74
+  - name: Montalegre
+    lon: -7.8
+    lat: 41.82
+  - name: Vila Pouca
+    lon: -7.65
+    lat: 41.52
+  - name: Vila Real
+    lon: -7.75
+    lat: 41.28
+- id: braganca
+  name: Bragança
+  lon: -6.76
+  lat: 41.81
+  duchy_id: d_portucale
+  kingdom_id: asturias
+  original_idx: 14
+  baronies:
+  - name: Bragança
+    lon: -6.76
+    lat: 41.81
+  - name: Miranda do Douro
+    lon: -6.27
+    lat: 41.49
+  - name: Vimioso
+    lon: -6.52
+    lat: 41.58
+  - name: Mogadouro
+    lon: -6.71
+    lat: 41.34
+- id: leon
+  name: León
+  lon: -5.57
+  lat: 42.6
+  duchy_id: d_leon
+  kingdom_id: asturias
+  original_idx: 15
+  baronies:
+  - name: León
+    lon: -5.57
+    lat: 42.6
+  - name: Mansilla
+    lon: -5.42
+    lat: 42.5
+  - name: Sahagún
+    lon: -5.03
+    lat: 42.37
+- id: astorga
+  name: Astorga
+  lon: -6.05
+  lat: 42.46
+  duchy_id: d_leon
+  kingdom_id: asturias
+  original_idx: 16
+  baronies:
+  - name: Astorga
+    lon: -6.05
+    lat: 42.46
+  - name: Ponferrada
+    lon: -6.59
+    lat: 42.55
+  - name: Bembibre
+    lon: -6.42
+    lat: 42.62
+- id: benavente
+  name: Benavente
+  lon: -5.68
+  lat: 42.0
+  duchy_id: d_leon
+  kingdom_id: asturias
+  original_idx: 17
+  baronies:
+  - name: Benavente
+    lon: -5.68
+    lat: 42.0
+  - name: Villalpando
+    lon: -5.41
+    lat: 41.86
+- id: zamora
+  name: Zamora
+  lon: -5.74
+  lat: 41.5
+  duchy_id: d_leon
+  kingdom_id: asturias
+  original_idx: 18
+  baronies:
+  - name: Zamora
+    lon: -5.74
+    lat: 41.5
+  - name: Toro
+    lon: -5.39
+    lat: 41.52
+- id: salamanca
+  name: Salamanca
+  lon: -5.66
+  lat: 40.97
+  duchy_id: d_leon
+  kingdom_id: asturias
+  original_idx: 19
+  baronies:
+  - name: Salamanca
+    lon: -5.66
+    lat: 40.97
+  - name: Ciudad Rodrigo
+    lon: -6.53
+    lat: 40.6
+  - name: Alba de Tormes
+    lon: -5.51
+    lat: 40.82
+- id: burgos
+  name: Burgos
+  lon: -3.7
+  lat: 42.34
+  duchy_id: d_castela
+  kingdom_id: asturias
+  original_idx: 20
+  baronies:
+  - name: Burgos
+    lon: -3.7
+    lat: 42.34
+  - name: Lerma
+    lon: -3.75
+    lat: 42.03
+- id: amaya
+  name: Amaya
+  lon: -4.1
+  lat: 42.7
+  duchy_id: d_castela
+  kingdom_id: asturias
+  original_idx: 21
+  baronies:
+  - name: Amaya
+    lon: -4.1
+    lat: 42.7
+  - name: Villadiego
+    lon: -4.01
+    lat: 42.52
+  - name: Sedano
+    lon: -3.73
+    lat: 42.72
+- id: osma
+  name: Osma
+  lon: -3.06
+  lat: 41.57
+  duchy_id: d_castela
+  kingdom_id: asturias
+  original_idx: 22
+  baronies:
+  - name: Osma
+    lon: -3.06
+    lat: 41.57
+  - name: San Esteban
+    lon: -3.35
+    lat: 41.73
+  - name: El Burgo
+    lon: -3.15
+    lat: 41.42
+- id: palencia
+  name: Palência
+  lon: -4.53
+  lat: 42.01
+  duchy_id: d_castela
+  kingdom_id: asturias
+  original_idx: 23
+  baronies:
+  - name: Palencia
+    lon: -4.53
+    lat: 42.01
+  - name: Carrión
+    lon: -4.6
+    lat: 42.34
+  - name: Aguilar
+    lon: -4.26
+    lat: 42.79
+- id: najera
+  name: Nájera
+  lon: -2.73
+  lat: 42.42
+  duchy_id: d_navarra
+  kingdom_id: pamplona
+  original_idx: 24
+  baronies:
+  - name: Nájera
+    lon: -2.73
+    lat: 42.42
+  - name: Logroño
+    lon: -2.45
+    lat: 42.47
+  - name: Calahorra
+    lon: -1.97
+    lat: 42.31
+- id: valladolid
+  name: Valladolid
+  lon: -4.73
+  lat: 41.65
+  duchy_id: d_leon
+  kingdom_id: asturias
+  original_idx: 25
+  baronies:
+  - name: Valladolid
+    lon: -4.73
+    lat: 41.65
+  - name: Medina del Campo
+    lon: -4.91
+    lat: 41.31
+  - name: Olmedo
+    lon: -4.68
+    lat: 41.29
+- id: alava
+  name: Álava
+  lon: -2.67
+  lat: 42.85
+  duchy_id: d_vasconia_ast
+  kingdom_id: asturias
+  original_idx: 26
+  baronies:
+  - name: Vitoria
+    lon: -2.67
+    lat: 42.85
+  - name: Salvatierra
+    lon: -2.39
+    lat: 42.85
+- id: cantabria
+  name: Cantábria
+  lon: -3.8
+  lat: 43.46
+  duchy_id: d_vasconia_ast
+  kingdom_id: asturias
+  original_idx: 27
+  baronies:
+  - name: Santander
+    lon: -3.8
+    lat: 43.46
+  - name: Laredo
+    lon: -3.41
+    lat: 43.41
+  - name: Castro Urdiales
+    lon: -3.22
+    lat: 43.38
+- id: lamego
+  name: Lamego
+  lon: -7.81
+  lat: 41.1
+  duchy_id: d_fronteira
+  kingdom_id: emirato
+  original_idx: 28
+  baronies:
+  - name: Lamego
+    lon: -7.82
+    lat: 41.08
+  - name: Resende
+    lon: -8.0
+    lat: 41.09
+  - name: Tarouca
+    lon: -7.75
+    lat: 41.0
+  - name: S.J.Pesqueira
+    lon: -7.48
+    lat: 41.12
+- id: viseu
+  name: Viseu
+  lon: -7.91
+  lat: 40.66
+  duchy_id: d_fronteira
+  kingdom_id: emirato
+  original_idx: 29
+  baronies:
+  - name: Viseu
+    lon: -7.88
+    lat: 40.7
+  - name: Mangualde
+    lon: -7.68
+    lat: 40.55
+  - name: Tondela
+    lon: -8.15
+    lat: 40.48
+  - name: Aveiro
+    lon: -8.65
+    lat: 40.64
+- id: coimbra
+  name: Coimbra
+  lon: -8.43
+  lat: 40.21
+  duchy_id: d_fronteira
+  kingdom_id: emirato
+  original_idx: 30
+  baronies:
+  - name: Coimbra
+    lon: -8.4
+    lat: 40.22
+  - name: Montemor-o-Velho
+    lon: -8.7
+    lat: 40.1
+  - name: Figueira da Foz
+    lon: -8.88
+    lat: 40.16
+  - name: Ovar
+    lon: -8.63
+    lat: 40.88
+- id: leiria
+  name: Leiria
+  lon: -8.81
+  lat: 39.74
+  duchy_id: d_fronteira
+  kingdom_id: emirato
+  original_idx: 31
+  baronies:
+  - name: Leiria
+    lon: -8.81
+    lat: 39.74
+  - name: Pombal
+    lon: -8.63
+    lat: 39.95
+  - name: Óbidos
+    lon: -9.15
+    lat: 39.36
+- id: idanha
+  name: Idanha
+  lon: -7.24
+  lat: 39.92
+  duchy_id: d_fronteira
+  kingdom_id: emirato
+  original_idx: 32
+  baronies:
+  - name: Idanha-a-Nova
+    lon: -7.35
+    lat: 39.9
+  - name: Guarda
+    lon: -7.35
+    lat: 40.55
+  - name: Covilhã
+    lon: -7.62
+    lat: 40.25
+- id: pamplona
+  name: Pamplona
+  lon: -1.64
+  lat: 42.82
+  duchy_id: d_navarra
+  kingdom_id: pamplona
+  original_idx: 33
+  baronies:
+  - name: Pamplona
+    lon: -1.64
+    lat: 42.82
+  - name: Puente la Reina
+    lon: -1.81
+    lat: 42.67
+  - name: Estella
+    lon: -2.03
+    lat: 42.67
+- id: sanguesa
+  name: Sangüesa
+  lon: -1.28
+  lat: 42.57
+  duchy_id: d_navarra
+  kingdom_id: pamplona
+  original_idx: 34
+  baronies:
+  - name: Sangüesa
+    lon: -1.28
+    lat: 42.57
+  - name: Lumbier
+    lon: -1.31
+    lat: 42.65
+- id: vizcaya
+  name: Vizcaya
+  lon: -2.93
+  lat: 43.26
+  duchy_id: d_vizcaya
+  kingdom_id: pamplona
+  original_idx: 35
+  baronies:
+  - name: Bilbao
+    lon: -2.93
+    lat: 43.26
+  - name: Durango
+    lon: -2.63
+    lat: 43.17
+  - name: Guernica
+    lon: -2.67
+    lat: 43.31
+- id: jaca
+  name: Jaca
+  lon: -0.55
+  lat: 42.57
+  duchy_id: d_aragon
+  kingdom_id: marca_hispanica
+  original_idx: 36
+  baronies:
+  - name: Jaca
+    lon: -0.55
+    lat: 42.57
+  - name: Canfranc
+    lon: -0.52
+    lat: 42.72
+- id: sobrarbe
+  name: Sobrarbe
+  lon: 0.16
+  lat: 42.4
+  duchy_id: d_aragon
+  kingdom_id: marca_hispanica
+  original_idx: 37
+  baronies:
+  - name: Aínsa
+    lon: 0.14
+    lat: 42.42
+  - name: Boltaña
+    lon: 0.07
+    lat: 42.44
+- id: ribagorza
+  name: Ribagorça
+  lon: 0.46
+  lat: 42.3
+  duchy_id: d_aragon
+  kingdom_id: marca_hispanica
+  original_idx: 38
+  baronies:
+  - name: Benasque
+    lon: 0.52
+    lat: 42.61
+  - name: Graus
+    lon: 0.34
+    lat: 42.19
+- id: barcelona
+  name: Barcelona
+  lon: 2.15
+  lat: 41.38
+  duchy_id: d_barcelona
+  kingdom_id: marca_hispanica
+  original_idx: 39
+  baronies:
+  - name: Barcelona
+    lon: 2.15
+    lat: 41.38
+  - name: Terrassa
+    lon: 2.01
+    lat: 41.56
+  - name: Sabadell
+    lon: 2.11
+    lat: 41.54
+- id: girona
+  name: Girona
+  lon: 2.82
+  lat: 41.98
+  duchy_id: d_barcelona
+  kingdom_id: marca_hispanica
+  original_idx: 40
+  baronies:
+  - name: Girona
+    lon: 2.82
+    lat: 41.98
+  - name: Figueres
+    lon: 2.96
+    lat: 42.27
+- id: osona
+  name: Osona/Vic
+  lon: 2.25
+  lat: 41.89
+  duchy_id: d_barcelona
+  kingdom_id: marca_hispanica
+  original_idx: 41
+  baronies:
+  - name: Vic
+    lon: 2.25
+    lat: 41.89
+  - name: Manresa
+    lon: 1.83
+    lat: 41.73
+  - name: Berga
+    lon: 1.85
+    lat: 42.1
+- id: urgell
+  name: Urgell
+  lon: 1.3
+  lat: 42.36
+  duchy_id: d_urgell
+  kingdom_id: marca_hispanica
+  original_idx: 42
+  baronies:
+  - name: La Seu d'Urgell
+    lon: 1.46
+    lat: 42.36
+  - name: Balaguer
+    lon: 0.8
+    lat: 41.79
+- id: cerdanya
+  name: Cerdanya
+  lon: 1.83
+  lat: 42.44
+  duchy_id: d_urgell
+  kingdom_id: marca_hispanica
+  original_idx: 43
+  baronies:
+  - name: Puigcerdà
+    lon: 1.93
+    lat: 42.43
+  - name: Ripoll
+    lon: 2.19
+    lat: 42.2
+- id: empuries
+  name: Empúries
+  lon: 3.05
+  lat: 42.15
+  duchy_id: d_cat_indep
+  kingdom_id: marca_hispanica
+  original_idx: 44
+  baronies:
+  - name: Empúries
+    lon: 3.12
+    lat: 42.13
+  - name: Castelló d'Empúries
+    lon: 3.07
+    lat: 42.26
+  - name: Roses
+    lon: 3.17
+    lat: 42.26
+- id: pallars
+  name: Pallars
+  lon: 1.0
+  lat: 42.48
+  duchy_id: d_cat_indep
+  kingdom_id: marca_hispanica
+  original_idx: 45
+  baronies:
+  - name: Sort
+    lon: 1.13
+    lat: 42.41
+  - name: Tremp
+    lon: 0.89
+    lat: 42.17
+- id: conflent
+  name: Conflent
+  lon: 2.35
+  lat: 42.55
+  duchy_id: d_cat_indep
+  kingdom_id: marca_hispanica
+  original_idx: 46
+  baronies:
+  - name: Prades
+    lon: 2.42
+    lat: 42.62
+  - name: Vilafranca de Conflent
+    lon: 2.37
+    lat: 42.59
+- id: zaragoza
+  name: Saraqusta
+  lon: -0.88
+  lat: 41.65
+  duchy_id: d_marca_sup
+  kingdom_id: emirato
+  original_idx: 47
+  baronies:
+  - name: Zaragoza
+    lon: -0.88
+    lat: 41.65
+  - name: Calatayud
+    lon: -1.64
+    lat: 41.35
+  - name: Daroca
+    lon: -1.42
+    lat: 41.11
+- id: huesca
+  name: Wasqa
+  lon: -0.41
+  lat: 42.14
+  duchy_id: d_marca_sup
+  kingdom_id: emirato
+  original_idx: 48
+  baronies:
+  - name: Huesca
+    lon: -0.41
+    lat: 42.14
+  - name: Barbastro
+    lon: 0.13
+    lat: 42.04
+  - name: Monzón
+    lon: 0.19
+    lat: 41.91
+- id: lerida
+  name: Larida
+  lon: 0.63
+  lat: 41.61
+  duchy_id: d_marca_sup
+  kingdom_id: emirato
+  original_idx: 49
+  baronies:
+  - name: Lérida
+    lon: 0.63
+    lat: 41.61
+  - name: Fraga
+    lon: -0.03
+    lat: 41.52
+- id: tudela
+  name: Tudela
+  lon: -1.61
+  lat: 42.07
+  duchy_id: d_marca_sup
+  kingdom_id: emirato
+  original_idx: 50
+  baronies:
+  - name: Tudela
+    lon: -1.61
+    lat: 42.07
+  - name: Cascante
+    lon: -1.68
+    lat: 41.97
+  - name: Tarazona
+    lon: -1.73
+    lat: 41.91
+- id: tortosa
+  name: Turtuxa
+  lon: 0.52
+  lat: 40.81
+  duchy_id: d_marca_sup
+  kingdom_id: emirato
+  original_idx: 51
+  baronies:
+  - name: Tortosa
+    lon: 0.52
+    lat: 40.81
+  - name: Amposta
+    lon: 0.58
+    lat: 40.71
+- id: teruel
+  name: Tirwal
+  lon: -1.11
+  lat: 40.34
+  duchy_id: d_marca_sup
+  kingdom_id: emirato
+  original_idx: 52
+  baronies:
+  - name: Teruel
+    lon: -1.11
+    lat: 40.34
+  - name: Albarracín
+    lon: -1.44
+    lat: 40.41
+- id: toledo
+  name: Tulaytula
+  lon: -4.0
+  lat: 39.86
+  duchy_id: d_marca_med
+  kingdom_id: emirato
+  original_idx: 53
+  baronies:
+  - name: Toledo
+    lon: -4.0
+    lat: 39.86
+  - name: Talavera
+    lon: -4.83
+    lat: 39.96
+  - name: Consuegra
+    lon: -3.61
+    lat: 39.46
+- id: madrid
+  name: Mayrit
+  lon: -3.7
+  lat: 40.42
+  duchy_id: d_marca_med
+  kingdom_id: emirato
+  original_idx: 54
+  baronies:
+  - name: Madrid
+    lon: -3.7
+    lat: 40.42
+  - name: Alcalá
+    lon: -3.36
+    lat: 40.48
+  - name: Guadalajara
+    lon: -3.16
+    lat: 40.63
+- id: segovia
+  name: Shaqubiya
+  lon: -4.12
+  lat: 40.94
+  duchy_id: d_marca_med
+  kingdom_id: emirato
+  original_idx: 55
+  baronies:
+  - name: Segovia
+    lon: -4.12
+    lat: 40.94
+  - name: Ávila
+    lon: -4.7
+    lat: 40.66
+  - name: Sepúlveda
+    lon: -3.75
+    lat: 41.3
+- id: cuenca
+  name: Qunka
+  lon: -2.13
+  lat: 40.07
+  duchy_id: d_marca_med
+  kingdom_id: emirato
+  original_idx: 56
+  baronies:
+  - name: Cuenca
+    lon: -2.13
+    lat: 40.07
+  - name: Huete
+    lon: -2.69
+    lat: 40.15
+  - name: Uclés
+    lon: -2.86
+    lat: 39.98
+- id: medinaceli
+  name: Madinat Salim
+  lon: -2.43
+  lat: 41.17
+  duchy_id: d_marca_med
+  kingdom_id: emirato
+  original_idx: 57
+  baronies:
+  - name: Medinaceli
+    lon: -2.43
+    lat: 41.17
+  - name: Sigüenza
+    lon: -2.64
+    lat: 41.07
+  - name: Molina
+    lon: -1.89
+    lat: 40.84
+- id: merida
+  name: Marida
+  lon: -6.34
+  lat: 38.92
+  duchy_id: d_marca_inf
+  kingdom_id: emirato
+  original_idx: 58
+  baronies:
+  - name: Mérida
+    lon: -6.34
+    lat: 38.92
+  - name: Medellín
+    lon: -5.96
+    lat: 38.96
+- id: badajoz
+  name: Batalyaws
+  lon: -6.97
+  lat: 38.88
+  duchy_id: d_marca_inf
+  kingdom_id: emirato
+  original_idx: 59
+  baronies:
+  - name: Badajoz
+    lon: -6.97
+    lat: 38.88
+  - name: Olivenza
+    lon: -6.95
+    lat: 38.68
+  - name: Alburquerque
+    lon: -6.85
+    lat: 39.22
+- id: caceres
+  name: Qasr
+  lon: -6.37
+  lat: 39.47
+  duchy_id: d_marca_inf
+  kingdom_id: emirato
+  original_idx: 60
+  baronies:
+  - name: Cáceres
+    lon: -6.37
+    lat: 39.47
+  - name: Trujillo
+    lon: -5.88
+    lat: 39.46
+  - name: Plasencia
+    lon: -5.95
+    lat: 40.03
+- id: lisboa
+  name: al-Ushbuna
+  lon: -9.14
+  lat: 38.72
+  duchy_id: d_gharb
+  kingdom_id: emirato
+  original_idx: 61
+  baronies:
+  - name: Lisboa
+    lon: -9.2
+    lat: 38.75
+  - name: Sintra
+    lon: -9.35
+    lat: 38.92
+  - name: Almada
+    lon: -9.05
+    lat: 38.52
+- id: santarem
+  name: Shantarin
+  lon: -8.69
+  lat: 39.24
+  duchy_id: d_gharb
+  kingdom_id: emirato
+  original_idx: 62
+  baronies:
+  - name: Santarém
+    lon: -8.69
+    lat: 39.24
+  - name: Abrantes
+    lon: -8.1
+    lat: 39.46
+  - name: Tomar
+    lon: -8.42
+    lat: 39.55
+- id: alcacer
+  name: al-Qasr
+  lon: -8.51
+  lat: 38.37
+  duchy_id: d_gharb
+  kingdom_id: emirato
+  original_idx: 63
+  baronies:
+  - name: Alcácer do Sal
+    lon: -8.48
+    lat: 38.35
+  - name: Setúbal
+    lon: -8.9
+    lat: 38.48
+  - name: Grândola
+    lon: -8.58
+    lat: 38.05
+- id: evora
+  name: Yabura
+  lon: -7.91
+  lat: 38.57
+  duchy_id: d_gharb
+  kingdom_id: emirato
+  original_idx: 64
+  baronies:
+  - name: Évora
+    lon: -7.95
+    lat: 38.55
+  - name: Estremoz
+    lon: -7.65
+    lat: 38.82
+  - name: Montemor-o-Novo
+    lon: -8.25
+    lat: 38.65
+  - name: Elvas
+    lon: -7.4
+    lat: 38.85
+- id: beja
+  name: Baja
+  lon: -7.86
+  lat: 38.02
+  duchy_id: d_gharb
+  kingdom_id: emirato
+  original_idx: 65
+  baronies:
+  - name: Beja
+    lon: -7.86
+    lat: 38.05
+  - name: Serpa
+    lon: -7.65
+    lat: 37.92
+  - name: Moura
+    lon: -7.5
+    lat: 38.15
+  - name: Mértola
+    lon: -7.7
+    lat: 37.55
+- id: silves
+  name: Shilb
+  lon: -8.44
+  lat: 37.19
+  duchy_id: d_gharb
+  kingdom_id: emirato
+  original_idx: 66
+  baronies:
+  - name: Silves
+    lon: -8.4
+    lat: 37.25
+  - name: Faro
+    lon: -7.9
+    lat: 37.05
+  - name: Tavira
+    lon: -7.55
+    lat: 37.15
+  - name: Lagos
+    lon: -8.75
+    lat: 37.08
+- id: cordoba
+  name: Qurtuba
+  lon: -4.78
+  lat: 37.89
+  duchy_id: d_cordoba
+  kingdom_id: emirato
+  original_idx: 67
+  baronies:
+  - name: Córdoba
+    lon: -4.78
+    lat: 37.89
+  - name: Madinat al-Zahra
+    lon: -4.87
+    lat: 37.89
+- id: cabra
+  name: Qabra
+  lon: -4.44
+  lat: 37.47
+  duchy_id: d_cordoba
+  kingdom_id: emirato
+  original_idx: 68
+  baronies:
+  - name: Cabra
+    lon: -4.44
+    lat: 37.47
+  - name: Lucena
+    lon: -4.49
+    lat: 37.41
+  - name: Priego
+    lon: -4.2
+    lat: 37.44
+- id: ecija
+  name: Istijja
+  lon: -5.08
+  lat: 37.54
+  duchy_id: d_cordoba
+  kingdom_id: emirato
+  original_idx: 69
+  baronies:
+  - name: Écija
+    lon: -5.08
+    lat: 37.54
+  - name: Osuna
+    lon: -5.1
+    lat: 37.24
+- id: sevilla
+  name: Ishbiliyya
+  lon: -5.99
+  lat: 37.39
+  duchy_id: d_sevilla
+  kingdom_id: emirato
+  original_idx: 70
+  baronies:
+  - name: Sevilha
+    lon: -5.99
+    lat: 37.39
+  - name: Carmona
+    lon: -5.64
+    lat: 37.47
+  - name: Alcalá de Guadaíra
+    lon: -5.85
+    lat: 37.34
+- id: niebla
+  name: Labla
+  lon: -6.67
+  lat: 37.36
+  duchy_id: d_sevilla
+  kingdom_id: emirato
+  original_idx: 71
+  baronies:
+  - name: Niebla
+    lon: -6.67
+    lat: 37.36
+  - name: Huelva
+    lon: -6.95
+    lat: 37.26
+  - name: Moguer
+    lon: -6.84
+    lat: 37.28
+  - name: Lepe
+    lon: -7.1
+    lat: 37.18
+- id: cadiz
+  name: Shadhuna
+  lon: -6.13
+  lat: 36.69
+  duchy_id: d_sevilla
+  kingdom_id: emirato
+  original_idx: 72
+  baronies:
+  - name: Jerez
+    lon: -6.13
+    lat: 36.69
+  - name: Cádiz
+    lon: -6.29
+    lat: 36.53
+  - name: Medina Sidonia
+    lon: -5.93
+    lat: 36.46
+  - name: Sanlúcar
+    lon: -6.38
+    lat: 36.8
+- id: jaen
+  name: Jayyan
+  lon: -3.79
+  lat: 37.77
+  duchy_id: d_jaen
+  kingdom_id: emirato
+  original_idx: 73
+  baronies:
+  - name: Jaén
+    lon: -3.79
+    lat: 37.77
+  - name: Andújar
+    lon: -4.05
+    lat: 38.04
+  - name: Martos
+    lon: -3.97
+    lat: 37.72
+- id: ubeda
+  name: Ubbada
+  lon: -3.37
+  lat: 38.01
+  duchy_id: d_jaen
+  kingdom_id: emirato
+  original_idx: 74
+  baronies:
+  - name: Úbeda
+    lon: -3.37
+    lat: 38.01
+  - name: Baeza
+    lon: -3.47
+    lat: 37.99
+  - name: Linares
+    lon: -3.64
+    lat: 38.1
+- id: elvira
+  name: Ilbira
+  lon: -3.6
+  lat: 37.18
+  duchy_id: d_granada
+  kingdom_id: emirato
+  original_idx: 75
+  baronies:
+  - name: Granada
+    lon: -3.6
+    lat: 37.18
+  - name: Santa Fe
+    lon: -3.72
+    lat: 37.19
+- id: guadix
+  name: Wadi Ash
+  lon: -3.13
+  lat: 37.3
+  duchy_id: d_granada
+  kingdom_id: emirato
+  original_idx: 76
+  baronies:
+  - name: Guadix
+    lon: -3.13
+    lat: 37.3
+  - name: Fiñana
+    lon: -2.84
+    lat: 37.17
+- id: baza
+  name: Basta
+  lon: -2.77
+  lat: 37.49
+  duchy_id: d_granada
+  kingdom_id: emirato
+  original_idx: 77
+  baronies:
+  - name: Baza
+    lon: -2.77
+    lat: 37.49
+  - name: Huéscar
+    lon: -2.54
+    lat: 37.81
+- id: loja
+  name: Lawsha
+  lon: -4.15
+  lat: 37.17
+  duchy_id: d_granada
+  kingdom_id: emirato
+  original_idx: 78
+  baronies:
+  - name: Loja
+    lon: -4.15
+    lat: 37.17
+  - name: Alhama
+    lon: -3.99
+    lat: 37.01
+- id: malaga
+  name: Malaqa
+  lon: -4.42
+  lat: 36.72
+  duchy_id: d_malaga
+  kingdom_id: emirato
+  original_idx: 79
+  baronies:
+  - name: Málaga
+    lon: -4.42
+    lat: 36.72
+  - name: Vélez-Málaga
+    lon: -4.1
+    lat: 36.78
+- id: ronda
+  name: Runda
+  lon: -5.17
+  lat: 36.74
+  duchy_id: d_malaga
+  kingdom_id: emirato
+  original_idx: 80
+  baronies:
+  - name: Ronda
+    lon: -5.17
+    lat: 36.74
+  - name: Antequera
+    lon: -4.56
+    lat: 37.02
+- id: algeciras
+  name: al-Jazira
+  lon: -5.45
+  lat: 36.14
+  duchy_id: d_malaga
+  kingdom_id: emirato
+  original_idx: 81
+  baronies:
+  - name: Algeciras
+    lon: -5.45
+    lat: 36.14
+  - name: Tarifa
+    lon: -5.6
+    lat: 36.01
+  - name: Gibraltar
+    lon: -5.35
+    lat: 36.14
+- id: almeria
+  name: al-Mariyya
+  lon: -2.46
+  lat: 36.83
+  duchy_id: d_almeria
+  kingdom_id: emirato
+  original_idx: 82
+  baronies:
+  - name: Almería
+    lon: -2.46
+    lat: 36.83
+  - name: Berja
+    lon: -2.95
+    lat: 36.85
+- id: vera
+  name: Bira
+  lon: -1.87
+  lat: 37.25
+  duchy_id: d_almeria
+  kingdom_id: emirato
+  original_idx: 83
+  baronies:
+  - name: Vera
+    lon: -1.87
+    lat: 37.25
+  - name: Mojácar
+    lon: -1.85
+    lat: 37.13
+- id: murcia
+  name: Mursiya
+  lon: -1.13
+  lat: 37.98
+  duchy_id: d_tudmir
+  kingdom_id: emirato
+  original_idx: 84
+  baronies:
+  - name: Múrcia
+    lon: -1.13
+    lat: 37.98
+  - name: Orihuela
+    lon: -0.94
+    lat: 38.08
+- id: lorca
+  name: Lurqa
+  lon: -1.7
+  lat: 37.67
+  duchy_id: d_tudmir
+  kingdom_id: emirato
+  original_idx: 85
+  baronies:
+  - name: Lorca
+    lon: -1.7
+    lat: 37.67
+  - name: Caravaca
+    lon: -1.86
+    lat: 38.11
+- id: cartagena
+  name: Qartajanna
+  lon: -0.99
+  lat: 37.61
+  duchy_id: d_tudmir
+  kingdom_id: emirato
+  original_idx: 86
+  baronies:
+  - name: Cartagena
+    lon: -0.99
+    lat: 37.61
+  - name: Mazarrón
+    lon: -1.31
+    lat: 37.6
+- id: alicante
+  name: Laqant
+  lon: -0.48
+  lat: 38.35
+  duchy_id: d_tudmir
+  kingdom_id: emirato
+  original_idx: 87
+  baronies:
+  - name: Alicante
+    lon: -0.48
+    lat: 38.35
+  - name: Elche
+    lon: -0.7
+    lat: 38.27
+  - name: Dénia
+    lon: 0.11
+    lat: 38.84
+- id: valencia
+  name: Balansiya
+  lon: -0.38
+  lat: 39.47
+  duchy_id: d_valencia
+  kingdom_id: emirato
+  original_idx: 88
+  baronies:
+  - name: Valência
+    lon: -0.38
+    lat: 39.47
+  - name: Sagunto
+    lon: -0.27
+    lat: 39.68
+- id: xativa
+  name: Shatiba
+  lon: -0.52
+  lat: 38.99
+  duchy_id: d_valencia
+  kingdom_id: emirato
+  original_idx: 89
+  baronies:
+  - name: Xàtiva
+    lon: -0.52
+    lat: 38.99
+  - name: Alcoi
+    lon: -0.47
+    lat: 38.7
+  - name: Gandía
+    lon: -0.18
+    lat: 38.97
+- id: castellon
+  name: Burriana
+  lon: -0.05
+  lat: 39.99
+  duchy_id: d_valencia
+  kingdom_id: emirato
+  original_idx: 90
+  baronies:
+  - name: Castellón
+    lon: -0.05
+    lat: 39.99
+  - name: Burriana
+    lon: -0.08
+    lat: 39.89
+  - name: Segorbe
+    lon: -0.49
+    lat: 39.85
+- id: mallorca
+  name: Mayurqa
+  lon: 2.65
+  lat: 39.57
+  duchy_id: d_baleares
+  kingdom_id: emirato
+  original_idx: 91
+  baronies:
+  - name: Palma
+    lon: 2.65
+    lat: 39.57
+  - name: Alcúdia
+    lon: 3.12
+    lat: 39.85
+- id: menorca
+  name: Manurqa
+  lon: 4.09
+  lat: 39.95
+  duchy_id: d_baleares
+  kingdom_id: emirato
+  original_idx: 92
+  baronies:
+  - name: Maó
+    lon: 4.26
+    lat: 39.89
+  - name: Ciutadella
+    lon: 3.84
+    lat: 40.0
