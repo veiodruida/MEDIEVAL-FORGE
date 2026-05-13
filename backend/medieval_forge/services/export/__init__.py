@@ -1,8 +1,7 @@
 """services/export/ — Phase 06 subpackage.
 
-Hosts the zip builder (zip.py). Plan 06-01 Task 2 adds schemas.py + its
-re-exports here; Task 3 adds validator.py + its re-exports here. Tasks
-2 + 3 MUST EDIT this file to append their public-API re-exports.
+Hosts the zip builder (zip.py), pydantic schemas (schemas.py), and the
+export validation gate (validator.py — landed in Task 3 of Plan 06-01).
 
 Re-exports preserve every existing caller's `from medieval_forge.services.export
 import ...` import path.
@@ -14,12 +13,34 @@ from .zip import (
     UNITY_ZIP_SPEC,
     PLACEHOLDER_FILES,
 )
+from .schemas import (
+    MANIFEST_SCHEMA_VERSION,
+    LookupBaronyColorsSchema,
+    LookupCondadoColorsSchema,
+    TerrainTypesSchema,
+    TerritoryMetadataSchema,
+    MountainRiverDataSchema,
+    ManifestSchema,
+    ManifestFileEntry,
+    ValidationReport,
+    ValidationErrorEntry,
+)
 
 __all__ = [
     # zip (Task 1)
     "build_unity_zip",
     "UNITY_ZIP_SPEC",
     "PLACEHOLDER_FILES",
-    # schemas (appended by Task 2)
+    # schemas (Task 2)
+    "MANIFEST_SCHEMA_VERSION",
+    "LookupBaronyColorsSchema",
+    "LookupCondadoColorsSchema",
+    "TerrainTypesSchema",
+    "TerritoryMetadataSchema",
+    "MountainRiverDataSchema",
+    "ManifestSchema",
+    "ManifestFileEntry",
+    "ValidationReport",
+    "ValidationErrorEntry",
     # validator (appended by Task 3)
 ]
