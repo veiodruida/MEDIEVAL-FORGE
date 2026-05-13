@@ -8,8 +8,9 @@ Contract note on mountains_mask.png and rivers_overlay.png:
   render_mountains / render_rivers return None for empty data; the pipeline only writes
   these files when the render produces a non-None result. For a toy dataset this is
   expected — assertions on these two files are conditional (present-if-any).
-  The EXPORT_FILE_CONTRACT constant lists all 10 currently-produced files; the two
-  terrain files (terrain_lookup.png, terrain_types.json) are deferred to Phase 06 (P-2).
+  The EXPORT_FILE_CONTRACT constant lists all 12 contract files. Plan 05-11 closed
+  the SC-3 gap by adding terrain_lookup.png + terrain_types.json via services/pipeline/terrain.py.
+  EXPORT_FILE_CONTRACT_DEFERRED is now empty ().
 """
 
 import json
@@ -33,6 +34,7 @@ _VISUAL_DIM = (3840, 2160)
 _DIM_CONTRACT: dict[str, tuple[int, int]] = {
     "lookup_barony.png": _LOOKUP_DIM,
     "lookup_condado.png": _LOOKUP_DIM,
+    "terrain_lookup.png": _LOOKUP_DIM,   # NEW: Plan 05-11 — 1920×1080 per CLAUDE.md row 5
     "visual_condado.png": _VISUAL_DIM,
     "visual_barony.png": _VISUAL_DIM,
     # mountains_mask.png and rivers_overlay.png are conditional (empty toy dataset).
@@ -125,6 +127,40 @@ def test_france_1066_json_files_valid(france_output: Path) -> None:
         except json.JSONDecodeError as exc:
             pytest.fail(f"{name}: invalid JSON — {exc}")
         assert data is not None, f"{name}: parsed as None"
+
+
+@pytest.mark.e2e
+def test_france_1066_terrain_types_schema(france_output: Path) -> None:
+    """terrain_types.json conforms to CLAUDE.md row 6 contract (RGB → {name, movement, defense, attack})."""
+    path = france_output / "terrain_types.json"
+    assert path.exists(), "terrain_types.json missing — Plan 05-11 contract"
+    data = json.loads(path.read_text(encoding="utf-8"))
+    assert isinstance(data, dict), f"expected dict, got {type(data).__name__}"
+    assert "124,179,66" in data, f"PLAINS_RGB key missing; keys={list(data)}"
+    assert "0,0,0" in data, f"OCEAN_RGB sentinel key missing; keys={list(data)}"
+    for rgb_key, payload in data.items():
+        assert set(payload.keys()) == {"name", "movement", "defense", "attack"}, (
+            f"{rgb_key}: schema mismatch, got {set(payload)}"
+        )
+        # RGB key format: comma-separated 0..255 ints
+        parts = rgb_key.split(",")
+        assert len(parts) == 3, f"{rgb_key}: must be 'R,G,B'"
+        for p in parts:
+            v = int(p)
+            assert 0 <= v <= 255, f"{rgb_key}: channel out of range"
+
+
+@pytest.mark.e2e
+def test_france_1066_terrain_lookup_pixel_palette(france_output: Path) -> None:
+    """terrain_lookup.png pixels are exclusively from the declared palette."""
+    import numpy as np
+    arr = np.array(Image.open(france_output / "terrain_lookup.png").convert("RGB"))
+    assert arr.shape == (1080, 1920, 3)
+    unique_colors = {tuple(c) for c in arr.reshape(-1, 3)}
+    # France toy has both land (PLAINS) and ocean (OCEAN). Both must appear; nothing else.
+    allowed = {(124, 179, 66), (0, 0, 0)}
+    rogue = unique_colors - allowed
+    assert not rogue, f"terrain_lookup.png contains non-palette colors: {rogue}"
 
 
 @pytest.mark.e2e

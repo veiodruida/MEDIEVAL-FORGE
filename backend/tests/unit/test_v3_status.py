@@ -76,13 +76,14 @@ async def test_status_returns_all_false_has_artifacts_when_nothing_generated(
     body = r.json()
     assert body["status"] == "draft"
     assert isinstance(body["has_artifacts"], dict)
-    assert len(body["has_artifacts"]) == 14
+    # Plan 05-11: terrain pair added → 16 = 12 Unity contract + 4 canvas sidecars.
+    assert len(body["has_artifacts"]) == 16
     assert all(v is False for v in body["has_artifacts"].values())
     assert body["last_generated_at"] is None
 
 
-# ---- 3. Project + 14 artifacts present → all True + last_generated_at set ----
-async def test_status_returns_all_true_when_all_14_artifacts_present(
+# ---- 3. Project + 16 artifacts present → all True + last_generated_at set ----
+async def test_status_returns_all_true_when_all_16_artifacts_present(
     client, in_memory_db, tmp_path
 ):
     from medieval_forge.api.v3.artifacts import ARTIFACT_FILES

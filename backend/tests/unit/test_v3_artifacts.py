@@ -98,15 +98,21 @@ async def test_artifacts_serves_file_with_immutable_cache_header(client, tmp_pat
 
 
 # ---- 6. Allowlist size sanity (T-03-05) ----
-def test_allowlist_contains_14_files():
+def test_allowlist_contains_16_files():
+    """16 = 12 Unity-contract files + 4 canvas-sidecar files.
+
+    Plan 05-11 closed the terrain pair (terrain_lookup.png + terrain_types.json),
+    growing the allowlist from 14 → 16. The 12-file Unity contract is now fully
+    serveable; canvas sidecars are unchanged.
+    """
     from medieval_forge.api.v3.artifacts import ARTIFACT_FILES
 
-    assert len(ARTIFACT_FILES) == 14
+    assert len(ARTIFACT_FILES) == 16
     # Spot-check a few critical entries.
     assert "lookup_condado.png" in ARTIFACT_FILES
     assert "territory_metadata.json" in ARTIFACT_FILES
     assert "territories.geojson" in ARTIFACT_FILES
     assert "barony_colors.json" in ARTIFACT_FILES
-    # Phase 06 deferrals MUST NOT appear.
-    assert "terrain_lookup.png" not in ARTIFACT_FILES
-    assert "terrain_types.json" not in ARTIFACT_FILES
+    # Plan 05-11 closure: terrain pair now serveable (previously deferred to Phase 06).
+    assert "terrain_lookup.png" in ARTIFACT_FILES
+    assert "terrain_types.json" in ARTIFACT_FILES
