@@ -61,9 +61,10 @@ Out of scope for Phase 06:
 - Frontend UI swap from v1 `/api/projects/{id}/export` to v3
   endpoint — deferred to Phase 06.1 / Phase 07.
 - Frontend error UI (toast, modal, dry-run preview) — deferred.
-- Re-bake of Reconquista Iberia gold with `original_idx` populated —
-  deferred. Iberia config gets an opt-out flag for the original_idx
-  check during Phase 06; v3.1 plans the re-bake.
+- Re-bake of Reconquista Iberia gold with `original_idx` populated on
+  baronies — deferred to v3.1. Phase 06's MISSING_ORIGINAL_IDX gate
+  is condados-only (D-11 revised); no per-region opt-out flag needed
+  because Iberia passes the gate cleanly today.
 - Pixel_center coordinate conversion (numpy Y-down → Unity Y-up).
   Unity loader already handles inversion on load; flipping at export
   would break byte-parity with Reconquista gold. Documented as a Y-down
@@ -218,19 +219,23 @@ Out of scope for Phase 06:
   The v1-archive PROJECT.md "convert on export" idea is rejected: it
   would break byte-parity with Reconquista gold and force a re-bake.
 
-- **D-11 (MISSING_ORIGINAL_IDX with Iberia legacy exemption):** Gate
-  requires every condado and every barony to carry `original_idx`.
-  Exception: Iberia gold (`region_key == "iberia_868"`) is exempted
-  via a region-level flag — Phase 06 adds `enforce_original_idx: bool
-  = True` to `RegionConfig` / region YAML; `iberia_868.yaml` sets it
-  to `false`. Rationale: Phase 01 PREFLIGHT Q8 found deployed Iberia
-  has 0/92 condados with `original_idx`. Phase 05 D-13 made emission
-  conditional on `len(c) > 6`. Phase 06 is not the place to re-bake
-  Reconquista. Deferred idea: v3.1 plans the re-bake with synced
-  Unity-side update. France/England/autogen regions enforce strictly
-  (`enforce_original_idx: true` by default). CLAUDE.md rule 4 (Nájera
-  bug) stays covered for new regions; the legacy Iberia waiver is
-  explicit + tracked.
+- **D-11 (MISSING_ORIGINAL_IDX = condados-only; baronies exempt by
+  canonical shape):** Gate requires every CONDADO to carry
+  `original_idx`. Baronies are EXEMPT — the canonical barony shape is
+  `{name, condado_idx, duchy, pixel_count}` (verified in
+  `tests/fixtures/iberia_868/golden/territory_metadata.json` lines
+  1838+; `services/pipeline/export.py:37-82` writer never emits
+  `original_idx` on baronies). The Unity `byOriginalIdx` lookup
+  (CLAUDE.md rule 7) is condado-keyed; baronies use positional
+  `condado_idx`. No `enforce_original_idx` YAML flag is added; no
+  RegionConfig field is added; no per-region opt-out exists. Iberia
+  passes the gate cleanly (golden has `original_idx: 1..92` on all 92
+  condados, 91 emitted after `npx == 0` compaction). France / England
+  / autogen enforce the same condados-only rule. CLAUDE.md rule 4
+  (Nájera bug — indices > 44) stays covered: every condado that exists
+  must carry `original_idx`. Phase 06 RESEARCH (Risk Register
+  BLOCKER) reconciled the stale "0/92 original_idx" rationale from
+  CONTEXT initial draft against verified repo state (2026-05-13).
 
 - **D-12 (TERRITORY_TOO_SMALL threshold = 200px = `blob_merge_px`):**
   Gate computes pixel count per condado_id from `lookup_condado.png`.
@@ -538,13 +543,13 @@ None — `gsd-tools todo match-phase 06` returned `todo_count=0`.
 
 - **Backend modifications:**
   - `backend/medieval_forge/services/export.py` (call validator first,
-    new MANIFEST shape)
-  - `backend/medieval_forge/services/pipeline/contracts.py` (add
-    `enforce_original_idx: bool = True` to `RegionConfig`)
-  - `backend/medieval_forge/services/pipeline/region_loader.py`
-    (`RegionConfigSchema` mirrors new field)
-  - `data/regions/iberia_868.yaml` (sets `enforce_original_idx: false`)
+    new MANIFEST shape; refactored to `services/export/zip.py` per
+    RESEARCH §Per-Discretion #4 layout)
   - `backend/medieval_forge/main.py` (mount v3 export router; drop v1)
+  - No `enforce_original_idx` field added to `RegionConfig`,
+    `RegionConfigSchema`, or `data/regions/iberia_868.yaml` — D-11
+    revised to condados-only; Iberia passes the gate without any
+    per-region flag
   - `backend/tests/parity/test_iberia_868_yaml.py` (asserts MANIFEST
     validation_report.passed == true)
   - `backend/tests/e2e/test_france_1066_export_contract.py` (may
@@ -565,9 +570,11 @@ None — `gsd-tools todo match-phase 06` returned `todo_count=0`.
   preflight before paying the zip cost.
 - **"Delete v1, don't bridge"** — D-04 + D-V3-04 (PROJECT.md).
   `api/export.py` goes away; frontend swap deferred to its own phase.
-- **"Iberia gold exemption is explicit"** — D-11 region YAML flag
-  `enforce_original_idx: false`. Documented exception, not hidden
-  special case. Re-bake of Reconquista is a deferred idea for v3.1.
+- **"Gate scope is condados-only"** — D-11 revised. Iberia passes
+  without a flag (all 92 condados carry `original_idx`); baronies
+  exempt by canonical shape. France / England / autogen follow the
+  same rule. CLAUDE.md rule 4 (Nájera bug, indices > 44) still
+  covered for every condado.
 - **"No Y-axis conversion at export"** — D-10. The v1-archive note
   about "convert on export" is explicitly rejected. Reconquista
   Unity loader already inverts; flipping at export breaks byte-parity
