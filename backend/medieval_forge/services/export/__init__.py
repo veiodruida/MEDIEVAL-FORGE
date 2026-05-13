@@ -25,6 +25,10 @@ from .schemas import (
     ValidationReport,
     ValidationErrorEntry,
 )
+from .validator import (
+    validate_export,
+    ValidationFailedError,
+)
 
 __all__ = [
     # zip (Task 1)
@@ -42,5 +46,7 @@ __all__ = [
     "ManifestFileEntry",
     "ValidationReport",
     "ValidationErrorEntry",
-    # validator (appended by Task 3)
+    # validator (Task 3)
+    "validate_export",
+    "ValidationFailedError",
 ]
