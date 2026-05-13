@@ -238,7 +238,19 @@ async def trigger_render(
 
 @router.get("/{project_id}/render/stream")
 async def stream_render(project_id: str) -> StreamingResponse:
-    """Drain the per-project render SSE queue until the None sentinel."""
+    """Drain the per-project render SSE queue until the None sentinel.
+
+    Subscribe immediately after `/render` returns 202; the queue is evicted in
+    the producer's `finally` block once the run completes (the eviction
+    follows `put(None)` to prevent late-subscriber hangs). Late subscribers —
+    after the producer pops `_RUN_QUEUES[project_id]` — receive 404.
+
+    WR-04 (Plan 05 review): there is a narrow race window between sentinel
+    emission and queue eviction. A client subscribing in that window will
+    get the queue, drain the `None` sentinel immediately, and see an
+    empty-but-completed stream. The frontend MUST treat this case
+    identically to a 404 (the run is finished either way).
+    """
     if not is_valid_uuid(project_id):
         raise HTTPException(status_code=400, detail="project_id must be a valid UUID")
 
