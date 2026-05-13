@@ -1,285 +1,209 @@
 ---
 phase: 05-region-generalization
-reviewed: 2026-05-12T00:00:00Z
+reviewed: 2026-05-13T00:00:00Z
 depth: standard
-files_reviewed: 41
+files_reviewed: 20
 files_reviewed_list:
-  - alembic/versions/0004_add_region_key_to_projects.py
-  - alembic/versions/0005_make_v1_legacy_fields_nullable_for_v3.py
-  - backend/medieval_forge/api/v3/__init__.py
-  - backend/medieval_forge/api/v3/generate.py
-  - backend/medieval_forge/api/v3/projects.py
-  - backend/medieval_forge/api/v3/regions.py
+  - backend/medieval_forge/api/v3/artifacts.py
   - backend/medieval_forge/api/v3/render.py
-  - backend/medieval_forge/main.py
-  - backend/medieval_forge/models.py
-  - backend/medieval_forge/services/pipeline/__main__.py
+  - backend/medieval_forge/schemas.py
+  - backend/medieval_forge/services/export.py
+  - backend/medieval_forge/services/pipeline/__init__.py
   - backend/medieval_forge/services/pipeline/contracts.py
-  - backend/medieval_forge/services/pipeline/export.py
   - backend/medieval_forge/services/pipeline/region_loader.py
-  - backend/tests/api/test_regions_endpoint.py
-  - backend/tests/conftest.py
+  - backend/medieval_forge/services/pipeline/terrain.py
   - backend/tests/e2e/test_france_1066_export_contract.py
-  - backend/tests/fixtures/uat_setup.py
-  - backend/tests/integration/test_generate_render_load_region.py
-  - backend/tests/integration/test_render_endpoint.py
-  - backend/tests/parity/conftest.py
-  - backend/tests/parity/test_iberia_868_live.py
-  - backend/tests/parity/test_iberia_868_render_default.py
   - backend/tests/parity/test_iberia_868_yaml.py
-  - backend/tests/unit/test_dag_tokens.py
-  - backend/tests/unit/test_england_1216_missing_inputs.py
   - backend/tests/unit/test_gen_toy_france.py
   - backend/tests/unit/test_region_loader.py
-  - backend/tests/unit/test_run_pipeline_on_stage.py
+  - backend/tests/unit/test_terrain_render.py
+  - backend/tests/unit/test_v3_artifacts.py
+  - backend/tests/unit/test_v3_status.py
   - data/regions/england_1216.yaml
-  - data/regions/france_1066.yaml
-  - frontend/src/api/__tests__/useRegions.test.ts
-  - frontend/src/api/client.ts
-  - frontend/src/api/useRegions.ts
+  - frontend/package.json
   - frontend/src/components/projects/NewProjectModal.tsx
-  - frontend/src/components/projects/__tests__/NewProjectModal.test.tsx
-  - frontend/src/pages/ProjectList.tsx
-  - frontend/src/types/region.ts
-  - frontend/tests/uat/playwright/france_1066_create_project.spec.ts
-  - pyproject.toml
-  - scripts/gen_toy_france.py
+  - scripts/run_france_uat.ps1
+  - scripts/run_france_uat.sh
 findings:
-  critical: 0
-  warning: 2
-  info: 7
-  total: 9
+  critical: 1
+  warning: 4
+  info: 6
+  total: 11
 status: issues_found
 ---
 
-# Phase 05: Code Review Report
+# Phase 05: Code Review Report (Plans 11-15 + hotfix 5daa563)
 
-**Reviewed:** 2026-05-12
+**Reviewed:** 2026-05-13
 **Depth:** standard
-**Files Reviewed:** 41
+**Files Reviewed:** 20
 **Status:** issues_found
 
 ## Summary
 
-Phase 05 ("region-generalization") delivers a YAML-driven region loader, the
-`POST /api/v3/projects` endpoint with strict input validation, a `GET /api/v3/regions`
-discovery endpoint, two new Alembic migrations, frontend region-picker UI, and a France
-1066 toy region with autogen territories. The architecture is solid and the focus areas
-flagged by the workflow (path-traversal guards, pydantic enum validation, σ range,
-SQLite batch_alter_table, Pitfall 9 immutability) are all covered correctly.
+Phase 05 (region generalization) ships YAML-driven region loading, France 1066 toy region with autogen, terrain palette closure for SC-3 (Plan 11), the live UAT runner scripts (Plan 12), and the WR-01 single-country dedupe hotfix (`5daa563`). The architectural shape is solid — `RegionConfig` remains the only mutable input, pydantic validates inputs (`extra='forbid'`, `smooth_sigma` clamped to [3.0, 4.5]), and threat-modelled paths (T-05-01-01..03) are guarded.
 
-Findings cluster around two areas:
+**One critical defect was found:** the Unity ZIP export in `services/export.py` is missing `rivers_overlay.png` from `UNITY_ZIP_SPEC`. The contract is declared as 12 files in CLAUDE.md and in `contracts.EXPORT_FILE_CONTRACT`, but `UNITY_ZIP_SPEC` lists only 11 entries — the rivers overlay is generated and served via `/artifacts/`, yet never written into the shipped ZIP. Tests that walk `UNITY_ZIP_SPEC` (e.g. `test_zip_contents`) iterate the truncated list and silently pass, so the gap is invisible to CI.
 
-1. **Autogen double-read of dataset files (Warning).** When `pt_geojson` and `es_input`
-   point at the same file (intentional for single-country regions like france_1066 and
-   england_1216), `_autogen_territories` reads it twice and produces a doubled seed set.
-   No functional break — the dedup loop preserves unique `original_idx` — but the
-   resulting condado count is ~2× what the YAML intent implies, and the unit test
-   bound (`>=40 condados`) is loose enough to mask it.
+The remaining warnings touch auto-generation edge cases and a regression-prone `assert`-as-validation choice; the info items are minor cosmetics.
 
-2. **One Pitfall 9 violation in a test fixture (Warning).** `test_iberia_868_yaml.py`
-   mutates `cfg.output_dir` directly after `load_region()` instead of using
-   `dataclasses.replace()`. The autouse `clear_region_cache_between_tests` hides the
-   blast radius, but the focus-area mandate explicitly calls Pitfall 9 out.
+## Critical Issues
 
-The remaining items are small: a dead-code helper in render.py, an unused test fixture
-helper with a duplicated YAML key, a redundant try/except, one test that doesn't test
-what its name claims, and minor React patterns in NewProjectModal.
+### CR-01: `UNITY_ZIP_SPEC` is missing `rivers_overlay.png` — Unity ZIP ships 11/12 contract files
 
-No security issues. No critical bugs. Pipeline determinism guarantees (seed, NEAREST
-upscale, σ range, KD-tree-per-country, original_idx uniqueness) are all enforced by
-schema + tests.
+**File:** `backend/medieval_forge/services/export.py:25-37`
+**Issue:** `UNITY_ZIP_SPEC` lists 11 filenames but the 12-file Unity contract (CLAUDE.md §"v3 Pipeline Contract" row 11, `contracts.EXPORT_FILE_CONTRACT` line 204, `api/v3/artifacts.ARTIFACT_FILES` line 46) includes `rivers_overlay.png`. The pipeline writes the file to disk (`pipeline/__init__.py:229`), the artifacts endpoint serves it, but `build_unity_zip()` iterates `UNITY_ZIP_SPEC` only — so the downloaded ZIP never contains it. Consumers downloading the ZIP receive an incomplete export. `test_zip_contents` and `test_build_unity_zip_assembles_12_files` both iterate `UNITY_ZIP_SPEC`, so the missing entry is also a missing assertion: the tests pass on 11 files while their docstrings still claim 12.
+
+This is a contract-level defect: CLAUDE.md §v3 Pipeline Contract is explicit that the 12-file export is non-negotiable, and Phase 06 will validate against it.
+
+**Fix:**
+```python
+# backend/medieval_forge/services/export.py
+UNITY_ZIP_SPEC: tuple[str, ...] = (
+    "lookup_barony.png",
+    "lookup_condado.png",
+    "lookup_barony_colors.json",
+    "lookup_condado_colors.json",
+    "terrain_lookup.png",
+    "terrain_types.json",
+    "territory_metadata.json",
+    "mountains_mask.png",
+    "rivers_overlay.png",   # <-- ADD: CLAUDE.md row 11
+    "visual_barony.png",
+    "visual_condado.png",
+    "mountain_river_data.json",
+)
+assert len(UNITY_ZIP_SPEC) == 12, "Unity contract: 12 files"
+```
+Also: derive `UNITY_ZIP_SPEC` from `contracts.EXPORT_FILE_CONTRACT` (or add a unit test importing both and asserting set-equality) to eliminate the duplication and prevent silent re-drift.
 
 ## Warnings
 
-### WR-01: Autogen reads the same dataset file twice when pt_geojson == es_input
+### WR-01: `ProjectCreate` does not enforce `period_start < period_end`
 
-**File:** `backend/medieval_forge/services/pipeline/region_loader.py:389-411`
-**Issue:** `_autogen_territories` iterates `(dataset.pt_geojson, dataset.es_input)` and
-parses each file unconditionally. Both `france_1066.yaml` and `england_1216.yaml` point
-both fields at the same file (a documented single-country fallthrough pattern). The
-result is that every GeoJSON feature is appended to `features[]` twice, producing
-~2× the condados that the YAML implies (e.g., France toy: 40-50 polygons → 80-100
-autogen condados). `enumerate(features, start=1)` keeps `original_idx` unique so the
-parity test `original_idx not unique` does NOT fire — but Voronoi seeds collide and
-downstream baronies inherit duplicate centroids. The unit test
-`test_load_region_autogen` asserts `len(cfg.condados) >= 40` which passes for both 50
-and 100, masking the doubling.
+**File:** `backend/medieval_forge/schemas.py:32-50, 74-80`
+**Issue:** `ProjectUpdate._check_period_ordering` enforces `period_start < period_end` via `model_validator(mode="after")`, but `ProjectCreate` has no equivalent validator. A new project can be created with `period_start >= period_end`, which `ProjectUpdate` would later refuse to patch. The asymmetry is pre-Phase-05 but `country_qid` enhancements (`_resolve_country_list`) were added in this module without surfacing the gap.
 
 **Fix:**
 ```python
-# region_loader.py:389
-seen_paths: set[Path] = set()
-for geojson_path in (dataset.pt_geojson, dataset.es_input):
-    if geojson_path is None or not geojson_path.exists():
-        continue
-    if geojson_path in seen_paths:
-        continue                  # skip duplicate pt==es fallthrough
-    seen_paths.add(geojson_path)
-    try:
-        data = json.loads(geojson_path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        continue
+class ProjectCreate(BaseModel):
+    # ... existing fields ...
+    @model_validator(mode="after")
+    def _check_period_ordering(self) -> "ProjectCreate":
+        if self.period_start >= self.period_end:
+            raise ValueError("period_start must be less than period_end")
+        return self
+```
+
+### WR-02: `_autogen_territories` overwrites partially-populated `kingdoms`/`duchies`
+
+**File:** `backend/medieval_forge/services/pipeline/region_loader.py:222-242`
+**Issue:** Autogen is triggered solely on `not kwargs.get("condados")`. If a region YAML declares `kingdoms` and `duchies` (e.g. a future hand-curated region) but leaves `condados: []`, autogen runs and replaces the curated kingdoms/duchies with `{"unnamed": ...}` / `{"unnamed_duchy": ...}`. The curator's data is silently dropped. The current `england_1216.yaml` template-only path never reaches autogen, and `france_1066.yaml` legitimately starts with all three empty — but the condition is fragile.
+
+**Fix:** Either gate autogen on all three being empty, or fail loudly when only `condados` is empty:
+```python
+co_empty = not kwargs.get("condados")
+kg_empty = not kwargs.get("kingdoms")
+du_empty = not kwargs.get("duchies")
+if co_empty and not (kg_empty and du_empty):
+    raise ValueError(
+        f"region {key!r}: condados empty but kingdoms/duchies populated — "
+        "autogen would overwrite curated data. Provide condados or clear all three."
+    )
+if co_empty:
+    # ... existing autogen ...
+```
+
+### WR-03: `terrain.render_terrain_lookup` uses `assert` for input validation (stripped under `python -O`)
+
+**File:** `backend/medieval_forge/services/pipeline/terrain.py:89-95`
+**Issue:** Shape/dtype invariants are enforced with `assert` statements. Python optimised mode (`python -O`) strips asserts, so any caller passing the wrong `land` dtype/shape in a production deployment would silently corrupt the terrain raster (e.g. `arr[land] = PLAINS_RGB` with an int array indexing would broadcast unexpectedly). Although `medieval-forge start` is unlikely to ship with `-O`, defensive checks belong to runtime, not optimisation flags.
+
+**Fix:**
+```python
+def render_terrain_lookup(land: np.ndarray, cfg: "RegionConfig") -> np.ndarray:
+    if land.dtype != np.bool_:
+        raise TypeError(f"land must be bool[H,W], got dtype={land.dtype}")
+    if land.shape != (cfg.map_h, cfg.map_w):
+        raise ValueError(
+            f"land shape mismatch: expected ({cfg.map_h}, {cfg.map_w}), got {land.shape}"
+        )
     # ... rest unchanged
 ```
-Tighten the unit test bound to `40 <= len(cfg.condados) <= 50` so the regression is
-caught next time.
 
-### WR-02: Parity test mutates load_region() singleton directly (Pitfall 9 violation in test code)
+### WR-04: `_render_producer` cleanup ordering — narrow race window between sentinel and queue pop
 
-**File:** `backend/tests/parity/test_iberia_868_yaml.py:42-44`
-**Issue:** The fixture uses
+**File:** `backend/medieval_forge/api/v3/render.py:182-187`
+**Issue:** The `finally` block pops `_RUN_QUEUES[project_id]` *after* `await queue.put(None)`. If a client calls `/render/stream` between the `put(None)` and the `pop`, it gets the queue, drains the sentinel immediately, and sees nothing of the run. After the pop, late subscribers get 404. The race is narrow but produces an inconsistent UX: same elapsed-time client either sees "queue gone (404)" or "queue empty (immediate done)". The comment "WR-02 fix: prevent late-subscriber hang" indicates the previous bug was hanging; the current ordering trades a hang for a race. Document the contract explicitly, or hold the queue for a grace window after `put(None)`.
+
+**Fix (minimal — clarify the contract):**
 ```python
-clear_region_cache()
-cfg = load_region("iberia_868")
-cfg.output_dir = str(out)
-```
-This mutates the cached singleton — the exact pattern CLAUDE.md's "Pitfall 9 /
-T-05-04-04" rule prohibits and that `test_load_region_singleton_not_mutated` regression-
-guards in `backend/tests/integration/test_generate_render_load_region.py`. The autouse
-`clear_region_cache_between_tests` resets state between tests so this works in CI today,
-but the focus areas explicitly call out Pitfall 9 and every other touchpoint in this
-phase uses `dataclasses.replace(...)` (see `parity/conftest.py:97-98`, `__main__.py:26`,
-`uat_setup.py:65`, `test_iberia_868_render_default.py:60`, `test_france_1066_export_contract.py:58`,
-both API producers).
+@router.get("/{project_id}/render/stream")
+async def stream_render(project_id: str) -> StreamingResponse:
+    """Drain the per-project render SSE queue until the None sentinel.
 
-**Fix:**
-```python
-# backend/tests/parity/test_iberia_868_yaml.py:42
-from dataclasses import replace
-# ...
-out = tmp_path_factory.mktemp("iberia_868_yaml_actual")
-clear_region_cache()
-cfg = replace(load_region("iberia_868"), output_dir=str(out))
-run_pipeline(cfg)
-return out
+    Subscribe immediately after `/render` returns 202; the queue is evicted
+    in the producer's `finally` block once the run completes, so late
+    subscribers (after the run finished) receive 404. There is a narrow
+    race between sentinel emission and eviction where a subscriber may
+    receive an immediately-completed stream — frontend MUST treat this
+    case identically to a 404.
+    """
 ```
 
 ## Info
 
-### IN-01: Dead helper `_make_on_stage` in render.py shadowed by inlined `_on_stage_tracking`
+### IN-01: `region_loader._DEFAULT_REGIONS_DIR` uses brittle `parents[4]`
 
-**File:** `backend/medieval_forge/api/v3/render.py:94-99`
-**Issue:** `_make_on_stage(queue, loop)` is defined at module scope but never
-referenced. The producer at lines 153-156 inlines an equivalent `_on_stage_tracking`
-closure that additionally appends to `completed_stages`. The standalone helper is dead
-code; if a maintainer reuses it, the `completed_stages` tracking (needed for the D-13
-`stage_cancel` emission at line 178) silently breaks.
+**File:** `backend/medieval_forge/services/pipeline/region_loader.py:50`
+**Issue:** `Path(__file__).resolve().parents[4] / "data" / "regions"` breaks silently if anyone moves `region_loader.py` into a deeper or shallower package. The pattern is documented as matching `regions.py`, but it's still a magic number.
+**Fix:** Compute the repo root once at package init (e.g. by walking up until `pyproject.toml` is found) and re-use that across the codebase.
 
-**Fix:** Remove the unused `_make_on_stage` function (and the unused `Callable` import
-if no other use remains).
+### IN-02: `_autogen_territories` accepts unused `rng_seed`
 
-### IN-02: No-op try/except in `_resolve_dataset`
+**File:** `backend/medieval_forge/services/pipeline/region_loader.py:363-381`
+**Issue:** `rng_seed` parameter is documented as "kept for forward compatibility" but never consumed. Readers tracing the call site at line 223 must follow the function to learn the seed is dead.
+**Fix:** Drop the parameter from the signature; reintroduce only when an RNG path actually appears.
 
-**File:** `backend/medieval_forge/services/pipeline/region_loader.py:350-360`
-**Issue:**
-```python
-try:
-    return ProjectDataset(...)
-except FileNotFoundError:
-    raise
-except ValueError:
-    raise
-```
-Catches exactly the two exceptions that the inner `_resolve` helper raises and
-re-raises them unchanged. Equivalent to no `try` block at all.
+### IN-03: Unused locals in `run_pipeline_incremental` voronoi cold-recovery branch
 
+**File:** `backend/medieval_forge/services/pipeline/__init__.py:557-558`
+**Issue:** `pi, ei, tp, te` are unpacked from `setup_baronies(cfg)` but never used in the else-branch (raw is already cached). Triggers no warning today but adds visual noise and risks future readers thinking they should be wired in.
+**Fix:** Use `_` placeholders or split into a dedicated helper that returns only the needed tuple.
+
+### IN-04: `defaultRegionKey` returns implicit empty string for "no region available"
+
+**File:** `frontend/src/components/projects/NewProjectModal.tsx:22-28`
+**Issue:** The triple fallback (Iberia → first-with-dataset → first → `''`) returns an empty string when there are zero regions. Submit handler at line 82 short-circuits on `!regionKey`, but the UX is "button stays disabled" with no explanation. An explicit `null` return forces callers to handle the empty-list case visibly.
+**Fix:** Change return type to `string | null`, and when null, render a toast/inline message "Nenhuma região disponível — cheque sua instalação".
+
+### IN-05: `run_france_uat.ps1` process-kill heuristic relies on `MainWindowTitle` (won't match headless servers)
+
+**File:** `scripts/run_france_uat.ps1:12-15`
+**Issue:** `Get-Process | Where-Object { $_.ProcessName -match "medieval-forge|uvicorn|node" -and $_.MainWindowTitle -match "vite|forge" }` filters by `MainWindowTitle`, which is empty for background/console processes. The Bash variant (`pkill -f`) matches command line — so headless `uvicorn`/`vite` processes survive on Windows. Result: re-runs of the UAT script leave stale dev servers on ports 8000/5173, causing the next `Start-Job` to fail silently.
 **Fix:**
-```python
-return ProjectDataset(
-    pt_geojson=_resolve(ds.pt_geojson),
-    es_input=_resolve(ds.es_input),
-    mountain_river_json=_resolve(ds.mountain_river_json),
-    dem_raster=_resolve(ds.dem_raster),
-)
+```powershell
+Get-CimInstance Win32_Process |
+    Where-Object { $_.CommandLine -match "medieval-forge|uvicorn|vite" } |
+    ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 ```
 
-### IN-03: Unused test fixture helper with duplicated `kingdoms:` YAML key
+### IN-06: `england_1216.yaml` declares identical `pt_geojson` / `es_input` without an explanatory comment
 
-**File:** `backend/tests/unit/test_region_loader.py:100-141`
-**Issue:** `_make_toy_region_with_territories` is defined but no test imports/calls it
-(verified via grep — single occurrence in the file). The embedded YAML also declares
-`kingdoms:` twice in a row (lines 125-127 and 128-130). YAML parsers silently use the
-last occurrence, but it signals the helper has never been exercised.
-
-**Fix:** Delete the helper, or wire it into a test that exercises the explicit-
-territory (non-autogen) code path of `_convert_territory_data`.
-
-### IN-04: `useRegions` queryKey test does not validate what its name claims
-
-**File:** `frontend/src/api/__tests__/useRegions.test.ts:81-95`
-**Issue:** The `'uses queryKey ["v3", "regions"]'` test calls
-`vi.spyOn({useQuery}, 'useQuery')` on a fresh object literal, which never replaces
-the `useQuery` imported by the hook under test. The body comment admits
-*"queryKey verified by integration"*. The test as written only smoke-checks that
-`useRegions` is defined — already covered by the other three tests in the block.
-
-**Fix:** Either delete the test, or replace the body with a real assertion against
-`queryClient.getQueryCache().getAll()[0].queryKey` to verify `['v3', 'regions']` is
-actually used.
-
-### IN-05: `Select.Root` mixes controlled and uncontrolled mode
-
-**File:** `frontend/src/components/projects/NewProjectModal.tsx:144-148`
-**Issue:**
-```tsx
-<Select.Root
-  defaultValue="iberia_868"
-  value={regionKey}
-  onValueChange={setRegionKey}
-  ...
-```
-A Radix Select is controlled iff `value` is set; passing both `defaultValue` and
-`value` mixes controlled and uncontrolled modes. Radix uses the controlled `value`
-(making `defaultValue` dead), but React DevTools warns and the next maintainer reads
-contradictory intent.
-
-**Fix:** Remove `defaultValue="iberia_868"` — the initial value is already wired via
-the `useEffect(... setRegionKey(defaultRegionKey(regions))` at lines 42-46.
-
-### IN-06: `<Text as="label">` without `htmlFor` breaks accessibility (and Playwright label selectors)
-
-**File:** `frontend/src/components/projects/NewProjectModal.tsx:120, 140`
-**Issue:** Two labels are rendered as `<Text as="label" size="2" weight="medium">...`
-without `htmlFor` (or wrapping the input). They produce a visual label but not an
-accessibility association. The Playwright UAT spec at
-`frontend/tests/uat/playwright/france_1066_create_project.spec.ts:46-48` already
-documents the consequence — it must select the input by placeholder because no
-`<label>`/`<input>` link exists.
-
+**File:** `data/regions/england_1216.yaml:16-17`
+**Issue:** Both `pt_geojson` and `es_input` point at `inputs/england_municipalities.geojson`. Currently moot because the file is intentionally absent (D-12 template-only), but when v3.1 adds real inputs, the WR-01 dedupe fix in `_autogen_territories` (commit `5daa563`, Plan 05-13) will be the only thing preventing the double-read. A future regression in dedupe would silently double England's condado count. An inline comment captures the load-bearing intent.
 **Fix:**
-```tsx
-<Text as="label" size="2" weight="medium" htmlFor="new-project-name">
-  Nome do projeto
-</Text>
-<Box mt="1">
-  <TextField.Root
-    id="new-project-name"
-    value={name}
-    ...
+```yaml
+dataset:
+  # Single-country region: pt_geojson and es_input point at the same file.
+  # _autogen_territories deduplicates by absolute path (Plan 05-13 WR-01 fix).
+  pt_geojson: inputs/england_municipalities.geojson
+  es_input: inputs/england_municipalities.geojson
+  mountain_river_json: inputs/mountain_river_data.json
 ```
-Apply the same pattern to the Região label + Select.Trigger (Radix accepts `id` on
-`Select.Trigger`).
-
-### IN-07: `Toast.Root duration={Infinity}` — semantically suspicious
-
-**File:** `frontend/src/components/projects/NewProjectModal.tsx:210`
-**Issue:** `duration={Infinity}` is passed to Radix `Toast.Root`. Radix internally
-`setTimeout(_, duration)`; in browsers, `setTimeout(_, Infinity)` clamps to its max
-(~24.8 days) so the practical behavior is "never auto-dismiss," which is the intent.
-But the explicit Radix-documented sentinel for "no auto-close" is omitting `duration`
-or using a very large finite number; `Infinity` is undocumented and may regress on a
-future Radix patch.
-
-**Fix:** Replace with a documented value:
-```tsx
-<Toast.Root open={toastOpen} onOpenChange={setToastOpen} duration={1000 * 60 * 60 * 24}>
-```
-Or omit `duration` entirely and rely on the user-driven dismiss (the "Tentar novamente"
-button + close gesture already handle it).
 
 ---
 
-_Reviewed: 2026-05-12_
+_Reviewed: 2026-05-13_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: standard_
