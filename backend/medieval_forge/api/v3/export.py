@@ -45,9 +45,10 @@ async def trigger_v3_export(
     """POST /api/v3/projects/{id}/export?dry_run=<bool>
 
     Returns:
-      201 + {project_id, zip_filename, size_bytes, download_url} -- gate passed, zip written
-      200 + {dry_run: true, passed: true, errors: [], ...}        -- dry_run=true, gate passed
-      422 + {detail: {summary, errors, warnings}}                  -- gate failed (D-08 envelope)
+      201 + {project_id, zip_filename, size_bytes, download_url}     -- gate passed, zip written
+      200 + {dry_run: true, passed: true, errors: [], warnings: []}  -- dry_run=true, gate passed
+      422 + {detail: {summary, errors, warnings}}                     -- gate failed (D-08 envelope)
+      422 + {dry_run: true, detail: {summary, errors, warnings}}      -- dry_run=true, gate failed
       400 -- invalid UUID
       404 -- project not found
       409 -- wrong status (run /generate first)
@@ -88,10 +89,23 @@ async def trigger_v3_export(
                 detail=f"no pipeline output in {generated} -- run /generate first",
             )
         report, _sha = validate_export(generated, cfg)
-        body = {"dry_run": True, **report.model_dump()}
+        if report.passed:
+            return JSONResponse(
+                status_code=200,
+                content={"dry_run": True, **report.model_dump()},
+            )
+        # WR-01: wrap failure in the same D-08 envelope as the real-export 422
+        # so callers parse both 422 shapes identically.
         return JSONResponse(
-            status_code=200 if report.passed else 422,
-            content=body,
+            status_code=422,
+            content={
+                "dry_run": True,
+                "detail": {
+                    "summary": f"{len(report.errors)} errors blocked export",
+                    "errors": [e.model_dump() for e in report.errors],
+                    "warnings": [w.model_dump() for w in report.warnings],
+                },
+            },
         )
 
     # Real export: validator -> zip -> status flip
