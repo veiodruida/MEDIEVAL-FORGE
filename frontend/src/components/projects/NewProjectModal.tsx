@@ -117,11 +117,12 @@ export function NewProjectModal() {
 
               {/* Nome do projeto */}
               <Box>
-                <Text as="label" size="2" weight="medium">
+                <Text as="label" size="2" weight="medium" htmlFor="project-name-input">
                   Nome do projeto
                 </Text>
                 <Box mt="1">
                   <TextField.Root
+                    id="project-name-input"
                     value={name}
                     onChange={handleNameChange}
                     placeholder="Ex.: Reconquista 868"
@@ -137,17 +138,17 @@ export function NewProjectModal() {
 
               {/* Região */}
               <Box>
-                <Text as="label" size="2" weight="medium">
+                <Text as="label" size="2" weight="medium" htmlFor="region-select-trigger">
                   Região
                 </Text>
                 <Box mt="1">
                   <Select.Root
-                    defaultValue="iberia_868"
                     value={regionKey}
                     onValueChange={setRegionKey}
                     disabled={isLoading || isError}
                   >
                     <Select.Trigger
+                      id="region-select-trigger"
                       data-testid="region-select"
                       placeholder={isLoading ? loadingText : 'Selecione uma região'}
                     />
@@ -207,7 +208,8 @@ export function NewProjectModal() {
       </Dialog.Root>
 
       {/* Error toast for region fetch failure */}
-      <Toast.Root open={toastOpen} onOpenChange={setToastOpen} duration={Infinity}>
+      {/* 24h duration: long enough to span any plausible session; finite so Radix does not warn. */}
+      <Toast.Root open={toastOpen} onOpenChange={setToastOpen} duration={1000 * 60 * 60 * 24}>
         <Toast.Title asChild>
           <Text size="2">
             Não foi possível carregar a lista de regiões. Tente novamente.
