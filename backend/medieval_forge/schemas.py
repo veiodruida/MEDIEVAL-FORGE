@@ -48,6 +48,18 @@ class ProjectCreate(BaseModel):
         except ValueError as exc:
             raise ValueError(str(exc)) from exc
 
+    @model_validator(mode="after")
+    def _check_period_ordering(self) -> "ProjectCreate":
+        """WR-01 fix (Plan 05 review): enforce period_start < period_end on create.
+
+        Without this, a project could be created with period_start >= period_end and
+        ProjectUpdate._check_period_ordering would later refuse to patch it. Both
+        fields are required on ProjectCreate, so no None-guard is needed.
+        """
+        if self.period_start >= self.period_end:
+            raise ValueError("period_start must be less than period_end")
+        return self
+
 
 class ProjectUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
