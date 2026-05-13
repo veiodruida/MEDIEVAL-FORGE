@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: + bootstrap v3 infrastructure
 status: executing
-stopped_at: Phase 06 context gathered
-last_updated: "2026-05-13T13:10:10.937Z"
-last_activity: 2026-05-13 -- Phase 06 planning complete
+stopped_at: Completed 06-01-PLAN.md (services/export/ subpackage + schemas + validator stubs)
+last_updated: "2026-05-13T15:11:56.055Z"
+last_activity: 2026-05-13
 progress:
   total_phases: 10
   completed_phases: 6
   total_plans: 45
-  completed_plans: 42
-  percent: 93
+  completed_plans: 43
+  percent: 96
 ---
 
 # Project State (v3)
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md
 
 **Core value:** A Game Designer goes from "country + historical period" to a validated, Unity-ready map package — driven by geometry, with LLM as opt-in metadata.
-**Current focus:** Phase 05 — region-generalization
+**Current focus:** Phase 06 — export-contract-validation-gate
 
 ## Current Position
 
-Phase: 06
-Plan: Not started
+Phase: 06 (export-contract-validation-gate) — EXECUTING
+Plan: 2 of 3
 Status: Ready to execute
-Last activity: 2026-05-13 -- Phase 06 planning complete
+Last activity: 2026-05-13
 
 Progress: [█████████░] 93% (25 of 27 plans complete)
 
@@ -98,6 +98,7 @@ See `.planning/PROJECT.md` Key Decisions table (D-V3-01 through D-V3-07).
 - [Phase 05]: 10-file EXPORT_FILE_CONTRACT (not 12): terrain_lookup.png + terrain_types.json deferred to Phase 06 (P-2); E2E test asserts 10-file contract per EXPORT_FILE_CONTRACT constant
 - [Phase 05]: original_idx emitted conditionally in export.py: len(c)>6 gate lets Iberia parity stay green while autogen regions gain CLAUDE.md rule 4 compliance
 - [Phase 05]: autogen baronies: 1 barony per condado at centroid — voronoi KD-trees require non-empty baronies list; autogen path previously left bars=[] → blank map
+- [Phase 06]: Plan 06-01: services/export/ subpackage carved out (zip.py + schemas.py + validator.py + __init__.py); 6 pydantic v2 schemas (RootModel for dict-shape JSONs) + MANIFEST_SCHEMA_VERSION=2; validator orchestrator + 5 stub _check_* fns (bodies in 06-02); ValidationFailedError defined but raised only by build_unity_zip (06-03); 15 SCHEMA_INVALID unit tests; 150 unit + 11 parity + 6 existing export tests all green
 
 ### Blockers/Concerns
 
@@ -117,6 +118,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-13T11:53:38.447Z
-Stopped at: Phase 06 context gathered
-Resume file: .planning/phases/06-export-contract-validation-gate/06-CONTEXT.md
+Last session: 2026-05-13T15:11:56.053Z
+Stopped at: Completed 06-01-PLAN.md (services/export/ subpackage + schemas + validator stubs)
+Resume file: None
