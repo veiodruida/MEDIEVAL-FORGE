@@ -279,8 +279,85 @@ def _check_color_collision(
 def _check_ocean_leak(
     ctx: _ValidationContext, generated_dir: Path, cfg: RegionConfig
 ) -> None:
-    """OCEAN_LEAK (D-09): territory RGB in landmask-ocean pixel. One-way only."""
-    raise NotImplementedError("06-02: fill body — see 06-RESEARCH.md §Per-Discretion #18 pseudocode")
+    """OCEAN_LEAK (D-09): territory color appears in landmask-ocean pixel.
+
+    One-way only (leak from territory into ocean). The bidirectional "ocean
+    color inside a polygon" check would false-positive on legitimate enclosed
+    lakes / lagoons — out of scope per CONTEXT.md deferred ideas.
+
+    Landmask source: terrain_lookup.png (D-09 final + RESEARCH §Per-Discretion #18).
+    Karpathy-simple: avoid re-deriving the landmask from GeoJSON; terrain_lookup.png
+    is already on disk, schema-validated (corrupt PNG → SCHEMA_INVALID short-circuit
+    in Step 2; we never reach here).
+
+    The land-vs-ocean predicate is taken from terrain.py:35-36:
+      ocean pixel in terrain_lookup.png == OCEAN_RGB (0, 0, 0)
+      land  pixel in terrain_lookup.png == PLAINS_RGB (124, 179, 66)
+      → `land = (terrain_arr != OCEAN_RGB).any(axis=-1)` returns True where ANY channel differs from black
+
+    Sampling: up to 10 leak coordinates per file for the error context — enough
+    for UI debugging, doesn't bloat the response.
+    """
+    import numpy as np
+    from PIL import Image
+
+    from ..pipeline.terrain import OCEAN_RGB
+
+    ocean_rgb_uint8 = np.array(OCEAN_RGB, dtype=np.uint8)
+    expected_ocean_rgb = np.array(cfg.ocean_far, dtype=np.uint8)
+
+    terrain_path = generated_dir / "terrain_lookup.png"
+    if not terrain_path.exists():
+        return  # missing already reported in Step 1; nothing more we can do
+    terrain_arr = np.array(Image.open(terrain_path).convert("RGB"))
+    land = (terrain_arr != ocean_rgb_uint8).any(axis=-1)  # bool[H, W]
+    ocean = ~land
+
+    for lookup_name in ("lookup_barony.png", "lookup_condado.png"):
+        path = generated_dir / lookup_name
+        if not path.exists():
+            continue  # missing already reported in Step 1
+        lk = np.array(Image.open(path).convert("RGB"))
+        if lk.shape[:2] != terrain_arr.shape[:2]:
+            ctx.add_error(
+                "OCEAN_LEAK",
+                file=lookup_name,
+                context={
+                    "reason": "shape_mismatch",
+                    "terrain_shape": list(terrain_arr.shape),
+                    "lookup_shape": list(lk.shape),
+                },
+                message=(
+                    f"{lookup_name} shape mismatch with terrain_lookup.png — "
+                    f"cannot check ocean leak"
+                ),
+            )
+            continue
+        leaks = ocean & np.any(lk != expected_ocean_rgb, axis=-1)
+        leak_count = int(leaks.sum())
+        if leak_count > 0:
+            ys, xs = np.where(leaks)
+            sample = [
+                {
+                    "x": int(xs[i]),
+                    "y": int(ys[i]),
+                    "rgb": [int(c) for c in lk[ys[i], xs[i]]],
+                }
+                for i in range(min(10, len(ys)))
+            ]
+            ctx.add_error(
+                "OCEAN_LEAK",
+                file=lookup_name,
+                context={
+                    "leak_count": leak_count,
+                    "sample_pixels": sample,
+                    "expected_ocean_rgb": list(cfg.ocean_far),
+                },
+                message=(
+                    f"{lookup_name}: {leak_count} pixel(s) in ocean region "
+                    f"do not match cfg.ocean_far {tuple(cfg.ocean_far)}"
+                ),
+            )
 
 
 def _check_territory_size(
