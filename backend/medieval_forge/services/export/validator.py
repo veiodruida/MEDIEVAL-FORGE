@@ -408,8 +408,37 @@ def _check_territory_size(
 def _check_original_idx(
     ctx: _ValidationContext, payloads: dict[str, Any], cfg: RegionConfig
 ) -> None:
-    """MISSING_ORIGINAL_IDX (D-11 REVISED): condados-only; baronies exempt by canonical shape."""
-    raise NotImplementedError("06-02: fill body")
+    """MISSING_ORIGINAL_IDX (D-11 REVISED): condados-only; baronies exempt.
+
+    CLAUDE.md rule 4 (Nájera bug — indices > 44) + rule 7 (byOriginalIdx
+    Unity-side) both apply to condados. The canonical barony shape in
+    tests/fixtures/iberia_868/golden/territory_metadata.json:1838+ is
+    {name, condado_idx, duchy, pixel_count} — NO original_idx. The Unity
+    `byOriginalIdx` lookup is condado-keyed; baronies use positional
+    `condado_idx`. NO YAML flag added, NO RegionConfig field added —
+    Iberia passes the gate cleanly with all 92 condados carrying
+    `original_idx: 1..92` (verified in golden 91/91 emitted after
+    `npx == 0` compaction).
+
+    Schema (CondadoEntrySchema.original_idx) is `int | None = None` because
+    legacy data may have null; this check tightens to "must be a non-null int".
+    """
+    meta = payloads.get("territory_metadata.json", {})
+
+    for entry in meta.get("condados", []):
+        oidx = entry.get("original_idx")
+        if oidx is None:
+            tid = entry.get("id", "<unknown>")
+            ctx.add_error(
+                "MISSING_ORIGINAL_IDX",
+                file="territory_metadata.json",
+                context={"kind": "condado", "id": tid},
+                message=(
+                    f"condado {tid!r}: missing original_idx "
+                    f"(condados-only check per D-11; CLAUDE.md rules 4+7)"
+                ),
+            )
+    # NOTE: baronies are EXEMPT (D-11 REVISED). Do not iterate meta.get("baronies", []).
 
 
 def _check_pixel_center(
