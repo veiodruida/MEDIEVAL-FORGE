@@ -24,6 +24,7 @@ from ...services.export import (
     build_unity_zip,
     validate_export,
 )
+from ...services.export.zip import UNITY_ZIP_SPEC, resolve_generated_dir
 from ...services.paths import is_valid_uuid, project_dir
 from ...services.pipeline.region_loader import load_region
 
@@ -75,15 +76,16 @@ async def trigger_v3_export(
 
     if dry_run:
         # D-03: gate-only, no zip written. Status not flipped.
-        # Mirror _resolve_generated_dir from services/export/zip.py: prefer
-        # project_dir/output (v3 pipeline target), fall back to /generated.
-        generated = project_dir(project_id) / "output"
-        if not generated.is_dir():
-            generated = project_dir(project_id) / "generated"
-        if not generated.is_dir():
+        # Use shared resolve_generated_dir (same logic as build_unity_zip):
+        # prefers project_dir/output only when non-empty; falls back to /generated.
+        # This avoids dry-run validating an empty /output dir while real export
+        # would use /generated (WR-02 fix).
+        generated = resolve_generated_dir(project_id)
+        any_generated = any((generated / fname).exists() for fname in UNITY_ZIP_SPEC)
+        if not any_generated:
             raise HTTPException(
                 status_code=409,
-                detail=f"no pipeline output directory at {generated} -- run /generate first",
+                detail=f"no pipeline output in {generated} -- run /generate first",
             )
         report, _sha = validate_export(generated, cfg)
         body = {"dry_run": True, **report.model_dump()}

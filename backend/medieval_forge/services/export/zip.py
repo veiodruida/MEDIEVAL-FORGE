@@ -65,19 +65,28 @@ def _placeholder_payload(filename: str) -> bytes:
     return b""
 
 
-def _resolve_generated_dir(project_id: str) -> Path:
+def resolve_generated_dir(project_id: str) -> Path:
     """v3 writes to project_dir/output; v1 wrote to project_dir/generated. Prefer v3.
 
     Phase 06 transition compat: the new endpoint always reads from
     project_dir/output (matches api/v3/generate.py:140). The /generated
     fallback handles any in-flight v1 project still on disk; can be removed
     once the v1 pipeline path is fully retired.
+
+    IMPORTANT: the /output fallback requires BOTH is_dir() AND any(iterdir()) --
+    an empty directory (e.g., generate started then crashed) is treated as absent
+    and falls back to /generated. This prevents dry-run validating an empty dir
+    while the real export would use /generated.
     """
     root = project_dir(project_id)
     output = root / "output"
     if output.is_dir() and any(output.iterdir()):
         return output
     return ensure_project_dirs(project_id)["generated"]
+
+
+# Internal alias for backward compat within this module
+_resolve_generated_dir = resolve_generated_dir
 
 
 def build_unity_zip(
