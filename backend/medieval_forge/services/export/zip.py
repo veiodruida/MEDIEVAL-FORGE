@@ -1,13 +1,15 @@
-"""EXPORT-01 + EXPORT-02: Unity-ready ZIP assembly.
+"""services/export/zip.py — Phase 06 relocation of the v1 zip builder.
 
-The 12-file spec (REQUIREMENTS.md EXPORT-02) is now fully emitted by the v3
-pipeline after Plan 05-11 closed the terrain pair (terrain_lookup.png +
-terrain_types.json). Only `mountain_river_data.json` is conditional — when
-the region has no mountain/river inputs the file may be absent and the ZIP
-falls back to a `{}` placeholder.
+Verbatim relocation of the former `services/export.py` module body into the
+`services/export/` subpackage. Behavior unchanged in Plan 06-01; Plan 06-03
+wires the validation gate into `build_unity_zip` (validator-first → raise on
+fail → expanded MANIFEST per D-07).
 
-The ZIP includes a MANIFEST.json so consumers (and Phase 6) can distinguish
-real content from placeholders.
+Imports updated from `.foo` (top-level services sibling) to `..foo`
+(subpackage parent) because this module now lives one level deeper.
+
+EXPORT-02: explicit 12-file Unity spec; sourced from
+`pipeline.contracts.EXPORT_FILE_CONTRACT` to prevent silent drift.
 """
 from __future__ import annotations
 
@@ -17,8 +19,8 @@ import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .paths import ensure_project_dirs
-from .pipeline.contracts import EXPORT_FILE_CONTRACT
+from ..paths import ensure_project_dirs
+from ..pipeline.contracts import EXPORT_FILE_CONTRACT
 
 logger = logging.getLogger(__name__)
 
