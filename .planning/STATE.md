@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: + bootstrap v3 infrastructure
-status: executing
-stopped_at: Completed 06-02-PLAN.md (5 validator bodies + 32 unit tests; ready for 06-03 endpoint + zip wiring)
-last_updated: "2026-05-13T15:19:01.234Z"
+status: verifying
+stopped_at: Completed 06-03-PLAN.md (Phase 06 export gate fully wired -- v3 endpoint + 10 e2e + D-16 parity + D-04 atomic)
+last_updated: "2026-05-13T15:32:43.422Z"
 last_activity: 2026-05-13
 progress:
   total_phases: 10
-  completed_phases: 6
+  completed_phases: 7
   total_plans: 45
-  completed_plans: 44
-  percent: 98
+  completed_plans: 45
+  percent: 100
 ---
 
 # Project State (v3)
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md
 
 Phase: 06 (export-contract-validation-gate) — EXECUTING
 Plan: 3 of 3
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-05-13
 
 Progress: [█████████░] 93% (25 of 27 plans complete)
@@ -100,6 +100,7 @@ See `.planning/PROJECT.md` Key Decisions table (D-V3-01 through D-V3-07).
 - [Phase 05]: autogen baronies: 1 barony per condado at centroid — voronoi KD-trees require non-empty baronies list; autogen path previously left bars=[] → blank map
 - [Phase 06]: Plan 06-01: services/export/ subpackage carved out (zip.py + schemas.py + validator.py + __init__.py); 6 pydantic v2 schemas (RootModel for dict-shape JSONs) + MANIFEST_SCHEMA_VERSION=2; validator orchestrator + 5 stub _check_* fns (bodies in 06-02); ValidationFailedError defined but raised only by build_unity_zip (06-03); 15 SCHEMA_INVALID unit tests; 150 unit + 11 parity + 6 existing export tests all green
 - [Phase 06]: Plan 06-02: 5 _check_* bodies implemented + 32 unit tests across 5 D-08-code modules; lazy numpy/PIL imports inside _check_ocean_leak; within-file COLOR_COLLISION scope deferred to e2e (06-03) due to JSON dict-key-collapse; validator runs end-to-end on Iberia output with passed=True; parity 11/11 stays green (validator unwired until 06-03)
+- [Phase 06]: Plan 06-03: validator wired into build_unity_zip (raises ValidationFailedError); POST /api/v3/projects/{id}/export with ?dry_run=true (D-03); D-04 atomic v1 delete (api/export.py + tests/test_export.py); MANIFEST v2 with schema_version/region_key/validation_report/per-file sha256; 10 e2e tests across 3 files cover all 6 D-08 codes; 218/218 tests pass
 
 ### Blockers/Concerns
 
@@ -119,6 +120,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-13T15:19:01.232Z
-Stopped at: Completed 06-02-PLAN.md (5 validator bodies + 32 unit tests; ready for 06-03 endpoint + zip wiring)
+Last session: 2026-05-13T15:32:37.876Z
+Stopped at: Completed 06-03-PLAN.md (Phase 06 export gate fully wired -- v3 endpoint + 10 e2e + D-16 parity + D-04 atomic)
 Resume file: None

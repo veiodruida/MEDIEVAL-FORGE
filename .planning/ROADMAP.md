@@ -150,11 +150,11 @@ Plans:
 2. Export blocked on: territory <200px, lookup color collision, ocean leak, missing `original_idx`, `pixel_center` Y-axis check failure
 3. Manifest matches Reconquista structure
 4. Iberia + France + a deliberately-broken project all pass through `/api/v3/export`; broken is blocked with structured error list
-**Plans:** 2/3 plans executed
+**Plans:** 3/3 plans complete
 Plans:
 - [x] 06-01-PLAN.md — Wave 1: services/export/ subpackage + 6 pydantic schemas + validator stubs + schema unit tests (SC-1)
 - [x] 06-02-PLAN.md — Wave 2: 5 validator check function bodies + 5 unit test files (SC-2: COLOR_COLLISION, OCEAN_LEAK, TERRITORY_TOO_SMALL, MISSING_ORIGINAL_IDX, PIXEL_CENTER_OUT_OF_RANGE)
-- [ ] 06-03-PLAN.md — Wave 3: api/v3/export.py + build_unity_zip refactor + D-04 atomic v1 delete + parity D-16 extension + 3 e2e gate tests (SC-3, SC-4)
+- [x] 06-03-PLAN.md — Wave 3: api/v3/export.py + build_unity_zip refactor + D-04 atomic v1 delete + parity D-16 extension + 3 e2e gate tests (SC-3, SC-4)
 
 ### Phase 07: LLM research as opt-in metadata layer
 **Goal:** Optional research dialog populates `name`, `kingdom_owner`, `historical_notes` on geometrically-fixed territories. Never mandatory.
