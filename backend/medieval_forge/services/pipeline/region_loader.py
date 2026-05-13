@@ -219,7 +219,19 @@ def load_region(key: str, regions_dir: Optional[Path] = None) -> RegionConfig:
     }
 
     # Autogen territories if empty (D-03)
-    if not kwargs.get("condados"):
+    # WR-02 fix (Plan 05 review): gate autogen on ALL THREE being empty.
+    # Previously autogen fired solely on `not condados`, which would silently
+    # overwrite curated kingdoms/duchies if a future YAML left condados empty
+    # while populating the upper tiers. Fail loudly instead of dropping data.
+    co_empty = not kwargs.get("condados")
+    kg_empty = not kwargs.get("kingdoms")
+    du_empty = not kwargs.get("duchies")
+    if co_empty and not (kg_empty and du_empty):
+        raise ValueError(
+            f"region {key!r}: condados empty but kingdoms/duchies populated — "
+            "autogen would overwrite curated data. Provide condados or clear all three."
+        )
+    if co_empty:
         kg_raw, du_raw, co_raw = _autogen_territories(dataset, kwargs["rng_seed"])
         # Route through same converter as explicit YAML data so voronoi.py receives
         # the expected positional-tuple format. _autogen_territories returns
