@@ -385,10 +385,20 @@ def _autogen_territories(
         (kingdoms, duchies, condados) as lists suitable for RegionConfig.
     """
     features: list[dict] = []
+    # WR-01 fix (Plan 05-13): single-country YAMLs (France 1066, England 1216) point
+    # both dataset.pt_geojson and dataset.es_input at the same file. Without dedupe,
+    # every feature was appended twice, producing ~80 condados from a 40-feature
+    # toy dataset. Path equality holds because _resolve (region_loader.py:332-360)
+    # returns absolute resolved Paths stored in ProjectDataset. Iberia parity is
+    # preserved: its pt_geojson != es_input, so seen_paths never elides either input.
+    seen_paths: set[Path] = set()
 
     for geojson_path in (dataset.pt_geojson, dataset.es_input):
         if geojson_path is None or not geojson_path.exists():
             continue
+        if geojson_path in seen_paths:
+            continue
+        seen_paths.add(geojson_path)
         try:
             data = json.loads(geojson_path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
