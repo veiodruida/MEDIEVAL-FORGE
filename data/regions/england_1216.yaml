@@ -1,3 +1,7 @@
+# Phase 05 D-12: template-only region. The dataset.* paths below intentionally
+# point at inputs/ files that do NOT exist on disk. load_region("england_1216")
+# raises FileNotFoundError with "template-only" message; GET /api/v3/regions
+# reports has_dataset: false. v3.1 will add real inputs/ files for England.
 name: england_1216
 display_name: "England 1216 AD"
 map_w: 1920

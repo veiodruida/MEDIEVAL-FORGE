@@ -10,6 +10,7 @@
     "test": "vitest",
     "test:e2e": "playwright test",
     "e2e:playwright": "playwright test",
+    "test:uat:ci": "playwright test --reporter=line",
     "test:e2e:update": "playwright test --update-snapshots"
   },
   "dependencies": {
