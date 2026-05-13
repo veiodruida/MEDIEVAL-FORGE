@@ -17,6 +17,7 @@ Plus canvas sidecar existence test (mirrors test_canvas_sidecars_exist).
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -39,8 +40,13 @@ def pipeline_output_yaml(tmp_path_factory: pytest.TempPathFactory) -> Path:
     """
     out = tmp_path_factory.mktemp("iberia_868_yaml_actual")
     clear_region_cache()
-    cfg = load_region("iberia_868")
-    cfg.output_dir = str(out)
+    # WR-02 fix (Plan 05-14): dataclasses.replace() builds a fresh per-call copy.
+    # Direct cfg.output_dir = ... mutates the cached singleton (Pitfall 9 /
+    # T-05-04-04) — clear_region_cache_between_tests autouse hides this in
+    # serial CI, but pytest-xdist parallel workers would corrupt each other's
+    # output_dir. Match the replace() pattern established in
+    # test_france_1066_export_contract.py and api/v3/render.py:137-141.
+    cfg = replace(load_region("iberia_868"), output_dir=str(out))
     run_pipeline(cfg)
     return out
 
