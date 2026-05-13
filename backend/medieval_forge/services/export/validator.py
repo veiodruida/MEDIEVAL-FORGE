@@ -22,6 +22,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from pydantic import ValidationError
+
 from ..pipeline.contracts import EXPORT_FILE_CONTRACT, RegionConfig
 from .schemas import (
     LookupBaronyColorsSchema,
@@ -185,11 +187,11 @@ def _run_schema_validation(ctx: _ValidationContext, payloads: dict[str, Any]) ->
             continue  # already reported as missing in Step 1
         try:
             Schema.model_validate(payloads[fname])
-        except Exception as exc:  # pydantic.ValidationError or json shape mismatch
+        except ValidationError as exc:
             ctx.add_error(
                 "SCHEMA_INVALID",
                 file=fname,
-                context={"errors": str(exc)},
+                context={"errors": exc.errors()},
                 message=f"schema validation failed for {fname}",
             )
             all_ok = False
