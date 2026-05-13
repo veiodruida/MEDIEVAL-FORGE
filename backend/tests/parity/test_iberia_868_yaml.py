@@ -147,3 +147,39 @@ def test_canvas_sidecars_exist_yaml(pipeline_output_yaml: Path) -> None:
         f"condado_colors.json missing {len(missing_colors)} entries: "
         f"{sorted(missing_colors)[:5]}"
     )
+
+
+# --- D-16: MANIFEST.validation_report.passed assertion (Plan 06-03) ---
+
+def test_iberia_passes_export_gate(pipeline_output_yaml: Path) -> None:
+    """D-16: Iberia 868 YAML cfg must satisfy the Phase 06 export gate.
+
+    Calls validate_export() directly against the pipeline output (no zip,
+    no DB, no TestClient). Iberia's golden territory_metadata.json has
+    original_idx 1..92 on all 91 emitted condados -> MISSING_ORIGINAL_IDX
+    check passes per D-11 REVISED. Asserts passed=True and zero errors.
+
+    Gate regression == parity break; CI catches this the same as a byte-mismatch.
+    """
+    from medieval_forge.services.export import validate_export
+    from medieval_forge.services.pipeline.region_loader import load_region
+
+    cfg = load_region("iberia_868")
+    report, sha256_by_file = validate_export(pipeline_output_yaml, cfg)
+
+    if not report.passed:
+        error_summary = "\n".join(
+            f"  - [{e.code}] {e.file or '-'}: {e.message}" for e in report.errors
+        )
+        pytest.fail(
+            f"Iberia 868 YAML cfg FAILED the Phase 06 export gate "
+            f"({len(report.errors)} errors):\n{error_summary}\n"
+            f"This is a parity regression -- fix the validator or the pipeline."
+        )
+
+    assert report.passed is True
+    assert report.errors == []
+    # sha256 map covers every file the validator read (~10/12 files; mountain_river optional)
+    assert len(sha256_by_file) >= 10, (
+        f"validator only hashed {len(sha256_by_file)} files; expected >= 10"
+    )

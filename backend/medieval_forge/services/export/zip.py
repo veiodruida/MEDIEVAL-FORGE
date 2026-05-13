@@ -1,35 +1,41 @@
-"""services/export/zip.py — Phase 06 relocation of the v1 zip builder.
+"""EXPORT-01 + Phase 06 export gate: validate -> zip -> MANIFEST.
 
-Verbatim relocation of the former `services/export.py` module body into the
-`services/export/` subpackage. Behavior unchanged in Plan 06-01; Plan 06-03
-wires the validation gate into `build_unity_zip` (validator-first → raise on
-fail → expanded MANIFEST per D-07).
-
-Imports updated from `.foo` (top-level services sibling) to `..foo`
-(subpackage parent) because this module now lives one level deeper.
+Plan 06-03 wired validate_export into build_unity_zip. On gate failure,
+build_unity_zip raises ValidationFailedError(report) BEFORE writing any
+zip artifact (no .tmp leak). The endpoint catches and maps to HTTP 422.
 
 EXPORT-02: explicit 12-file Unity spec; sourced from
 `pipeline.contracts.EXPORT_FILE_CONTRACT` to prevent silent drift.
+
+Signature change in Plan 06-03:
+  v1: build_unity_zip(project_id) -> Path
+  v3: build_unity_zip(project_id, cfg, region_key) -> Path
+
+Verified callers (2026-05-13):
+  - backend/medieval_forge/api/export.py:42  DELETED in Plan 06-03 Task 2
+  - backend/tests/test_export.py:91          DELETED in Plan 06-03 Task 2
+  - backend/medieval_forge/api/v3/export.py  CREATED in Plan 06-03 Task 2
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-from ..paths import ensure_project_dirs
-from ..pipeline.contracts import EXPORT_FILE_CONTRACT
+from ..paths import ensure_project_dirs, project_dir
+from ..pipeline.contracts import EXPORT_FILE_CONTRACT, RegionConfig
+from .schemas import MANIFEST_SCHEMA_VERSION
+from .validator import ValidationFailedError, validate_export
 
 logger = logging.getLogger(__name__)
 
 # EXPORT-02: explicit 12-file Unity spec from REQUIREMENTS.md.
 # CR-01 fix (Plan 05 review): derive from `contracts.EXPORT_FILE_CONTRACT` so the
 # ZIP cannot silently drift from the canonical 12-file contract declared in
-# CLAUDE.md §"v3 Pipeline Contract". Before this fix `UNITY_ZIP_SPEC` listed 11
-# entries — `rivers_overlay.png` was missing and the downloaded ZIP shipped 11/12
-# contract files. Tests now assert set-equality with EXPORT_FILE_CONTRACT.
+# CLAUDE.md §"v3 Pipeline Contract".
 UNITY_ZIP_SPEC: tuple[str, ...] = EXPORT_FILE_CONTRACT
 assert len(UNITY_ZIP_SPEC) == 12, "Unity contract: 12 files"
 
@@ -59,29 +65,72 @@ def _placeholder_payload(filename: str) -> bytes:
     return b""
 
 
-def build_unity_zip(project_id: str) -> Path:
-    """Assemble the project's Unity ZIP. Returns the absolute path to the new file.
+def _resolve_generated_dir(project_id: str) -> Path:
+    """v3 writes to project_dir/output; v1 wrote to project_dir/generated. Prefer v3.
+
+    Phase 06 transition compat: the new endpoint always reads from
+    project_dir/output (matches api/v3/generate.py:140). The /generated
+    fallback handles any in-flight v1 project still on disk; can be removed
+    once the v1 pipeline path is fully retired.
+    """
+    root = project_dir(project_id)
+    output = root / "output"
+    if output.is_dir() and any(output.iterdir()):
+        return output
+    return ensure_project_dirs(project_id)["generated"]
+
+
+def build_unity_zip(
+    project_id: str,
+    cfg: RegionConfig,
+    region_key: str,
+) -> Path:
+    """Validate -> assemble -> write. Raises ValidationFailedError on gate failure.
+
+    Args:
+        project_id: UUID.
+        cfg: RegionConfig (validator reads cfg.ocean_far, cfg.blob_merge_px,
+             cfg.map_w, cfg.map_h).
+        region_key: persisted on MANIFEST.region_key for Unity consumers.
 
     Raises:
-        FileNotFoundError: if generated/ has none of the expected files.
+        FileNotFoundError: pipeline output dir empty (preserved v1 contract;
+            endpoint maps to 409).
+        ValidationFailedError: export gate failed (D-08 codes in report.errors;
+            endpoint maps to 422 with D-08 structured envelope).
+
+    Returns:
+        Path to the new .zip file (atomic via .tmp + replace).
     """
     dirs = ensure_project_dirs(project_id)
-    generated = dirs["generated"]
+    generated = _resolve_generated_dir(project_id)
     exports = dirs["exports"]
 
-    # Guard: must have at least one generator output before exporting.
+    # Guard: must have at least one generator output before validating.
     any_generated = any((generated / fname).exists() for fname in UNITY_ZIP_SPEC)
     if not any_generated:
         raise FileNotFoundError(
-            f"no generated outputs in {generated} — generate maps before exporting"
+            f"no generated outputs in {generated} -- generate maps before exporting"
         )
 
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
-    zip_name = f"medieval-forge-{project_id}-{timestamp}.zip"
+    # Phase 06 GATE: validate before assembling. Raises ValidationFailedError on failure.
+    # The validator reads every file once and returns the (report, sha256_by_file)
+    # tuple per RESEARCH §Per-Discretion #2 (validator-time hashing).
+    report, sha256_by_file = validate_export(generated, cfg)
+    if not report.passed:
+        raise ValidationFailedError(report)
+
+    # MANIFEST timestamps. v3 pipeline does not currently emit a per-run timestamp,
+    # so we use validator-call time as a stand-in for generated_at_utc.
+    now_utc = datetime.now(timezone.utc)
+    generated_at_utc = now_utc.isoformat()
+    exported_at_utc = now_utc.strftime("%Y%m%d-%H%M%S")
+
+    zip_name = f"medieval-forge-{project_id}-{exported_at_utc}.zip"
     zip_path = exports / zip_name
     tmp_path = zip_path.with_suffix(zip_path.suffix + ".tmp")
 
-    manifest: list[dict] = []
+    files_manifest: list[dict] = []
 
     with zipfile.ZipFile(tmp_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         for fname in UNITY_ZIP_SPEC:
@@ -89,31 +138,39 @@ def build_unity_zip(project_id: str) -> Path:
             if source_path.exists():
                 data = source_path.read_bytes()
                 source = "generated"
+                sha = sha256_by_file.get(fname, "")
             else:
                 data = _placeholder_payload(fname)
                 source = "placeholder"
+                # Placeholder bytes: hash on the fly (validator didn't see this file).
+                sha = hashlib.sha256(data).hexdigest()
             zf.writestr(fname, data)
-            manifest.append({
+            files_manifest.append({
                 "name": fname,
                 "source": source,
                 "size_bytes": len(data),
+                "sha256": sha,
             })
+
         manifest_payload = json.dumps(
             {
+                "schema_version": MANIFEST_SCHEMA_VERSION,
+                "region_key": region_key,
                 "project_id": project_id,
-                "exported_at_utc": timestamp,
+                "generated_at_utc": generated_at_utc,
+                "exported_at_utc": exported_at_utc,
                 "spec_version": 1,
-                "phase": 1,
-                "note": (
-                    "Phase 1 export — 'placeholder' files are stubs that "
-                    "Phase 6 (EXPORT-03/04) will replace with real content."
-                ),
-                "files": manifest,
+                "phase": 6,
+                "validation_report": report.model_dump(),
+                "files": files_manifest,
             },
             indent=2,
         )
         zf.writestr("MANIFEST.json", manifest_payload)
 
     tmp_path.replace(zip_path)
-    logger.info("export built: %s (%d files)", zip_path, len(UNITY_ZIP_SPEC))
+    logger.info(
+        "export built: %s (12 files + MANIFEST; gate passed; %d sha256 hashes)",
+        zip_path, len(sha256_by_file),
+    )
     return zip_path
