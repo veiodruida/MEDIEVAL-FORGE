@@ -123,7 +123,7 @@ Plans:
 1. `data/regions/iberia_868.yaml` externalizes the config currently in code
 2. `france_1066.yaml` + `england_1216.yaml` ship as templates (geometry only — historical research deferred to v3.1)
 3. France 1066 with toy synthetic dataset → ingest → generate → export produces 12 well-formed files (parity to Reconquista NOT required; file contract IS)
-**Plans:** 10/15 plans complete (replan 2026-05-12: 05-11/05-12 gap closure + 05-13/05-14/05-15 cross-AI review fixes; 05-11 and 05-12 amended in-place)
+**Plans:** 15/15 plans complete
 Plans:
 - [x] 05-01-PLAN.md — Wave 1: region_loader.py (schema + load_region + autogen + cache + security guards) + PyYAML dep + 12 Wave-0 test scaffolds
 - [x] 05-02-PLAN.md — Wave 2: scripts/migrate_iberia_to_yaml.py emits data/regions/iberia_868.yaml (idempotent) + loader roundtrip test
@@ -135,11 +135,11 @@ Plans:
 - [x] 05-08-PLAN.md — Wave 5: NewProjectModal.tsx + useRegions hook + useCreateV3Project + ProjectList trigger swap (per 05-UI-SPEC)
 - [x] 05-09-PLAN.md — Wave 2: data/regions/england_1216.yaml (YAML-only) + loader FileNotFoundError contract test
 - [x] 05-10-PLAN.md — Wave 5: SC-3 backend E2E (10-file contract — terrain pair deferred) + Playwright UAT (France create+generate flow — code review only)
-- [ ] 05-11-PLAN.md — Wave 6 (gap closure): terrain.py module + terrain_lookup.png + terrain_types.json wired into _write_outputs_to_disk; EXPORT_FILE_CONTRACT 10→12; Iberia parity preserved
-- [ ] 05-12-PLAN.md — Wave 7 (gap closure): bash + PowerShell UAT runner scripts + checkpoint:human-verify for live France Playwright execution + visual sign-off
-- [ ] 05-13-PLAN.md — Wave 8 (cross-AI review): _autogen_territories dedupe (WR-01 fix: 80→40 condados) + tightened bound test + determinism regression guard
-- [ ] 05-14-PLAN.md — Wave 9 (cross-AI review): Iberia parity fixture replace() (WR-02 / Pitfall 9) + NewProjectModal a11y nits (htmlFor + finite Toast duration + drop dead defaultValue)
-- [ ] 05-15-PLAN.md — Wave 9 (cross-AI review): delete dead helpers (render.py _make_on_stage + test helper) + flatten no-op try/except + england YAML comment + test:uat:ci npm script
+- [x] 05-11-PLAN.md — Wave 6 (gap closure): terrain.py module + terrain_lookup.png + terrain_types.json wired into _write_outputs_to_disk; EXPORT_FILE_CONTRACT 10→12; Iberia parity preserved
+- [x] 05-12-PLAN.md — Wave 7 (gap closure): bash + PowerShell UAT runner scripts + checkpoint:human-verify for live France Playwright execution + visual sign-off
+- [x] 05-13-PLAN.md — Wave 8 (cross-AI review): _autogen_territories dedupe (WR-01 fix: 80→40 condados) + tightened bound test + determinism regression guard
+- [x] 05-14-PLAN.md — Wave 9 (cross-AI review): Iberia parity fixture replace() (WR-02 / Pitfall 9) + NewProjectModal a11y nits (htmlFor + finite Toast duration + drop dead defaultValue)
+- [x] 05-15-PLAN.md — Wave 9 (cross-AI review): delete dead helpers (render.py _make_on_stage + test helper) + flatten no-op try/except + england YAML comment + test:uat:ci npm script
 
 ### Phase 06: Export contract + validation gate (merged)
 **Goal:** Strict 12-file Unity export with manifest, schema validation, and a gate on minimum pixels per territory + color-collision check.
