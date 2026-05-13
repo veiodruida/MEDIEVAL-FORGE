@@ -18,23 +18,18 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .paths import ensure_project_dirs
+from .pipeline.contracts import EXPORT_FILE_CONTRACT
 
 logger = logging.getLogger(__name__)
 
 # EXPORT-02: explicit 12-file Unity spec from REQUIREMENTS.md.
-UNITY_ZIP_SPEC: tuple[str, ...] = (
-    "lookup_barony.png",
-    "lookup_condado.png",
-    "lookup_barony_colors.json",
-    "lookup_condado_colors.json",
-    "terrain_lookup.png",
-    "terrain_types.json",
-    "territory_metadata.json",
-    "mountains_mask.png",
-    "visual_barony.png",
-    "visual_condado.png",
-    "mountain_river_data.json",
-)
+# CR-01 fix (Plan 05 review): derive from `contracts.EXPORT_FILE_CONTRACT` so the
+# ZIP cannot silently drift from the canonical 12-file contract declared in
+# CLAUDE.md §"v3 Pipeline Contract". Before this fix `UNITY_ZIP_SPEC` listed 11
+# entries — `rivers_overlay.png` was missing and the downloaded ZIP shipped 11/12
+# contract files. Tests now assert set-equality with EXPORT_FILE_CONTRACT.
+UNITY_ZIP_SPEC: tuple[str, ...] = EXPORT_FILE_CONTRACT
+assert len(UNITY_ZIP_SPEC) == 12, "Unity contract: 12 files"
 
 # Plan 05-11 closed the terrain pair — terrain_lookup.png + terrain_types.json
 # are now real outputs emitted by the pipeline. `mountain_river_data.json`

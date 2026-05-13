@@ -42,6 +42,15 @@ async def test_build_unity_zip_assembles_12_files(client, tmp_path):
         build_unity_zip,
     )
     from medieval_forge.services.paths import ensure_project_dirs
+    from medieval_forge.services.pipeline.contracts import EXPORT_FILE_CONTRACT
+
+    # CR-01 guard: UNITY_ZIP_SPEC must match the canonical 12-file contract
+    # declared in contracts.EXPORT_FILE_CONTRACT. Set-equality (not ordered) is
+    # the load-bearing invariant: the ZIP must ship every contract file.
+    assert len(UNITY_ZIP_SPEC) == 12, "Unity contract: 12 files"
+    assert set(UNITY_ZIP_SPEC) == set(EXPORT_FILE_CONTRACT), (
+        "UNITY_ZIP_SPEC drifted from EXPORT_FILE_CONTRACT"
+    )
 
     created = await _create_project(client)
     pid = created["id"]
