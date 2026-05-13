@@ -97,49 +97,6 @@ dataset:
     return tmp_path
 
 
-def _make_toy_region_with_territories(tmp_path: Path, key: str = "toy_with_terr") -> Path:
-    """Create a region with explicit kingdoms/duchies/condados arrays."""
-    region_root = tmp_path / key
-    inputs_dir = region_root / "inputs"
-    inputs_dir.mkdir(parents=True)
-
-    pt_file = inputs_dir / "pt.geojson"
-    es_file = inputs_dir / "es.geojson"
-    mr_file = inputs_dir / "mr.json"
-
-    pt_file.write_text(json.dumps(TOY_GEOJSON), encoding="utf-8")
-    es_file.write_text(json.dumps(TOY_GEOJSON), encoding="utf-8")
-    mr_file.write_text(json.dumps({"mountains": {}, "rivers": {}}), encoding="utf-8")
-
-    yaml_content = f"""\
-name: toy_with_terr
-lon_min: -5.0
-lon_max: 5.0
-lat_min: 40.0
-lat_max: 50.0
-output_dir: /tmp/out
-dataset:
-  pt_geojson: inputs/pt.geojson
-  es_input: inputs/es.geojson
-  mountain_river_json: inputs/mr.json
-kingdoms:
-  - id: unnamed
-    name: Unnamed Kingdom
-kingdoms:
-  - id: unnamed
-    name: Unnamed Kingdom
-duchies:
-  - id: unnamed_duchy
-    name: Unnamed Duchy
-condados:
-  - id: c_001
-    name: Condado 001
-    original_idx: 1
-"""
-    (tmp_path / f"{key}.yaml").write_text(yaml_content, encoding="utf-8")
-    return tmp_path
-
-
 # ---------------------------------------------------------------------------
 # Security: key validation
 # ---------------------------------------------------------------------------

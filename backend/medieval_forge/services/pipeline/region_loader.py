@@ -347,17 +347,12 @@ def _resolve_dataset(ds: DatasetSchema, region_root: Path, key: str) -> ProjectD
             )
         return resolved
 
-    try:
-        return ProjectDataset(
-            pt_geojson=_resolve(ds.pt_geojson),
-            es_input=_resolve(ds.es_input),
-            mountain_river_json=_resolve(ds.mountain_river_json),
-            dem_raster=_resolve(ds.dem_raster),
-        )
-    except FileNotFoundError:
-        raise
-    except ValueError:
-        raise
+    return ProjectDataset(
+        pt_geojson=_resolve(ds.pt_geojson),
+        es_input=_resolve(ds.es_input),
+        mountain_river_json=_resolve(ds.mountain_river_json),
+        dem_raster=_resolve(ds.dem_raster),
+    )
 
 
 # ---------------------------------------------------------------------------

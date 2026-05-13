@@ -91,14 +91,6 @@ def _emit(queue: asyncio.Queue, event_type: str, stage: Optional[str],
     queue.put_nowait(f"data: {json.dumps(payload)}\n\n")
 
 
-def _make_on_stage(queue: asyncio.Queue, loop: asyncio.AbstractEventLoop):
-    """Bridge sync cfg.on_stage (worker thread) → asyncio queue (event loop)."""
-    def on_stage(stage: str, evt: str) -> None:
-        event_type = f"stage_{evt}"  # "stage_start" / "stage_done"
-        loop.call_soon_threadsafe(_emit, queue, event_type, stage, "OK", None, None)
-    return on_stage
-
-
 # ---------------------------------------------------------------------------
 # Producer task
 # ---------------------------------------------------------------------------
