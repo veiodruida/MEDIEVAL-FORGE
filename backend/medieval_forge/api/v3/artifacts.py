@@ -4,8 +4,10 @@ Serves files from `projects/<uuid>/output/` via FastAPI `FileResponse` (per
 RESEARCH §Pitfall 3: StaticFiles cannot rewrite `{id}/artifacts/*` → disk
 `{id}/output/*`).
 
-Single source of truth for the 14-file allowlist: `ARTIFACT_FILES`. The
-`status.py` manifest endpoint imports this exact frozenset.
+Single source of truth for the 16-file allowlist: `ARTIFACT_FILES`. The
+`status.py` manifest endpoint imports this exact frozenset. Plan 05-11 added
+the terrain pair (terrain_lookup.png + terrain_types.json) to close the SC-3
+12-file contract.
 
 Defense-in-depth path containment:
   1. `is_valid_uuid(project_id)` — 400 on bad UUID.
@@ -25,15 +27,18 @@ from ...services.paths import is_valid_uuid, project_dir
 
 router = APIRouter(prefix="/v3/projects", tags=["v3-artifacts"])
 
-# 14-file allowlist: 10 Phase 01 Unity-contract files + 4 Phase 03-01
-# canvas-sidecar files. Single source of truth — status.py imports this.
+# 16-file allowlist: 12 Unity-contract files + 4 Phase 03-01 canvas-sidecar
+# files. Single source of truth — status.py imports this. Plan 05-11 closed
+# the terrain pair (terrain_lookup.png + terrain_types.json) so the full
+# 12-file Unity contract is now serveable.
 ARTIFACT_FILES: frozenset[str] = frozenset({
-    # 10 Phase 01 Unity-contract files (terrain_lookup.png + terrain_types.json
-    # are deferred to Phase 06 and intentionally absent).
+    # 12 Unity-contract files (per CLAUDE.md §"v3 Pipeline Contract").
     "lookup_barony.png",
     "lookup_condado.png",
     "lookup_barony_colors.json",
     "lookup_condado_colors.json",
+    "terrain_lookup.png",
+    "terrain_types.json",
     "territory_metadata.json",
     "visual_condado.png",
     "visual_barony.png",

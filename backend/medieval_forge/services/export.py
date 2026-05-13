@@ -1,8 +1,10 @@
 """EXPORT-01 + EXPORT-02: Unity-ready ZIP assembly.
 
-The 12-file spec (REQUIREMENTS.md EXPORT-02) consists of 9 files produced by
-map_generator + 3 placeholder files (terrain_lookup.png, terrain_types.json,
-mountain_river_data.json) that Phase 6 polish will replace with real content.
+The 12-file spec (REQUIREMENTS.md EXPORT-02) is now fully emitted by the v3
+pipeline after Plan 05-11 closed the terrain pair (terrain_lookup.png +
+terrain_types.json). Only `mountain_river_data.json` is conditional — when
+the region has no mountain/river inputs the file may be absent and the ZIP
+falls back to a `{}` placeholder.
 
 The ZIP includes a MANIFEST.json so consumers (and Phase 6) can distinguish
 real content from placeholders.
@@ -34,11 +36,11 @@ UNITY_ZIP_SPEC: tuple[str, ...] = (
     "mountain_river_data.json",
 )
 
-# These three are not produced by map_generator in Phase 1 (RESEARCH Open Q #3).
-# Phase 6 (EXPORT-03/04) will replace them with real content.
+# Plan 05-11 closed the terrain pair — terrain_lookup.png + terrain_types.json
+# are now real outputs emitted by the pipeline. `mountain_river_data.json`
+# stays in the placeholder set: it is sourced from the region's input dir and
+# may legitimately be absent for toy datasets.
 PLACEHOLDER_FILES: frozenset[str] = frozenset({
-    "terrain_lookup.png",
-    "terrain_types.json",
     "mountain_river_data.json",
 })
 

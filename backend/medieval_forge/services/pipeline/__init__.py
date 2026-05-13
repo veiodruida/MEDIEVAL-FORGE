@@ -14,12 +14,12 @@ The hardcoded RNG seed at inicio:537 + 904 is replaced with
 itself performs the same substitution at line ~144 below for the mountain-noise
 overlay (porting inicio:904 verbatim with the cfg.rng_seed swap).
 
-Output filenames follow the 12-file Unity contract (CLAUDE.md), minus the two
-deferred to Phase 06 (terrain_lookup.png + terrain_types.json — P-2). The 10
-files produced for iberia_868:
+Output filenames follow the 12-file Unity contract (CLAUDE.md). The 12 files
+produced for every region:
 
     lookup_barony.png, lookup_condado.png,
     lookup_barony_colors.json, lookup_condado_colors.json,
+    terrain_lookup.png, terrain_types.json,
     territory_metadata.json,
     visual_condado.png, visual_barony.png,
     mountains_mask.png, rivers_overlay.png,
@@ -55,6 +55,7 @@ from .cleanup import (
 from .render import render_map, render_mountains, render_rivers
 from .lookup import generate_lookup_map
 from .export import export_metadata
+from .terrain import render_terrain_lookup, build_terrain_types_json
 from .cache import _VORONOI_CACHE, cache_get, cache_put  # noqa: F401
 
 
@@ -165,6 +166,16 @@ def _write_outputs_to_disk(
             Image.fromarray(lk).save(f"{cfg.output_dir}/lookup_{label}.png")
             with open(f"{cfg.output_dir}/lookup_{label}_colors.json", 'w') as f:
                 json.dump(cmap, f, indent=2)
+        # 11b. Terrain lookup + types — Phase 05 Plan 11 (SC-3 closure).
+        # CLAUDE.md §"v3 Pipeline Contract" rows 5 + 6: 1920×1080 RGB PNG +
+        # RGB→{name, movement, defense, attack} JSON. Single-terrain palette
+        # ("plains" everywhere on land, "ocean" sentinel for water) ships the
+        # full 12-file contract without DEM ingestion. Phase 06's validation
+        # gate will extend the palette if/when DEM lands.
+        terrain_arr = render_terrain_lookup(land, cfg)
+        Image.fromarray(terrain_arr, "RGB").save(f"{cfg.output_dir}/terrain_lookup.png")
+        with open(f"{cfg.output_dir}/terrain_types.json", 'w', encoding='utf-8') as f:
+            json.dump(build_terrain_types_json(cfg), f, indent=2)
         _emit(cfg, "lookup", "done")
     else:
         print("[11] Skipping lookup maps (not dirty)")

@@ -186,16 +186,17 @@ def point_in_polygon(x: float, y: float, polygon: list) -> bool:
     return inside
 
 
-# R-14 (05-10): single source of truth for the 12-file Unity export contract.
-# Two files (terrain_lookup.png + terrain_types.json) are deferred to Phase 06
-# (P-2 in inicio/licoes). The pipeline currently produces 10 files; the terrain
-# pair is listed here so callers can distinguish present vs deferred.
-# Tests import EXPORT_FILE_CONTRACT to guard against silent rename drift.
+# R-14 (05-10) + 05-11 closure: single source of truth for the 12-file Unity export contract.
+# Phase 05 Plan 11 closed the terrain pair (terrain_lookup.png + terrain_types.json) so
+# EXPORT_FILE_CONTRACT_DEFERRED is now empty. Tests import EXPORT_FILE_CONTRACT to guard
+# against silent rename drift.
 EXPORT_FILE_CONTRACT: tuple[str, ...] = (
     "lookup_barony.png",
     "lookup_condado.png",
     "lookup_barony_colors.json",
     "lookup_condado_colors.json",
+    "terrain_lookup.png",
+    "terrain_types.json",
     "territory_metadata.json",
     "visual_condado.png",
     "visual_barony.png",
@@ -204,11 +205,8 @@ EXPORT_FILE_CONTRACT: tuple[str, ...] = (
     "mountain_river_data.json",
 )
 
-# Files in the full 12-file contract deferred to Phase 06 (P-2 terrain pipeline).
-EXPORT_FILE_CONTRACT_DEFERRED: tuple[str, ...] = (
-    "terrain_lookup.png",
-    "terrain_types.json",
-)
+# Reserved for any future deferral; currently empty (Phase 05 ships the full 12).
+EXPORT_FILE_CONTRACT_DEFERRED: tuple[str, ...] = ()
 
 
 __all__ = [
