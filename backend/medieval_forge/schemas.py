@@ -85,9 +85,9 @@ class ProjectResponse(BaseModel):
 
     id: str
     name: str
-    country_qid: str
-    period_start: int
-    period_end: int
+    country_qid: str | None
+    period_start: int | None
+    period_end: int | None
     bbox_lon_min: float | None
     bbox_lon_max: float | None
     bbox_lat_min: float | None
