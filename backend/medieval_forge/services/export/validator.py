@@ -366,8 +366,43 @@ def _check_territory_size(
     payloads: dict[str, Any],
     cfg: RegionConfig,
 ) -> None:
-    """TERRITORY_TOO_SMALL (D-12): pixel count < cfg.blob_merge_px (200)."""
-    raise NotImplementedError("06-02: fill body")
+    """TERRITORY_TOO_SMALL (D-12): pixel_count < cfg.blob_merge_px.
+
+    Threshold = cfg.blob_merge_px (default 200) — no new config field per D-12.
+    Reads pixel_count straight from territory_metadata.json (already populated
+    by services/pipeline/export.py:37-82 and schema-validated in Step 2).
+    Both condados and baronies share the same floor.
+
+    Note on the export.py:52 `npx == 0` compaction: condados/baronies with
+    pixel_count=0 are filtered out at write time, so the smallest count we'll
+    see is 1. Schema (CondadoEntrySchema.pixel_count) already enforces ge=1
+    — this check enforces the higher >= blob_merge_px floor.
+    """
+    threshold = cfg.blob_merge_px
+    meta = payloads.get("territory_metadata.json", {})
+
+    for kind, key, id_field in (
+        ("condado", "condados", "id"),
+        ("barony", "baronies", "name"),
+    ):
+        for entry in meta.get(key, []):
+            pixel_count = entry.get("pixel_count", 0)
+            if pixel_count < threshold:
+                tid = entry.get(id_field, "<unknown>")
+                ctx.add_error(
+                    "TERRITORY_TOO_SMALL",
+                    file="territory_metadata.json",
+                    context={
+                        "kind": kind,
+                        "id": tid,
+                        "pixel_count": pixel_count,
+                        "threshold": threshold,
+                    },
+                    message=(
+                        f"{kind} {tid!r}: pixel_count={pixel_count} < "
+                        f"cfg.blob_merge_px={threshold}"
+                    ),
+                )
 
 
 def _check_original_idx(
