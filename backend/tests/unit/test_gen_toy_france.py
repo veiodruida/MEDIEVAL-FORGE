@@ -72,7 +72,16 @@ def test_load_region_autogen():
     clear_region_cache()
     cfg = load_region("france_1066")
 
-    assert len(cfg.condados) >= 40, f"Expected >=40 condados, got {len(cfg.condados)}"
+    # WR-01 regression guard (Plan 05-13): _autogen_territories deduplicates paths
+    # so single-country YAMLs (France points both pt_geojson and es_input at the
+    # same file) no longer double-read. Toy dataset has 40 features; bound must
+    # stay tight to catch any future double-read regression. The upper bound 55
+    # gives 15-feature headroom for future toy enrichment without re-tightening.
+    n = len(cfg.condados)
+    assert 40 <= n <= 55, (
+        f"Expected 40 <= n <= 55 condados (single-country dedupe enforced); got n={n}. "
+        f"If n is ~80, _autogen_territories is double-reading dataset.pt_geojson == dataset.es_input."
+    )
     # After _convert_territory_data, condados are tuples. original_idx is c[6].
     idxs = [c[6] for c in cfg.condados if len(c) > 6]
     assert len(idxs) == len(cfg.condados), (
@@ -96,3 +105,51 @@ def test_mountain_river_dict_shape():
     assert data["rivers"] == {}, f"Expected rivers={{}}, got {data['rivers']!r}"
     assert isinstance(data["mountains"], dict), "mountains must be a dict (not a list)"
     assert isinstance(data["rivers"], dict), "rivers must be a dict (not a list)"
+
+
+def test_load_region_autogen_deterministic():
+    """load_region('france_1066') is deterministic across clear_region_cache() calls.
+
+    WR-01 regression guard (Plan 05-13): two back-to-back loads with cache cleared
+    between must produce identical condado ordering, identical (lon, lat) per
+    condado, and identical kingdom keys. Even if the bound test passes, a
+    re-introduced double-read could produce 80 condados in a different order;
+    this test catches that variant.
+
+    After _convert_territory_data, condados are tuples (id, name, lon, lat,
+    duchy_id, baronies[, original_idx]).
+    """
+    from medieval_forge.services.pipeline.region_loader import (  # noqa: PLC0415
+        clear_region_cache,
+        load_region,
+    )
+
+    clear_region_cache()
+    cfg_a = load_region("france_1066")
+    snapshot_a = {
+        "n_condados": len(cfg_a.condados),
+        "original_idx": tuple(c[6] for c in cfg_a.condados if len(c) > 6),
+        "ids": tuple(c[0] for c in cfg_a.condados),
+        "names": tuple(c[1] for c in cfg_a.condados),
+        "lons": tuple(round(c[2], 6) for c in cfg_a.condados),
+        "lats": tuple(round(c[3], 6) for c in cfg_a.condados),
+        "kingdoms": tuple(sorted(cfg_a.kingdoms.keys())) if isinstance(cfg_a.kingdoms, dict) else tuple(),
+    }
+
+    clear_region_cache()
+    cfg_b = load_region("france_1066")
+    snapshot_b = {
+        "n_condados": len(cfg_b.condados),
+        "original_idx": tuple(c[6] for c in cfg_b.condados if len(c) > 6),
+        "ids": tuple(c[0] for c in cfg_b.condados),
+        "names": tuple(c[1] for c in cfg_b.condados),
+        "lons": tuple(round(c[2], 6) for c in cfg_b.condados),
+        "lats": tuple(round(c[3], 6) for c in cfg_b.condados),
+        "kingdoms": tuple(sorted(cfg_b.kingdoms.keys())) if isinstance(cfg_b.kingdoms, dict) else tuple(),
+    }
+
+    assert snapshot_a == snapshot_b, (
+        f"load_region('france_1066') is non-deterministic across clear_region_cache() calls:\n"
+        f"  A: {snapshot_a}\n"
+        f"  B: {snapshot_b}"
+    )
