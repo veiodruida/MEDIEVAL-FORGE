@@ -37,7 +37,7 @@ app = FastAPI(
 )
 
 from .api.projects import router as projects_router  # noqa: E402
-from .api.export import router as export_router  # noqa: E402
+# v1 export_router REMOVED in Phase 06 Plan 03 (D-04). See api/v3/export.py.
 from .api import terrain as terrain_api  # noqa: E402
 from .api.v3.ingest import router as v3_ingest_router  # noqa: E402
 from .api.v3.artifacts import router as v3_artifacts_router  # noqa: E402
@@ -46,9 +46,10 @@ from .api.v3.generate import router as v3_generate_router  # noqa: E402
 from .api.v3.render import router as v3_render_router  # noqa: E402
 from .api.v3 import regions as v3_regions  # noqa: E402
 from .api.v3 import projects as v3_projects  # noqa: E402
+from .api.v3.export import router as v3_export_router  # noqa: E402
 
 app.include_router(projects_router, prefix="/api")
-app.include_router(export_router, prefix="/api")
+# v1 export_router mount REMOVED (D-04) -- replaced by v3_export_router below.
 app.include_router(terrain_api.router, prefix="/api")
 app.include_router(v3_ingest_router, prefix="/api")
 app.include_router(v3_artifacts_router, prefix="/api")
@@ -57,6 +58,7 @@ app.include_router(v3_generate_router, prefix="/api")
 app.include_router(v3_render_router, prefix="/api")
 app.include_router(v3_regions.router, prefix="/api")
 app.include_router(v3_projects.router, prefix="/api")
+app.include_router(v3_export_router, prefix="/api")
 
 # /assets/* — JS/CSS bundles. Only mount if directory exists (frontend may
 # not be built yet during early development).
