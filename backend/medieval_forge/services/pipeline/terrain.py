@@ -86,13 +86,17 @@ def render_terrain_lookup(land: np.ndarray, cfg: "RegionConfig") -> np.ndarray:
     BICUBIC/BILINEAR) applies to upscale operations; a 1x-native file
     is simply not upscaled at all.
     """
-    assert land.dtype == np.bool_, (
-        f"land must be bool[H,W], got dtype={land.dtype}"
-    )
-    assert land.shape == (cfg.map_h, cfg.map_w), (
-        f"land shape mismatch: expected ({cfg.map_h}, {cfg.map_w}), "
-        f"got {land.shape}"
-    )
+    # WR-03 fix (Plan 05 review): use runtime exceptions instead of `assert`.
+    # `python -O` strips asserts, so input validation must not depend on them —
+    # a wrong dtype/shape under -O would silently corrupt the terrain raster
+    # (e.g. integer land[] indexing would broadcast unexpectedly into arr[]).
+    if land.dtype != np.bool_:
+        raise TypeError(f"land must be bool[H,W], got dtype={land.dtype}")
+    if land.shape != (cfg.map_h, cfg.map_w):
+        raise ValueError(
+            f"land shape mismatch: expected ({cfg.map_h}, {cfg.map_w}), "
+            f"got {land.shape}"
+        )
     arr = np.zeros((cfg.map_h, cfg.map_w, 3), dtype=np.uint8)
     arr[land] = PLAINS_RGB
     arr[~land] = OCEAN_RGB
