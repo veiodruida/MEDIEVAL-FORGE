@@ -444,8 +444,46 @@ def _check_original_idx(
 def _check_pixel_center(
     ctx: _ValidationContext, payloads: dict[str, Any], cfg: RegionConfig
 ) -> None:
-    """PIXEL_CENTER_OUT_OF_RANGE (D-10): bounds check. Y-down preserved per D-10."""
-    raise NotImplementedError("06-02: fill body")
+    """PIXEL_CENTER_OUT_OF_RANGE (D-10): bounds check; numpy Y-down preserved.
+
+    pixel_center ships as [col, row] in 1x lookup space (PREFLIGHT Q9 + v1
+    archive ARCHITECTURE.md:252). The check is 0 <= col < cfg.map_w AND
+    0 <= row < cfg.map_h. Half-open intervals — pixel at exactly map_w or
+    map_h is OUT of range (would index past the last valid pixel).
+
+    No Y-axis conversion. The v1-archive "convert on export" idea is REJECTED
+    by D-10: Unity loader already inverts on load (Reconquista contract).
+    Flipping at export would break byte-parity with Reconquista gold.
+
+    Only condados carry pixel_center (canonical barony shape lacks it per
+    territory_metadata.json:1838+); baronies are silently skipped.
+    """
+    meta = payloads.get("territory_metadata.json", {})
+    map_w = cfg.map_w
+    map_h = cfg.map_h
+
+    for entry in meta.get("condados", []):
+        pc = entry.get("pixel_center")
+        if pc is None:
+            continue  # schema enforces presence; if absent, SCHEMA_INVALID would have fired
+        col, row = pc[0], pc[1]
+        if not (0 <= col < map_w) or not (0 <= row < map_h):
+            tid = entry.get("id", "<unknown>")
+            ctx.add_error(
+                "PIXEL_CENTER_OUT_OF_RANGE",
+                file="territory_metadata.json",
+                context={
+                    "kind": "condado",
+                    "id": tid,
+                    "pixel_center": [col, row],
+                    "bounds": {"map_w": map_w, "map_h": map_h},
+                    "note": "Y-down numpy convention (D-10); Unity flips on load",
+                },
+                message=(
+                    f"condado {tid!r}: pixel_center=[{col}, {row}] outside "
+                    f"[0, {map_w}) × [0, {map_h})"
+                ),
+            )
 
 
 __all__ = ["validate_export", "ValidationFailedError"]
