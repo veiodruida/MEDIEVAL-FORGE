@@ -206,8 +206,74 @@ def _run_schema_validation(ctx: _ValidationContext, payloads: dict[str, Any]) ->
 def _check_color_collision(
     ctx: _ValidationContext, payloads: dict[str, Any], cfg: RegionConfig
 ) -> None:
-    """COLOR_COLLISION (D-13): within-file dup RGB + cross-layer terrain palette."""
-    raise NotImplementedError("06-02: fill body — see 06-RESEARCH.md §validator orchestration")
+    """COLOR_COLLISION (D-13): two collision scopes.
+
+    Scope 1 (within-file): The lookup_*_colors.json files are written as
+    {f"{r},{g},{b}": territory_idx}. JSON dict semantics enforce unique keys,
+    so a literal duplicate key would have been silently collapsed at write
+    time. We detect within-file collision by inverting the dict and checking
+    for two distinct territory ids mapping to the same RGB. Achievable in
+    practice when a broken fixture rewrites the file with duplicated RGB
+    values across distinct ids.
+
+    Scope 2 (cross-layer terrain): Any condado/barony RGB in lookup_*_colors.json
+    that equals PLAINS_RGB, OCEAN_RGB (from terrain.py), or cfg.ocean_far
+    (the lookup-PNG ocean sentinel) is a cross-layer collision. Mirrors
+    services/pipeline/terrain.py:47-75 assert_palette_no_collision; we
+    PROMOTE the ValueError into a structured error (D-13 + Phase 05 Plan
+    05-11 callsite migration).
+
+    D-13 explicitly allows cross-FILE (barony color == condado color) —
+    different lookup layers, different consumers. Don't flag that.
+    """
+    from ..pipeline.terrain import OCEAN_RGB, PLAINS_RGB
+
+    cross_layer_protected: dict[tuple[int, int, int], str] = {
+        tuple(PLAINS_RGB): "PLAINS_RGB",
+        tuple(OCEAN_RGB): "OCEAN_RGB",
+        tuple(cfg.ocean_far): "cfg.ocean_far",
+    }
+
+    for fname in ("lookup_barony_colors.json", "lookup_condado_colors.json"):
+        rgb_to_ids: dict[str, list[int]] = {}
+        for rgb_key, tid in payloads.get(fname, {}).items():
+            rgb_to_ids.setdefault(rgb_key, []).append(tid)
+
+        # Scope 1: within-file dup RGB → multiple territory ids
+        for rgb_key, ids in rgb_to_ids.items():
+            if len(ids) > 1:
+                ctx.add_error(
+                    "COLOR_COLLISION",
+                    file=fname,
+                    context={
+                        "rgb": rgb_key,
+                        "territories": sorted(ids),
+                        "scope": "within_file",
+                    },
+                    message=f"RGB {rgb_key} maps to {len(ids)} territories in {fname}",
+                )
+
+        # Scope 2: cross-layer terrain
+        for rgb_key, ids in rgb_to_ids.items():
+            try:
+                rgb_tuple = tuple(int(c) for c in rgb_key.split(","))
+            except ValueError:
+                continue  # schema validation already caught malformed keys
+            if rgb_tuple in cross_layer_protected:
+                ctx.add_error(
+                    "COLOR_COLLISION",
+                    file=fname,
+                    context={
+                        "rgb": rgb_key,
+                        "territories": sorted(ids),
+                        "scope": "cross_layer_terrain",
+                        "conflicts_with": cross_layer_protected[rgb_tuple],
+                    },
+                    message=(
+                        f"RGB {rgb_key} in {fname} collides with "
+                        f"{cross_layer_protected[rgb_tuple]} (cross-layer terrain palette)"
+                    ),
+                )
 
 
 def _check_ocean_leak(
