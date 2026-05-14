@@ -13,7 +13,7 @@
  *    · <Text size="2">{EXPORT_ERROR_PT_BR[code] ?? message}</Text>
  *  - Footer: `Fechar` button; `Exportar agora` appears after a passing dry-run
  *
- * Unknown-code forward-compat: `EXPORT_ERROR_PT_BR[e.code] ?? e.message`.
+ * Unknown-code forward-compat: nullish-coalesce the i18n map onto server message.
  * React text children only — never inject raw HTML (T-07-10-01 XSS mitigation).
  */
 import { useState } from 'react'

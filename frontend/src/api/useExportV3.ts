@@ -1,14 +1,14 @@
 /**
  * Phase 07 Plan 10 — TanStack mutation wrapping POST /api/v3/projects/{id}/export
- * with the D-08 422 envelope branch and dry_run=true support.
+ * with the D-08 422 envelope branch and gate-only dry-run support.
  *
  * Behavior contract (07-UI-SPEC §Surface 3 + 07-RESEARCH §Example 5):
- *  - dryRun: false (default) → POST /api/v3/projects/{id}/export
+ *  - dryRun: false (default) → real export endpoint
  *      201 → returns ExportResponse JSON (download_url + zip_filename + size_bytes)
  *      422 → throws ExportValidationError(envelope)
  *      4xx (non-422) / 5xx / network → throws generic Error
- *  - dryRun: true → POST /api/v3/projects/{id}/export?dry_run=true
- *      200 → returns DryRunReport { dry_run: true, passed: true, errors: [], warnings: [] }
+ *  - dryRun: true → same endpoint with the gate-only query flag
+ *      200 → returns DryRunReport { dry_run, passed, errors, warnings }
  *      422 → throws ExportValidationError(envelope) — same envelope as real export
  *
  * Replaces the legacy `useExport` hook in client.ts (DELETED in Plan 10 Task 3
