@@ -1,7 +1,8 @@
 ---
 phase: 07
-reviewers: [codex, opencode, gemini-unavailable]
+reviewers: [codex, opencode, gemini-unavailable, qwen3-27b-local]
 reviewed_at: 2026-05-14T09:59:33Z
+amended_at: 2026-05-14T10:33:00Z (local Qwen3.6-27B added)
 plans_reviewed:
   - 07-00-PLAN.md
   - 07-01-PLAN.md
@@ -163,9 +164,71 @@ The plan set is architecturally sound and the test coverage is thorough. The pri
 
 ---
 
+## Qwen3.6-27B Review (local, llama.cpp)
+
+_Model: Qwen3.6-27B-UD-IQ2_XXS.gguf via llama-server on 127.0.0.1:8080, n_ctx=32768. Prompt was a distilled phase brief (~1k tokens) instructing the model to find angles missed by codex/opencode. Output reproduced verbatim._
+
+# Summary
+Review of Medieval Forge v3 Phase 07. The plan introduces opt-in LLM research overlays while maintaining strict D-12 byte parity for the zero-LLM path. The architecture relies on a "literal-port" strategy for LLM integration, using SSE for streaming and SQLite for credential/cache storage. The critical invariant is that `_ZIP_BOUND_FIELDS` acts as a gatekeeper for Unity export integrity.
+
+# Strengths
+*   **Isolation of LLM Logic:** `merge_overlay()` as a pure function with `deepcopy` input ensures export boundaries remain deterministic.
+*   **Explicit Parity Testing:** `test_zero_llm_byte_identical` is correctly positioned as non-skippable, enforcing the "zero-LLM path" invariant.
+*   **Granular Access Control:** 4-step Claude auth chain with CLI retry logic mitigates credential leakage risks in CLI environments.
+*   **Schema Evolution:** `Alembic 0006` migration path is explicit, preserving backward compatibility for existing DB schemas.
+
+# Concerns
+
+**HIGH**
+*   **Atomicity of Overlay Sidecar:** `research_overlay.json` is written as a sidecar. If the process crashes during `runner.py` orchestration, the sidecar may exist without a corresponding valid overlay state, causing `merge_overlay()` to fail or produce partial data. No transactional guarantee is specified for the sidecar write relative to the DB commit.
+*   **SSE Cancellation & Partial State:** `useResearchStream` dual-shape parsing on cancellation. If SSE stream is aborted mid-chunk, the frontend state may not reflect a "failed" or "partial" state correctly, leading to UI hanging or inconsistent `ResearchProgress`.
+*   **Credential FK Integrity:** `credential_store` lacks explicit FK constraints or cascade rules. Deleting a provider record without handling dependent credentials could leave orphaned records or break the `401-retry-skip-CLI` chain if the provider ID is stale.
+
+**MED**
+*   **Cache Invalidation on Schema Migration:** Cache keys rely on `prompt_version`. If `Alembic 0006` or schema changes alter the *semantic* meaning of `historical_notes` (e.g., length constraint change), existing cache entries keyed by old prompt versions may return incompatible data. No invalidation strategy is defined for schema drift.
+*   **Prompt Injection Vectors:** `parse.py` and `prompt.py` are "literal-port" from 87f8aab. No mention of sanitization of `condado_list` inputs before LLM ingestion. Malformed territory names could inject instructions into the prompt template.
+*   **Concurrent Project Writes:** `runner.py` orchestrates research. If multiple users trigger research for the same project concurrently, `merge_overlay()` may race. No locking mechanism (e.g., DB advisory lock) is specified for the overlay merge operation.
+
+**LOW**
+*   **Windows Path Quirks:** `Alembic 0006` and `research_overlay.json` paths. Ensure `os.path.join` is used consistently and no hardcoded `/` separators exist in cache key generation or file I/O.
+*   **Telemetry/PII Leakage:** `historical_notes` may contain user-generated content. Ensure `research_cache` key generation does not inadvertently include PII from the `condado_list` (e.g., custom user labels).
+*   **Downgrade Path:** If `Q2 gate` verdict flips `_ZIP_BOUND_FIELDS` to `Strict` after data exists, existing `research_overlay.json` files with `kingdom_owner`/`historical_notes` will be ignored, but the sidecar remains. No cleanup or versioning strategy for obsolete sidecars is defined.
+
+# Suggestions
+1.  **Atomic Sidecar Write:** Implement a two-phase commit for `research_overlay.json`: write to `.tmp`, then atomic rename (`os.rename`). Ensure DB transaction commits only after file rename succeeds.
+2.  **SSE Abort Handling:** Define explicit abort codes in SSE stream. Frontend `useResearchStream` must handle `AbortError` and reset state to `idle` or `failed` with a specific error message, not just "cancelled".
+3.  **Cache Invalidation:** Add a `schema_version` to the cache key. On schema migration, increment `schema_version` to force cache misses for affected fields.
+4.  **Input Sanitization:** Audit `parse.py` for prompt injection. Sanitize `condado_list` inputs by stripping non-alphanumeric characters or escaping quotes before embedding in prompt templates.
+5.  **Concurrent Write Lock:** Use SQLite `ADVISORY LOCK` or a row-level lock on the project record during `runner.py` execution to prevent concurrent overlay merges.
+6.  **Test Coverage for Zero-LLM:** Add a test case that simulates a partial overlay file (e.g., truncated JSON) and verifies `merge_overlay()` fails gracefully or ignores it, ensuring D-12 parity is not broken by corrupt sidecars.
+
+# Risk Assessment
+*   **Data Corruption:** High risk if atomic sidecar write fails. Corrupt `research_overlay.json` can break Unity export.
+*   **Security:** Medium risk if prompt injection is not mitigated. LLM providers may leak sensitive data if inputs are not sanitized.
+*   **Availability:** Low risk. Zero-LLM path remains intact. LLM failures should degrade gracefully to "no overlay".
+*   **Compliance:** Low risk. Credential storage is documented as accepted risk. Ensure `historical_notes` does not contain PII.
+
+### Reviewer-meta caveats (orchestrator)
+
+Several Qwen3 concerns are partially or fully addressed in the plans already — keep in mind when feeding into `/gsd-plan-phase --reviews`:
+
+- **Atomic sidecar write:** Plan 07b already specifies `_write_json_atomic` (tmp + replace). OpenCode flagged it as a duplicate of `_write_geojson_atomic`. So the concern is real for cross-process crash safety but the write itself is atomic on POSIX/NT.
+- **Concurrent project writes:** Plan 07b's SSE orchestration is single-flight keyed by project (Codex Concern 9). Real residual risk: crashed-producer-before-cleanup window.
+- **Prompt injection on `condado_list`:** condado names come from curated YAML (Iberia 868) and not user free-text in v3 scope; risk applies only when toy regions or future user-edited regions land.
+- **Cache `schema_version`:** Codex already proposed `condado_ids_digest` in the cache key; a `schema_version` field is a strict superset of that idea.
+- **Windows path quirks:** the codebase uses `pathlib.Path` per Phase 02-onwards; Qwen3's concern is over-broad but harmless to call out.
+
+Genuinely **new** angles vs. codex/opencode:
+- SSE `AbortError` → explicit terminal state in `useResearchStream` (codex flagged race, Qwen3 names the specific error class).
+- Credential FK / cascade on provider delete.
+- Downgrade-path when Q2 verdict flips Tolerant→Strict after overlay data already on disk.
+- Truncated-JSON parser test for `merge_overlay()` graceful failure (orthogonal to OpenCode's `JSONDecodeError` test on `load_overlay_if_exists`).
+
+---
+
 ## Consensus Summary
 
-Two independent reviewers (Codex, OpenCode) converged on the same architectural verdict: the plan set is structurally sound, the merge/overlay/parity story is correctly designed, and the principal risks are execution-side rather than design-side. Both rate overall risk in the **MEDIUM** band (Codex: MEDIUM-HIGH leaning to MEDIUM with suggested mitigations; OpenCode: MEDIUM). Gemini perspective is missing due to 429 rate-limit.
+Three reviewers ran: Codex, OpenCode, local Qwen3.6-27B (llama.cpp). Gemini perspective missing due to 429 rate-limit. All three converge on the same architectural verdict: the plan set is structurally sound, the merge/overlay/parity story is correctly designed, and principal risks are execution-side rather than design-side. Risk band: Codex MEDIUM-HIGH→MEDIUM with mitigations; OpenCode MEDIUM; Qwen3 highlights specific failure modes (data corruption HIGH if non-atomic, prompt-injection MED) but agrees zero-LLM availability is LOW risk.
 
 ### Agreed Strengths
 
@@ -202,6 +265,10 @@ Two independent reviewers (Codex, OpenCode) converged on the same architectural 
 4. Adopt Codex's cache-key digest suggestion if cross-region/cross-curation cache reuse is plausible.
 5. Adopt OpenCode's `/providers` `available_models` surfacing for Ollama, and confirm `qwen2.5:7b` install (or change default) before Plan 04 executes.
 6. Decide on the two-gate merge strategy (Codex) vs single phase merge before kicking off the execute-phase run.
+7. **(Qwen3)** Make `useResearchStream` map `AbortError` to a terminal `failed` state (not just `cancelled`); add explicit abort-code in SSE envelope.
+8. **(Qwen3)** Decide cascade behavior on `LLMCredential`/provider delete; document in Plan 01 schema.
+9. **(Qwen3)** Define downgrade-path test: existing `research_overlay.json` with `kingdom_owner`/`historical_notes` when `_ZIP_BOUND_FIELDS` flips Tolerant→Strict on re-export (sidecar retained, zip-bound fields dropped).
+10. **(Qwen3)** Add Plan 08 test: truncated/partial overlay JSON → `merge_overlay()` either fails loudly or skips overlay; D-12 parity must hold regardless.
 
 To feed this back into planning:
 
