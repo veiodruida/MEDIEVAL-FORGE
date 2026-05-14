@@ -194,9 +194,10 @@ def _valid_manifest_payload() -> dict:
     }
 
 
-def test_manifest_accepts_valid_payload_with_schema_version_2() -> None:
+def test_manifest_accepts_valid_payload_with_schema_version_3() -> None:
+    # Phase 07: bumped 2 → 3 alongside research_overlay_applied field.
     parsed = ManifestSchema.model_validate(_valid_manifest_payload())
-    assert parsed.schema_version == 2
+    assert parsed.schema_version == 3
     assert parsed.validation_report.passed is True
     assert parsed.files[0].sha256 == "a" * 64
 
@@ -234,3 +235,53 @@ def test_validation_report_passes_when_no_errors_present() -> None:
     report = ValidationReport(passed=True)
     assert report.errors == []
     assert report.warnings == []
+
+
+# ---------------------------------------------------------------------------
+# Phase 07 (Plan 05 Task 1): overlay-mergeable field acceptance + MANIFEST bump
+# ---------------------------------------------------------------------------
+
+
+def test_condado_entry_schema_accepts_kingdom_owner_optional_field() -> None:
+    """D-03: overlay can write `kingdom_owner`; schema must tolerate it (Pitfall 8)."""
+    payload = _minimal_valid_territory_metadata()
+    payload["condados"][0]["kingdom_owner"] = "Reino de Asturias"
+    parsed = TerritoryMetadataSchema.model_validate(payload)
+    assert parsed.condados[0].kingdom_owner == "Reino de Asturias"
+    # Raw pipeline output (no overlay) still validates — field is Optional.
+    raw = _minimal_valid_territory_metadata()
+    parsed_raw = TerritoryMetadataSchema.model_validate(raw)
+    assert parsed_raw.condados[0].kingdom_owner is None
+
+
+def test_condado_entry_schema_accepts_historical_notes_optional_field() -> None:
+    """D-03: overlay can write `historical_notes`; schema must tolerate it."""
+    payload = _minimal_valid_territory_metadata()
+    payload["condados"][0]["historical_notes"] = "Founded 791 AD by Alfonso II."
+    parsed = TerritoryMetadataSchema.model_validate(payload)
+    assert parsed.condados[0].historical_notes == "Founded 791 AD by Alfonso II."
+
+
+def test_condado_entry_schema_still_rejects_unknown_extras_beyond_overlay_fields() -> None:
+    """extra='forbid' preserved — only the 2 documented overlay fields are accepted."""
+    payload = _minimal_valid_territory_metadata()
+    payload["condados"][0]["random_field"] = "x"
+    with pytest.raises(ValidationError):
+        TerritoryMetadataSchema.model_validate(payload)
+
+
+def test_manifest_schema_version_is_3() -> None:
+    """Phase 07 bumped from 2 → 3 alongside research_overlay_applied field."""
+    assert MANIFEST_SCHEMA_VERSION == 3
+
+
+def test_manifest_schema_accepts_research_overlay_applied_bool_default_false() -> None:
+    """D-04: MANIFEST tracks whether an overlay was merged; default False for D-12 parity."""
+    # Default (no overlay) — field absent from payload, defaults to False.
+    parsed_default = ManifestSchema.model_validate(_valid_manifest_payload())
+    assert parsed_default.research_overlay_applied is False
+    # Explicit True — Plan 08 build_unity_zip will set this when overlay merged.
+    payload = _valid_manifest_payload()
+    payload["research_overlay_applied"] = True
+    parsed_true = ManifestSchema.model_validate(payload)
+    assert parsed_true.research_overlay_applied is True

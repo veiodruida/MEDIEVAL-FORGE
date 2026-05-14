@@ -12,7 +12,11 @@ import re
 
 from pydantic import BaseModel, ConfigDict, Field, RootModel, field_validator
 
-MANIFEST_SCHEMA_VERSION: int = 2
+# v3 (Phase 07 D-CONTEXT canonical_refs): added research_overlay_applied to MANIFEST
+# bump 2 → 3 alongside CondadoEntrySchema gaining `kingdom_owner` + `historical_notes`
+# (D-03 + RESEARCH §Pitfall 8 — extend schema additively so extra='forbid' still rejects
+# truly-unknown fields while overlay merge can write the two optional fields).
+MANIFEST_SCHEMA_VERSION: int = 3
 
 _RGB_KEY_RE = re.compile(r"^(\d{1,3}),(\d{1,3}),(\d{1,3})$")
 
@@ -74,6 +78,12 @@ class CondadoEntrySchema(BaseModel):
     pixel_count: int = Field(ge=1)
     baronies: list[str]
     original_idx: int | None = None  # OPTIONAL — emitted when condado tuple len > 6 (export.py:69)
+    # Phase 07 (D-03 + Pitfall 8): overlay-mergeable fields. Optional so raw pipeline
+    # output (no overlay) still validates; merged metadata (with overlay) also validates.
+    # Schema acceptance is BROADER than zip emission — see services/research/overlay.py
+    # `_ZIP_BOUND_FIELDS` doc-comment for the contract.
+    kingdom_owner: str | None = None
+    historical_notes: str | None = None
 
 
 class BaronyEntrySchema(BaseModel):
@@ -146,3 +156,6 @@ class ManifestSchema(BaseModel):
     phase: int = 6
     validation_report: ValidationReport
     files: list[ManifestFileEntry]
+    # Phase 07 D-04: True when Plan 08's build_unity_zip merged a research overlay
+    # into territory_metadata.json. False (default) for zero-LLM exports — D-12 parity.
+    research_overlay_applied: bool = False
