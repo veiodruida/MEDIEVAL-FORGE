@@ -38,9 +38,9 @@ decisions:
   - "generated_at NOT auto-bumped on cache_put overwrite — preserves original-generation semantics; runner explicitly assigns on force-refresh"
 metrics:
   completed: 2026-05-14
-  duration: ~25min
+  duration: ~30min
   tasks: 1
-  commits: 3
+  commits: 5
   files_created: 2
   files_modified: 2
   tests_added: 10
@@ -121,14 +121,17 @@ cd backend && pytest tests/unit/test_research_cache.py -x -q
 cd backend && python -c "from medieval_forge.services.research import \
   cache_key, cache_get, cache_get_with_generated_at, cache_put, \
   PROMPT_DIGEST, SCHEMA_VERSION; print(PROMPT_DIGEST, SCHEMA_VERSION)"
-# 0f13a2e6 1
+# e35139f3 1   (post Rule 1 fix — see Deviations §3)
 
-# Smoke test no regression in research/ + credential_store
+# Smoke test no regression across research + LLM + credential packages
 cd backend && pytest tests/unit/test_research_cache.py \
   tests/unit/test_credential_store.py \
   tests/unit/test_matcher.py \
-  tests/unit/test_overlay_merge.py -q
-# 31 passed in 0.70s
+  tests/unit/test_overlay_merge.py \
+  tests/unit/test_llm_schemas.py \
+  tests/unit/test_llm_parse.py \
+  tests/unit/test_llm_sanitize.py -q
+# 44 passed in 0.77s
 ```
 
 ## Commits
@@ -138,6 +141,8 @@ cd backend && pytest tests/unit/test_research_cache.py \
 | `eab04fd` | test | TDD RED — failing test_research_cache.py (10 cases) |
 | `e1708eb` | feat | Add PROMPT_TEMPLATE constant to llm/prompt.py (Rule 3) |
 | `e6c799c` | feat | Add services/research/cache.py (TDD GREEN) |
+| `5b01a80` | docs | Initial SUMMARY.md |
+| `10c2d42` | fix  | PROMPT_TEMPLATE covers all 3 prompt builders (Rule 1) |
 
 ## Deviations from Plan
 
@@ -167,6 +172,26 @@ cd backend && pytest tests/unit/test_research_cache.py \
 - **Fix:** Used `from ...services.llm.prompt import PROMPT_TEMPLATE` and
   `from ...models import ResearchCache as ResearchCacheModel` (3-dot relative).
 - **Files modified:** `backend/medieval_forge/services/research/cache.py`
+- **Commit:** `e6c799c`
+
+**3. [Rule 1 – Bug] PROMPT_TEMPLATE under-covered prompt builders (silent cache-staleness)**
+
+- **Found during:** Post-implementation advisor review.
+- **Issue:** Initial `PROMPT_TEMPLATE = SYSTEM_INSTRUCTIONS + EXAMPLE_OUTPUT + RULES`
+  covered ONLY the legacy `build_research_prompt`. But `services/llm/__init__.py`
+  exports `build_map_research_prompt` (Etapa 6 baronies-aware flow — the one
+  Plan 07b runner reaches through the matcher), and `build_codex_prompt` (Plan
+  09a/09b). Edits to `RULES_MAP`, `EXAMPLE_OUTPUT_MAP`, `SYSTEM_INSTRUCTIONS_CODEX`,
+  `EXAMPLE_OUTPUT_CODEX`, or `RULES_CODEX` would NOT bump `PROMPT_DIGEST`,
+  silently leaving cached payloads stale and breaking the REVIEWS-soft-Codex
+  contract ("any prompt edit auto-invalidates the cache").
+- **Fix:** `PROMPT_TEMPLATE` now concatenates all 8 static prompt blocks across
+  all 3 builders. Order is deterministic at import time; digest stability
+  preserved. PROMPT_DIGEST changed from `0f13a2e6` → `e35139f3`.
+- **Files modified:** `backend/medieval_forge/services/llm/prompt.py`
+- **Commit:** `10c2d42`
+- **Note:** since no production cache rows exist yet (Plan 07b runner not yet
+  online), this digest change is a one-time invalidation with zero user impact.
 - **Commit:** `e6c799c`
 
 ## Authentication Gates
