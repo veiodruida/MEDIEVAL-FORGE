@@ -160,37 +160,14 @@ export function useDeleteProject() {
   })
 }
 
-// ---------- EXPORT-01/02: ZIP export hook ----------
-
-export interface ExportResponse {
-  project_id: string
-  zip_filename: string
-  size_bytes: number
-  download_url: string
-}
-
-export function useExport(projectId: string | undefined) {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: async () => {
-      return jsonFetch<ExportResponse>(
-        `/api/projects/${projectId}/export`,
-        { method: 'POST' },
-      )
-    },
-    onSuccess: (data) => {
-      qc.invalidateQueries({ queryKey: ['projects', projectId] })
-      qc.invalidateQueries({ queryKey: ['projects'] })
-      // Trigger browser download via a hidden anchor — avoids losing SPA route state.
-      const a = document.createElement('a')
-      a.href = data.download_url
-      a.download = data.zip_filename
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-    },
-  })
-}
+// ---------- v3 EXPORT (Phase 07 Plan 10) ----------
+//
+// The legacy v1 `useExport` hook (and its `ExportResponse` interface) lived
+// here until Phase 07 Plan 10. Both were DELETED per WARNING 4 / D-V3-04
+// (no transitional shims). The v3 swap is in `frontend/src/api/useExportV3.ts`
+// (typed 422 envelope branch + dry_run support). Consumer wiring is in
+// `frontend/src/pages/ProjectDetail.tsx` (handleExport blob download +
+// ExportErrorDialog mount + Toast.Provider network fallback).
 
 // ---------- Plan 05-08: v3 project creation ----------
 
