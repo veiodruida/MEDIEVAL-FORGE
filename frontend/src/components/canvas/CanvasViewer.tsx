@@ -689,10 +689,12 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
               territories={effectiveTerritories}
               baronies={effectiveBaronies}
               project={{
+                id: project.id,
                 name: project.name,
                 country_qid: project.country_qid,
                 period_start: project.period_start,
                 period_end: project.period_end,
+                status: project.status,
               }}
             />
           </aside>

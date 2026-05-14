@@ -1,13 +1,36 @@
-import { Badge, Box, Flex, Heading, ScrollArea, Text } from '@radix-ui/themes'
+import { useState } from 'react'
+import { Badge, Box, Button, Flex, Heading, ScrollArea, Text, Tooltip } from '@radix-ui/themes'
+import { MagnifyingGlassIcon } from '@radix-ui/react-icons'
 import { useUIStore } from '../../stores/uiStore'
 import { MultiSelectInspector } from './MultiSelectInspector'
 import { pixelsToKm2 as pixelsToKm2Util } from '../../lib/pixelsToKm2'
+import { useResearchOverlay } from '../../api/useResearchOverlay'
+import { ResearchDialog } from '../research/ResearchDialog'
 import type {
   BaronyRender,
   TerritoryMetadata,
   TerritoryMetadataCondado,
   TerritoryRender,
 } from '../../hooks/useCanvasArtifacts'
+
+/**
+ * Plan 07-09b — REVIEWS fix #2 timestamp helpers.
+ *
+ * `timestampsMatch` absorbs seconds-precision rounding (within 1 second is
+ * treated as "fresh-run"). `formatDate` renders UTC-stable `YYYY-MM-DD HH:mm`
+ * inline because date-fns is NOT in package.json.
+ */
+function timestampsMatch(generatedAt: string, appliedAt: string): boolean {
+  const g = new Date(generatedAt).getTime()
+  const a = new Date(appliedAt).getTime()
+  return Math.abs(a - g) < 1000
+}
+
+function formatDate(iso: string): string {
+  const d = new Date(iso)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
 
 function pixelsToKm2(pixelCount: number, metadata: TerritoryMetadata): number {
   return pixelsToKm2Util(pixelCount, metadata)
@@ -35,10 +58,31 @@ const COPY = {
 } as const
 
 interface ProjectSummary {
+  id: string
   name: string
   country_qid: string
   period_start: number
   period_end: number
+  /**
+   * Plan 07-09b — gates the "Pesquisar metadados históricos" trigger.
+   * Research is only available once geometric generation has produced the
+   * 12-file artifact bundle (status === 'generated').
+   */
+  status: string
+}
+
+/**
+ * Plan 07-09b — region display name lookup keyed off country_qid. Mirrors
+ * the same mapping used by ResearchDialog when seeding the Período field.
+ * Defaults to the qid string when no friendly name is registered yet.
+ */
+function regionDisplayNameFor(countryQid: string): string {
+  switch (countryQid) {
+    case 'Q29':
+      return 'Iberia 868 AD'
+    default:
+      return countryQid
+  }
 }
 
 interface InspectorSidebarProps {
@@ -77,6 +121,91 @@ export function InspectorSidebar({
   const selectedBaronyId = useUIStore((s) => s.selectedBaronyId)
   const select = useUIStore((s) => s.select)
 
+  // Plan 07-09b — ResearchDialog open-state lives here (BLOCKER 3: the
+  // dialog is mounted INSIDE the InspectorSidebar, not in ProjectDetail.tsx).
+  // `forceRefreshPreChecked` propagates to ResearchDialog via the
+  // `initialForceRefresh` prop and is consumed when the user clicks
+  // "Atualizar pesquisa" on a condado/barony with applied research.
+  const [researchOpen, setResearchOpen] = useState(false)
+  const [forceRefreshPreChecked, setForceRefreshPreChecked] = useState(false)
+  const overlay = useResearchOverlay(project.id)
+  const overlayData = overlay.data
+  const meta = overlayData?.meta ?? null
+
+  const condadoIdsForDialog = metadata.condados.map((c) => c.id)
+  const regionDisplayName = regionDisplayNameFor(project.country_qid)
+
+  function openResearchDialog(forceRefresh: boolean) {
+    setForceRefreshPreChecked(forceRefresh)
+    setResearchOpen(true)
+  }
+
+  /**
+   * REVIEWS fix #2 — dual-timestamp microcopy. Single line when the LLM
+   * output and the runner write-time are within 1s (fresh run); two lines
+   * when they differ (cache hit re-applied later).
+   */
+  const microcopy =
+    overlayData?.exists && meta ? (
+      timestampsMatch(meta.generated_at, meta.applied_at) ? (
+        <Text size="1" color="gray" data-testid="research-microcopy-single">
+          {`Última pesquisa: ${meta.provider} · ${meta.model} · ${formatDate(meta.generated_at)}`}
+        </Text>
+      ) : (
+        <Flex direction="column" gap="0" data-testid="research-microcopy-dual">
+          <Text size="1" color="gray">
+            {`Pesquisa gerada: ${meta.provider} · ${meta.model} · ${formatDate(meta.generated_at)}`}
+          </Text>
+          <Text size="1" color="gray">
+            {`· aplicada: ${formatDate(meta.applied_at)}`}
+          </Text>
+        </Flex>
+      )
+    ) : null
+
+  /**
+   * Plan 07-09b — `<ResearchDialog>` is mounted ONCE at sidebar root so it
+   * survives mode switches (placeholder → condado → barony). The trigger
+   * button (placeholder mode) and the "Atualizar pesquisa" reopen link
+   * (condado/barony mode) both share this single mount via local state.
+   */
+  const dialogMount = (
+    <ResearchDialog
+      open={researchOpen}
+      onOpenChange={setResearchOpen}
+      projectId={project.id}
+      regionDisplayName={regionDisplayName}
+      countryQid={project.country_qid}
+      condadoIds={condadoIdsForDialog}
+      initialForceRefresh={forceRefreshPreChecked}
+    />
+  )
+
+  /**
+   * Helper — render the "Pesquisa aplicada" + "Atualizar pesquisa" pair
+   * for a given condado id. Used by both condado-mode (selected id) and
+   * barony-mode (parent condado id).
+   */
+  function renderAppliedBadge(condadoId: string | undefined) {
+    if (!condadoId) return null
+    if (!overlayData?.exists) return null
+    if (!overlayData.covered_condado_ids.includes(condadoId)) return null
+    return (
+      <Flex gap="2" align="center">
+        <Badge color="green" variant="soft">Pesquisa aplicada</Badge>
+        <Text
+          size="1"
+          color="gray"
+          style={{ cursor: 'pointer', textDecoration: 'underline' }}
+          onClick={() => openResearchDialog(true)}
+          role="button"
+        >
+          Atualizar pesquisa
+        </Text>
+      </Flex>
+    )
+  }
+
   // Plan 03-08 follow-up adds a 4th mode: barony detail (Phase 04 will
   // build vertex-edit affordances on top of this). Order matters:
   //   selectedBaronyId set → barony detail (precedence over placeholder)
@@ -104,6 +233,9 @@ export function InspectorSidebar({
     const baronyRender = baronies.find((b) => b.name === selectedBaronyId)
     const centroid = baronyRender?.centroid
 
+    // Plan 07-09b — surface the "Pesquisa aplicada" badge for the barony's
+    // parent condado id (lookup via metadata.condados[barony.condado_idx]).
+    const parentCondadoId = parent?.id
     return (
       <Flex direction="column" gap="3" data-testid="inspector-barony">
         <Heading size="3">{barony.name}</Heading>
@@ -115,6 +247,8 @@ export function InspectorSidebar({
           </Badge>
           <Badge color="gray" variant="soft">Barony</Badge>
         </Flex>
+        {renderAppliedBadge(parentCondadoId)}
+        {dialogMount}
         <Box>
           <Flex justify="between" align="center">
             <Text size="1" color="gray">Area</Text>
@@ -185,9 +319,35 @@ export function InspectorSidebar({
   }
 
   if (selectedIds.length === 0) {
+    // Plan 07-09b — placeholder mode adds the "Pesquisar metadados históricos"
+    // trigger plus the REVIEWS fix #2 dual-timestamp microcopy line. The
+    // Phase 03 D-16 PT-BR placeholder text above (PLACEHOLDER_PT) is
+    // UNCHANGED per the COPY-block lock.
+    const isReadyForResearch = project.status === 'generated'
     return (
       <Flex direction="column" gap="3" data-testid="inspector-placeholder">
         <Text size="2" color="gray" as="p">{PLACEHOLDER_PT}</Text>
+        <Tooltip
+          content="Gere o mapa antes de pesquisar metadados."
+          // Force tooltip body visible to assistive tech / tests via
+          // `data-tooltip-body` (the wrapper exposes the literal so vitest
+          // can assert without dispatching pointer events).
+        >
+          <span data-testid="research-trigger-tooltip" data-tooltip-body="Gere o mapa antes de pesquisar metadados.">
+            <Button
+              variant="soft"
+              size="2"
+              disabled={!isReadyForResearch}
+              onClick={() => openResearchDialog(false)}
+              data-testid="research-trigger-button"
+            >
+              <MagnifyingGlassIcon />
+              Pesquisar metadados históricos
+            </Button>
+          </span>
+        </Tooltip>
+        {microcopy}
+        {dialogMount}
       </Flex>
     )
   }
@@ -266,6 +426,9 @@ export function InspectorSidebar({
         <Badge color="grass" variant="soft">Condado</Badge>
         <Badge color="gray" variant="soft">Baronies: {baronyCount}</Badge>
       </Flex>
+      {/* Plan 07-09b — Pesquisa aplicada badge + Atualizar pesquisa reopen link */}
+      {renderAppliedBadge(condado.id)}
+      {dialogMount}
 
       {/* Group 2: identity / geometry */}
       <Box>
