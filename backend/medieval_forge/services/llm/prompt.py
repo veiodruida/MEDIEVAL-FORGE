@@ -76,18 +76,6 @@ RULES = """CRITICAL RULES — any violation fails validation:
     Arabic, "Llión" in Leonese, "Batalha" in Portuguese."""
 
 
-# PROMPT_TEMPLATE is the concatenation of the three static components that
-# define the cacheable prompt shape. services/research/cache.py reads this at
-# import time to compute PROMPT_DIGEST (REVIEWS soft Codex). Any edit to the
-# system instructions, example output, or rules auto-invalidates the cache
-# because PROMPT_DIGEST = sha256(PROMPT_TEMPLATE)[:8] flows into cache_key.
-#
-# Plan 07-07a Rule 3 deviation: literal-port file gains a derived constant only.
-# No behavioral change to build_research_prompt / build_map_research_prompt /
-# build_codex_prompt.
-PROMPT_TEMPLATE: str = SYSTEM_INSTRUCTIONS + EXAMPLE_OUTPUT + RULES
-
-
 def build_research_prompt(
     country_name: str,
     period_start: int,
@@ -429,3 +417,38 @@ def build_codex_prompt(
         f"Output the JSON object following the example shape. "
         f"Do not include any other top-level keys."
     )
+
+
+# ---------------------------------------------------------------------------
+# PROMPT_TEMPLATE — cacheable-shape digest source (Plan 07-07a)
+# ---------------------------------------------------------------------------
+#
+# services/research/cache.py reads this at import time to compute PROMPT_DIGEST
+# (REVIEWS soft Codex):
+#
+#     PROMPT_DIGEST = sha256(PROMPT_TEMPLATE)[:8]
+#
+# Any edit to ANY of the static prompt components below auto-invalidates the
+# cache because PROMPT_DIGEST flows into cache_key.
+#
+# Coverage rationale: Plan 07b's runner is expected to call build_map_research_prompt
+# (Etapa 6 baronies-aware flow) — the legacy build_research_prompt may also be
+# invoked, and Plan 09a/09b may invoke build_codex_prompt. To make the digest
+# correctly reflect ANY semantic shift in ANY of the three prompt builders, we
+# concatenate every static text block that flows into a builder's output. Order
+# is irrelevant for digest stability; it just needs to be deterministic across
+# imports (which it is — module-level concatenation is fixed at import time).
+#
+# Plan 07-07a Rule 3 deviation: literal-port file gains a derived constant only.
+# No behavioral change to build_research_prompt / build_map_research_prompt /
+# build_codex_prompt.
+PROMPT_TEMPLATE: str = (
+    SYSTEM_INSTRUCTIONS
+    + EXAMPLE_OUTPUT
+    + RULES
+    + EXAMPLE_OUTPUT_MAP
+    + RULES_MAP
+    + SYSTEM_INSTRUCTIONS_CODEX
+    + EXAMPLE_OUTPUT_CODEX
+    + RULES_CODEX
+)
