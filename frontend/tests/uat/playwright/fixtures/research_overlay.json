@@ -1,0 +1,17 @@
+{
+  "oviedo": {
+    "name": "Condado de Oviedo",
+    "kingdom_owner": "Reino de Asturias",
+    "historical_notes": "Fundado em 791 d.C. por Fruela I; capital sob Alfonso II."
+  },
+  "leon": {
+    "name": "Condado de León",
+    "kingdom_owner": "Reino de León",
+    "historical_notes": "Refundado em 856 d.C. por Ordoño I; sede real após Alfonso III."
+  },
+  "burgos": {
+    "name": "Condado de Burgos",
+    "kingdom_owner": "Condado de Castilla",
+    "historical_notes": "Fundado em 884 d.C. por Diego Rodríguez Porcelos; embrião de Castela."
+  }
+}
