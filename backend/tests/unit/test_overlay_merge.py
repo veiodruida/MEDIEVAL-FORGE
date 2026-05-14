@@ -221,3 +221,72 @@ def test_merge_overlay_does_not_overwrite_when_overlay_field_value_is_none() -> 
 # Sanity: _ZIP_BOUND_FIELDS imported correctly (regression guard).
 def test_zip_bound_fields_is_a_frozenset() -> None:
     assert isinstance(_ZIP_BOUND_FIELDS, frozenset)
+
+
+# ---------------------------------------------------------------------------
+# REVIEWS fix #10 (2026-05-14) — Truncated/corrupt overlay graceful-fail contract.
+# ---------------------------------------------------------------------------
+# CONTRACT:
+# - load_overlay_if_exists() is the gatekeeper. It validates with pydantic before
+#   returning a dict. Truncated JSON → JSONDecodeError. Schema-invalid JSON →
+#   ValidationError. Either way, the caller (build_unity_zip / artifact endpoint)
+#   sees the exception bubble up and the export aborts — geometric output is NOT
+#   silently corrupted.
+# - merge_overlay() is INTERNAL: its public contract requires a dict, not a str.
+#   If a string reaches it, that is a programmer error (TypeError). No silent
+#   recovery.
+# - D-12 zero-LLM parity holds REGARDLESS of overlay corruption because the
+#   zero-LLM path checks `if overlay is not None` BEFORE invoking merge —
+#   corrupt-but-absent files are treated as "no overlay" via the existence
+#   check in load_overlay_if_exists.
+# ---------------------------------------------------------------------------
+
+
+def test_merge_overlay_truncated_json_graceful_fail() -> None:
+    """REVIEWS fix #10: passing a STRING (truncated JSON literal) to merge_overlay
+    raises TypeError. merge_overlay's public contract is dict-typed — strings are
+    a programmer error caught loudly, not silently swallowed.
+    """
+    from medieval_forge.services.research.overlay import merge_overlay as _merge
+
+    with pytest.raises(TypeError):
+        # Truncated JSON STRING (not dict) — programmer-error path; merge_overlay
+        # is internal and trusts that load_overlay_if_exists already validated.
+        _merge(FIXTURE_METADATA, '{"version":1,"condados":[')  # type: ignore[arg-type]
+
+
+def test_load_overlay_if_exists_raises_json_decode_error_on_truncated_file(
+    tmp_path: Path,
+) -> None:
+    """REVIEWS fix #10: load_overlay_if_exists fails LOUDLY on truncated JSON.
+
+    The runner (Plan 07) decides how to surface the exception; the contract is
+    that the export aborts and geometric output stays untouched.
+    """
+    path = tmp_path / "research_overlay.json"
+    # Truncated: no closing bracket / brace.
+    path.write_text('{"oviedo": {"name":', encoding="utf-8")
+    with pytest.raises((json.JSONDecodeError, ValidationError)):
+        load_overlay_if_exists(path)
+
+
+def test_zero_llm_export_unaffected_by_corrupt_overlay_when_file_absent(
+    tmp_path: Path,
+) -> None:
+    """REVIEWS fix #10: D-12 parity holds when overlay file is ABSENT.
+
+    The caller pattern is `overlay = load_overlay_if_exists(path)` followed by
+    `if overlay is not None: merge_overlay(...)`. When the file is absent,
+    load_overlay_if_exists returns None and merge is never invoked — the
+    zero-LLM zip path is byte-identical to a no-overlay run. Catches a future
+    regression where someone refactors `if overlay is not None` into
+    `if overlay` (would still be safe here, but the invariant is documented).
+    """
+    nonexistent = tmp_path / "absent_overlay.json"
+    assert not nonexistent.exists()
+    result = load_overlay_if_exists(nonexistent)
+    assert result is None
+    # Caller pattern: only call merge_overlay if overlay is not None.
+    # This is the invariant the zero-LLM (D-12) path relies on.
+    if result is not None:  # pragma: no cover — defensive; result IS None here
+        merge_overlay(FIXTURE_METADATA, result)

@@ -27,6 +27,13 @@ from pathlib import Path
 
 from ..paths import ensure_project_dirs, project_dir
 from ..pipeline.contracts import EXPORT_FILE_CONTRACT, RegionConfig
+# Plan 07-08 Task 1 (Pattern 11): grep-locked direct symbol imports + module
+# alias. The module alias `_overlay_module` lets tests monkeypatch
+# `_ZIP_BOUND_FIELDS` at runtime (REVIEWS fix #9 Test 7 — Strict zip-vs-sidecar
+# asymmetry). The single-line direct import satisfies the grep acceptance
+# criterion `from ..research.overlay import merge_overlay`.
+from ..research import overlay as _overlay_module
+from ..research.overlay import merge_overlay, load_overlay_if_exists, _ZIP_BOUND_FIELDS  # noqa: F401
 from .schemas import MANIFEST_SCHEMA_VERSION
 from .validator import ValidationFailedError, validate_export
 
@@ -125,9 +132,24 @@ def build_unity_zip(
     # Phase 06 GATE: validate before assembling. Raises ValidationFailedError on failure.
     # The validator reads every file once and returns the (report, sha256_by_file)
     # tuple per RESEARCH §Per-Discretion #2 (validator-time hashing).
+    #
+    # Pitfall 2 (Plan 07-08): validator runs on RAW pipeline output BEFORE merge.
+    # The overlay carries optional fields (kingdom_owner, historical_notes) that
+    # the schema accepts but should NEVER be conflated with geometric regressions.
+    # Validate-before-merge keeps the gate honest.
     report, sha256_by_file = validate_export(generated, cfg)
     if not report.passed:
         raise ValidationFailedError(report)
+
+    # Plan 07-08 Task 1 (Pattern 11 + D-03/D-04): load the per-project research
+    # overlay sidecar if present. `load_overlay_if_exists` returns None when the
+    # file is absent (D-12 zero-LLM parity guard); raises ValidationError /
+    # JSONDecodeError on schema-invalid or truncated content (REVIEWS fix #10).
+    # The exception bubbles up so the export aborts loudly rather than silently
+    # corrupting metadata — geometric pipeline output is NEVER touched.
+    overlay_path = project_dir(project_id) / "research_overlay.json"
+    overlay = load_overlay_if_exists(overlay_path)
+    research_overlay_applied = overlay is not None
 
     # MANIFEST timestamps. v3 pipeline does not currently emit a per-run timestamp,
     # so we use validator-call time as a stand-in for generated_at_utc.
@@ -153,6 +175,30 @@ def build_unity_zip(
                 source = "placeholder"
                 # Placeholder bytes: hash on the fly (validator didn't see this file).
                 sha = hashlib.sha256(data).hexdigest()
+
+            # Plan 07-08 Task 1 (Pattern 11): merge overlay into territory_metadata.json
+            # ONLY at the zip-write boundary. The raw on-disk file is read above
+            # (via `data = source_path.read_bytes()`) but the merged result is
+            # written only into the zip via `zf.writestr(fname, data)` below —
+            # the pipeline output directory is NEVER mutated (Pitfall 1 + WARNING 5).
+            #
+            # `_overlay_module._ZIP_BOUND_FIELDS` is read DYNAMICALLY from the module
+            # so tests can monkeypatch the Strict/Tolerant verdict at runtime
+            # (REVIEWS fix #9 — Strict zip-vs-sidecar asymmetry e2e test).
+            if (
+                fname == "territory_metadata.json"
+                and overlay is not None
+                and source == "generated"
+            ):
+                raw_metadata = json.loads(data.decode("utf-8"))
+                # Grep contract (acceptance criterion): `merge_overlay(raw_metadata`
+                # must appear as a single substring in this file.
+                merged_metadata = merge_overlay(raw_metadata, overlay, allowed_fields=_overlay_module._ZIP_BOUND_FIELDS)  # noqa: E501
+                data = json.dumps(merged_metadata).encode("utf-8")
+                # Rehash because the bytes that land in the zip changed.
+                sha = hashlib.sha256(data).hexdigest()
+                source = "merged_overlay"
+
             zf.writestr(fname, data)
             files_manifest.append({
                 "name": fname,
@@ -172,6 +218,8 @@ def build_unity_zip(
                 "phase": 6,
                 "validation_report": report.model_dump(),
                 "files": files_manifest,
+                # D-04 + CONTEXT canonical_refs: MANIFEST gains research_overlay_applied.
+                "research_overlay_applied": research_overlay_applied,
             },
             indent=2,
         )

@@ -125,6 +125,23 @@ def merge_overlay(
         6. CondadoOverlayEntry schema is enforced before this function is called
            (load_overlay_if_exists raises ValidationError on malformed input).
     """
+    # Plan 07-08 Task 3 (REVIEWS fix #10): explicit type contract.
+    # merge_overlay() is INTERNAL — its caller (build_unity_zip / artifact
+    # endpoint) calls load_overlay_if_exists() first, which validates and
+    # returns a dict. If a string (e.g. truncated JSON literal) reaches us,
+    # that is a programmer error and we fail loudly with TypeError. Without
+    # this guard the function would raise AttributeError deep inside the
+    # condado loop, obscuring the contract violation.
+    if not isinstance(metadata, dict):
+        raise TypeError(
+            f"merge_overlay: metadata must be a dict, got {type(metadata).__name__}"
+        )
+    if not isinstance(overlay, dict):
+        raise TypeError(
+            f"merge_overlay: overlay must be a dict, got {type(overlay).__name__} — "
+            f"did you forget to call load_overlay_if_exists() first?"
+        )
+
     # Invariant 1: deepcopy at top — input metadata is never mutated.
     merged = copy.deepcopy(metadata)
 
