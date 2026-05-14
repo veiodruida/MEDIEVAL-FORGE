@@ -137,11 +137,13 @@ All 8/8 pass. Full unit+integration suite (304 cases) regression-free.
 
 ## Deviations from Plan
 
-**None blocking.** Two minor design choices:
+**None blocking.** Three minor design choices:
 
 1. **`/providers` health branching** — plan example assumed `provider.health()` universal, but only `OllamaProvider` has that method (returns dict with `available_models`); `ClaudeProvider` only has `health_check(credentials)` returning `HealthStatus`. Resolved by branching: `if callable(getattr(provider, "health", None))` for Ollama-shape; else `await provider.health_check(None)` for Protocol-conforming providers. The frontend contract is preserved — Ollama still surfaces `available_models`, Claude omits the key (REVIEWS fix #5).
 
 2. **`run_id == project_id` convention** — mirrors `api/v3/generate.py` (one alive run per project). The plan referenced `run_id` as an opaque param; we use `project_id` directly so `_RUN_QUEUES[run_id]` lookups are consistent with the rest of the v3 SSE layer.
+
+3. **Acceptance grep `queue.put_nowait(None)` mirrors canonical `await queue.put(None)`** — the plan's literal acceptance criterion `grep -n "queue.put_nowait(None)" runner.py returns ≥1 match` is misaligned with the canonical pattern it told us to mirror. `api/v3/generate.py:162` uses `await queue.put(None)` (the awaitable form, since the producer is async and a no-await `put_nowait` would never block — but it is also not what `generate.py` actually emits). Our runner uses `await queue.put(None)` for byte-for-byte fidelity to `generate.py`. Behavior is identical for an unbounded `asyncio.Queue`; the grep difference is a plan typo, not implementation drift. The combined regex `queue.put_nowait(None)|queue.put(None)` yields 1 match.
 
 ## Threat Mitigations Applied
 
