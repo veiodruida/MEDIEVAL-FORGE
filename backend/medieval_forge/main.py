@@ -47,6 +47,12 @@ from .api.v3.render import router as v3_render_router  # noqa: E402
 from .api.v3 import regions as v3_regions  # noqa: E402
 from .api.v3 import projects as v3_projects  # noqa: E402
 from .api.v3.export import router as v3_export_router  # noqa: E402
+# Phase 07 Plan 07b — research SSE orchestrator + credentials CRUD.
+from .api.v3.research import (  # noqa: E402
+    router as research_router,
+    overlay_router as research_overlay_router,
+)
+from .api.v3.credentials import router as credentials_router  # noqa: E402
 
 app.include_router(projects_router, prefix="/api")
 # v1 export_router mount REMOVED (D-04) -- replaced by v3_export_router below.
@@ -59,6 +65,12 @@ app.include_router(v3_render_router, prefix="/api")
 app.include_router(v3_regions.router, prefix="/api")
 app.include_router(v3_projects.router, prefix="/api")
 app.include_router(v3_export_router, prefix="/api")
+# Phase 07 Plan 07b mounts — order matters: research_router carries /v3/research,
+# research_overlay_router carries /v3/projects/{id}/research/overlay,
+# credentials_router carries /v3/credentials. main.py adds /api prefix.
+app.include_router(research_router, prefix="/api")
+app.include_router(research_overlay_router, prefix="/api")
+app.include_router(credentials_router, prefix="/api")
 
 # /assets/* — JS/CSS bundles. Only mount if directory exists (frontend may
 # not be built yet during early development).
