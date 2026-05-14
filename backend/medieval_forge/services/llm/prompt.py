@@ -76,6 +76,18 @@ RULES = """CRITICAL RULES — any violation fails validation:
     Arabic, "Llión" in Leonese, "Batalha" in Portuguese."""
 
 
+# PROMPT_TEMPLATE is the concatenation of the three static components that
+# define the cacheable prompt shape. services/research/cache.py reads this at
+# import time to compute PROMPT_DIGEST (REVIEWS soft Codex). Any edit to the
+# system instructions, example output, or rules auto-invalidates the cache
+# because PROMPT_DIGEST = sha256(PROMPT_TEMPLATE)[:8] flows into cache_key.
+#
+# Plan 07-07a Rule 3 deviation: literal-port file gains a derived constant only.
+# No behavioral change to build_research_prompt / build_map_research_prompt /
+# build_codex_prompt.
+PROMPT_TEMPLATE: str = SYSTEM_INSTRUCTIONS + EXAMPLE_OUTPUT + RULES
+
+
 def build_research_prompt(
     country_name: str,
     period_start: int,
