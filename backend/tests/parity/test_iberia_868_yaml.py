@@ -183,3 +183,338 @@ def test_iberia_passes_export_gate(pipeline_output_yaml: Path) -> None:
     assert len(sha256_by_file) >= 10, (
         f"validator only hashed {len(sha256_by_file)} files; expected >= 10"
     )
+
+
+# ---------------------------------------------------------------------------
+# Plan 07-11 Task 1 — D-12 zero-LLM parity gate + REVIEWS fix #9 toggle parity
+# ---------------------------------------------------------------------------
+#
+# Four new tests close Phase 07 SC #1 (zero-LLM works) at the parity layer:
+#   - test_zero_llm_byte_identical (D-12)
+#   - test_iberia_868_raw_metadata_uses_pipeline_slugs
+#   - test_manifest_research_overlay_applied_false_for_iberia_baseline
+#   - test_zip_diff_limited_to_zip_bound_fields_when_toggling_strict_tolerant
+#     (REVIEWS fix #9 — parity-layer downgrade-path lock)
+#
+# Reuses the session-scoped `pipeline_output_yaml` fixture above so the
+# Iberia pipeline still runs only once per session.
+
+
+def test_zero_llm_byte_identical(
+    pipeline_output_yaml: Path, golden_dir: Path
+) -> None:
+    """D-12 root gate (NON-skippable): Iberia 868 produces byte-identical
+    artifacts WITHOUT any LLM/overlay involvement.
+
+    Three assertions:
+      (a) No `research_overlay.json` sidecar exists in or alongside the
+          pipeline output directory — the geometric pipeline must never
+          emit one.
+      (b) Lookup PNGs + key JSONs are byte-equal to the committed golden
+          (delegates to the same comparison logic as test_lookup_png_byte_equal_yaml
+          and test_json_deep_equal_yaml, but as a single SC #1 anchor).
+      (c) build_unity_zip on this output produces a MANIFEST with
+          `research_overlay_applied == False` and a `territory_metadata.json`
+          inside the zip whose sha256 matches the raw on-disk file
+          (no overlay merge occurred).
+
+    Phase 07 SC #1 anchor: if this test fails, the zero-LLM contract is broken.
+    """
+    from medieval_forge.services import paths as paths_mod
+    from medieval_forge.services.export import build_unity_zip
+
+    # (a) No overlay sidecar anywhere near pipeline output.
+    assert not (pipeline_output_yaml / "research_overlay.json").exists(), (
+        "D-12: pipeline emitted a research_overlay.json into its output dir "
+        "— the geometric pipeline must NEVER produce an overlay file"
+    )
+    assert not (pipeline_output_yaml.parent / "research_overlay.json").exists(), (
+        "D-12: research_overlay.json found alongside pipeline output — "
+        "geometric path must stay LLM-free"
+    )
+
+    # (b) Byte-equality vs golden for the two lookup PNGs (Phase 06 baseline).
+    for name in ("lookup_barony.png", "lookup_condado.png"):
+        actual = np.array(Image.open(pipeline_output_yaml / name))
+        golden = np.array(Image.open(golden_dir / name))
+        assert np.array_equal(actual, golden), (
+            f"D-12 zero-LLM: {name} differs from Phase 06 golden — "
+            f"a non-LLM regression broke parity"
+        )
+
+    # (c) build_unity_zip on this output → manifest.research_overlay_applied is False
+    # and territory_metadata.json in the zip == raw on-disk bytes (no merge).
+    import shutil
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as td:
+        td_path = Path(td)
+        # Stage a minimal project_dir at a sandbox PROJECTS_ROOT so build_unity_zip
+        # writes its zip somewhere safe. The stage copies pipeline output into
+        # project_dir/output/ and creates exports/.
+        project_id = "00000000-0000-0000-0000-d12d12d12d12"
+        monkey_root = td_path / "projects"
+        original_root = paths_mod.PROJECTS_ROOT
+        paths_mod.PROJECTS_ROOT = monkey_root
+        try:
+            pdir = paths_mod.project_dir(project_id)
+            pdir.mkdir(parents=True, exist_ok=True)
+            output_dir = pdir / "output"
+            output_dir.mkdir(parents=True, exist_ok=True)
+            (pdir / "exports").mkdir(parents=True, exist_ok=True)
+            for src in pipeline_output_yaml.iterdir():
+                if src.is_file():
+                    (output_dir / src.name).write_bytes(src.read_bytes())
+            # Reload cfg fresh to avoid mutating cached singleton.
+            cfg = replace(load_region("iberia_868"))
+            zip_path = build_unity_zip(project_id, cfg=cfg, region_key="iberia_868")
+
+            import hashlib as _hashlib
+            import zipfile as _zipfile
+
+            with _zipfile.ZipFile(zip_path) as zf:
+                manifest = json.loads(zf.read("MANIFEST.json").decode("utf-8"))
+                meta_in_zip = zf.read("territory_metadata.json")
+
+            assert manifest["research_overlay_applied"] is False, (
+                "D-12: MANIFEST.research_overlay_applied is True for Iberia "
+                "baseline (no overlay file) — zero-LLM contract broken"
+            )
+
+            raw_meta = (output_dir / "territory_metadata.json").read_bytes()
+            assert _hashlib.sha256(raw_meta).hexdigest() == _hashlib.sha256(
+                meta_in_zip
+            ).hexdigest(), (
+                "D-12: territory_metadata.json bytes in zip differ from raw "
+                "pipeline output — an overlay merge happened on a zero-overlay run"
+            )
+        finally:
+            paths_mod.PROJECTS_ROOT = original_root
+
+
+def test_iberia_868_raw_metadata_uses_pipeline_slugs(
+    pipeline_output_yaml: Path,
+) -> None:
+    """Pipeline output retains curated slugs/names from territory_data_v3.py
+    (no overlay applied at the pipeline boundary).
+
+    Iberia's curated territory_data_v3.py emits human-readable names
+    (`Oviedo`, `Pravia`, ...) and slug ids (`oviedo`, `pravia`, ...) directly
+    from the pipeline — these are NOT overlay names. Asserts that the raw,
+    on-disk metadata uses these pipeline-emitted slugs.
+    """
+    raw_meta = json.loads(
+        (pipeline_output_yaml / "territory_metadata.json").read_text(encoding="utf-8")
+    )
+    condados = raw_meta["condados"]
+    assert len(condados) > 0, "raw metadata has zero condados"
+
+    # Every condado has a non-empty id AND name from the pipeline.
+    for c in condados:
+        assert c.get("id"), f"condado missing id: {c}"
+        assert c.get("name"), f"condado missing name: {c}"
+        # original_idx must survive (CLAUDE.md rule 4).
+        assert "original_idx" in c, f"condado missing original_idx: {c}"
+
+    # Sample: Iberia's first condado is curated as 'oviedo'/'Oviedo'.
+    first = condados[0]
+    assert first["id"] == "oviedo", (
+        f"Iberia raw metadata first condado.id should be 'oviedo' "
+        f"(pipeline-emitted slug from territory_data_v3.py), got {first['id']!r}"
+    )
+
+
+def test_manifest_research_overlay_applied_false_for_iberia_baseline(
+    pipeline_output_yaml: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """When no overlay sidecar is present, MANIFEST.research_overlay_applied is False.
+
+    Mirrors D-04 from the export side: the zip MANIFEST is the canonical
+    signal for downstream consumers (Unity / inspector). For Iberia baseline
+    (no `research_overlay.json`), this MUST report false so the zero-LLM
+    pipeline can be distinguished from an LLM-augmented one.
+    """
+    from medieval_forge.services import paths as paths_mod
+    from medieval_forge.services.export import build_unity_zip
+
+    project_id = "00000000-0000-0000-0000-7110000007a1"
+    monkeypatch.setattr(paths_mod, "PROJECTS_ROOT", tmp_path / "projects")
+    pdir = paths_mod.project_dir(project_id)
+    pdir.mkdir(parents=True, exist_ok=True)
+    (pdir / "output").mkdir(parents=True, exist_ok=True)
+    (pdir / "exports").mkdir(parents=True, exist_ok=True)
+    for src in pipeline_output_yaml.iterdir():
+        if src.is_file():
+            (pdir / "output" / src.name).write_bytes(src.read_bytes())
+
+    # Sanity: no overlay sidecar.
+    assert not (pdir / "research_overlay.json").exists()
+
+    cfg = replace(load_region("iberia_868"))
+    zip_path = build_unity_zip(project_id, cfg=cfg, region_key="iberia_868")
+
+    import zipfile as _zipfile
+
+    with _zipfile.ZipFile(zip_path) as zf:
+        manifest = json.loads(zf.read("MANIFEST.json").decode("utf-8"))
+
+    assert manifest["research_overlay_applied"] is False
+
+
+def test_zip_diff_limited_to_zip_bound_fields_when_toggling_strict_tolerant(
+    pipeline_output_yaml: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """REVIEWS fix #9 (parity-layer downgrade-path lock).
+
+    Re-export the same Iberia project twice — once with the Strict verdict
+    (`_ZIP_BOUND_FIELDS = {"name"}`), once with the Tolerant verdict
+    (`_ZIP_BOUND_FIELDS = {"name", "kingdom_owner", "historical_notes"}`) —
+    seeded with the same `research_overlay.json` containing all 3 fields
+    for 3 condados.
+
+    Asserts:
+      (a) Every file in the zip EXCEPT `territory_metadata.json` and
+          `MANIFEST.json` is byte-identical between Strict and Tolerant
+          (geometric outputs untouched by zip-bound verdict toggle).
+      (b) Inside `territory_metadata.json`: geometric invariants
+          (original_idx, pixel_count, pixel_center, lon, lat, duchy, kingdom)
+          match for every condado between Strict and Tolerant; `name` matches
+          in both (emitted under both verdicts); under Strict the optional
+          fields (`kingdom_owner`, `historical_notes`) are absent / never
+          leak into the zip for overlay-covered condados.
+      (c) Both MANIFESTs have `research_overlay_applied == True`.
+    """
+    import hashlib as _hashlib
+    import zipfile as _zipfile
+
+    from medieval_forge.services import paths as paths_mod
+    from medieval_forge.services.export import build_unity_zip
+    from medieval_forge.services.research import overlay as overlay_module
+
+    monkeypatch.setattr(paths_mod, "PROJECTS_ROOT", tmp_path / "projects")
+
+    def _stage(project_id: str) -> Path:
+        pdir = paths_mod.project_dir(project_id)
+        pdir.mkdir(parents=True, exist_ok=True)
+        (pdir / "output").mkdir(parents=True, exist_ok=True)
+        (pdir / "exports").mkdir(parents=True, exist_ok=True)
+        for src in pipeline_output_yaml.iterdir():
+            if src.is_file():
+                (pdir / "output" / src.name).write_bytes(src.read_bytes())
+        return pdir
+
+    # Pick the first 3 condado ids from the raw pipeline output and seed an
+    # overlay covering all 3 fields for each.
+    raw_meta = json.loads(
+        (pipeline_output_yaml / "territory_metadata.json").read_text(encoding="utf-8")
+    )
+    target_ids = [c["id"] for c in raw_meta["condados"][:3]]
+    overlay_payload = {
+        target_ids[0]: {
+            "name": "Condado de Oviedo",
+            "kingdom_owner": "Reino de Asturias",
+            "historical_notes": "Founded 791 AD.",
+        },
+        target_ids[1]: {
+            "name": "Condado de Pravia",
+            "kingdom_owner": "Reino de Asturias",
+            "historical_notes": "Capital under Silo (774-783).",
+        },
+        target_ids[2]: {
+            "name": "Condado de Gijón",
+            "kingdom_owner": "Reino de Asturias",
+            "historical_notes": "Coastal stronghold.",
+        },
+    }
+
+    # ---- Strict run -------------------------------------------------------
+    monkeypatch.setattr(
+        overlay_module, "_ZIP_BOUND_FIELDS", frozenset({"name"})
+    )
+    project_id_strict = "00000000-0000-0000-0000-571171071100"
+    pdir_strict = _stage(project_id_strict)
+    (pdir_strict / "research_overlay.json").write_text(
+        json.dumps(overlay_payload), encoding="utf-8"
+    )
+    cfg = replace(load_region("iberia_868"))
+    zip_a = build_unity_zip(project_id_strict, cfg=cfg, region_key="iberia_868")
+
+    # ---- Tolerant run -----------------------------------------------------
+    monkeypatch.setattr(
+        overlay_module,
+        "_ZIP_BOUND_FIELDS",
+        frozenset({"name", "kingdom_owner", "historical_notes"}),
+    )
+    project_id_tol = "00000000-0000-0000-0000-707071071100"
+    pdir_tol = _stage(project_id_tol)
+    (pdir_tol / "research_overlay.json").write_text(
+        json.dumps(overlay_payload), encoding="utf-8"
+    )
+    zip_b = build_unity_zip(project_id_tol, cfg=cfg, region_key="iberia_868")
+
+    # ---- Assertions -------------------------------------------------------
+    with _zipfile.ZipFile(zip_a) as za, _zipfile.ZipFile(zip_b) as zb:
+        files_a = sorted(za.namelist())
+        files_b = sorted(zb.namelist())
+        assert files_a == files_b, (
+            f"REVIEWS fix #9: zip file list differs: A={files_a} B={files_b}"
+        )
+
+        # (a) Geometric outputs byte-identical under verdict toggle.
+        for fname in files_a:
+            if fname in ("territory_metadata.json", "MANIFEST.json"):
+                continue
+            sha_a = _hashlib.sha256(za.read(fname)).hexdigest()
+            sha_b = _hashlib.sha256(zb.read(fname)).hexdigest()
+            assert sha_a == sha_b, (
+                f"REVIEWS fix #9: geometric output {fname} differs between "
+                f"Strict and Tolerant — verdict toggle leaked into geometry"
+            )
+
+        # (b) territory_metadata.json: invariants + name match; Strict has no
+        # kingdom_owner/historical_notes for the overlay-targeted condados.
+        meta_a = json.loads(za.read("territory_metadata.json"))
+        meta_b = json.loads(zb.read("territory_metadata.json"))
+        assert len(meta_a["condados"]) == len(meta_b["condados"]), (
+            "REVIEWS fix #9: condado count differs between Strict and Tolerant"
+        )
+        by_id_a = {c["id"]: c for c in meta_a["condados"]}
+        by_id_b = {c["id"]: c for c in meta_b["condados"]}
+        for cid in by_id_a:
+            ca = by_id_a[cid]
+            cb = by_id_b[cid]
+            for invariant in (
+                "original_idx",
+                "pixel_count",
+                "pixel_center",
+                "lon",
+                "lat",
+                "duchy",
+                "kingdom",
+            ):
+                if invariant in ca or invariant in cb:
+                    assert ca.get(invariant) == cb.get(invariant), (
+                        f"REVIEWS fix #9: {invariant} differs for condado {cid} "
+                        f"between Strict and Tolerant"
+                    )
+            # name emitted in both verdicts (overlay sets it under Strict too).
+            assert ca["name"] == cb["name"]
+            # For the overlay-targeted condados the Strict zip must NOT leak
+            # kingdom_owner or historical_notes.
+            if cid in overlay_payload:
+                if ca.get("kingdom_owner") is not None:
+                    pytest.fail(
+                        f"REVIEWS fix #9: Strict zip leaked kingdom_owner "
+                        f"for condado {cid}: {ca.get('kingdom_owner')!r}"
+                    )
+                if ca.get("historical_notes") is not None:
+                    pytest.fail(
+                        f"REVIEWS fix #9: Strict zip leaked historical_notes "
+                        f"for condado {cid}: {ca.get('historical_notes')!r}"
+                    )
+
+        # (c) Both manifests acknowledge overlay applied.
+        man_a = json.loads(za.read("MANIFEST.json"))
+        man_b = json.loads(zb.read("MANIFEST.json"))
+        assert man_a["research_overlay_applied"] is True
+        assert man_b["research_overlay_applied"] is True
