@@ -76,4 +76,5 @@ markers = [
     "integration: integration tests across services",
     "uat: user acceptance tests via Playwright",
     "e2e: end-to-end pipeline contract tests (run full pipeline, check output files)",
+    "anthropic: integration tests that require Anthropic SDK + live or mocked claude credentials",
 ]
