@@ -634,3 +634,14 @@ None — `gsd-tools todo match-phase 07` returned `todo_count=0`.
 
 *Phase: 07-llm-research-as-opt-in-metadata-layer*
 *Context gathered: 2026-05-13*
+
+---
+
+## Execution Gating (added by reviews replan 2026-05-14)
+
+Phase 07 ships in **two merge gates** per Codex review consensus:
+
+- **Backend gate** — plans 00–08 + parity/e2e (Plans 11 backend-only assertions). Merges independently once green.
+- **Frontend gate** — plans 09a, 09b, 10, 11 frontend specs. Merges after backend gate is green.
+
+Each gate's plans share a single PR. Rollback is per-gate (revert frontend PR keeps the backend gate intact and vice versa). Wave ordering, plan numbering, and task IDs are unaffected by this decision — it only changes how the resulting commits aggregate at merge time. No plan files require changes for this addendum to take effect.
