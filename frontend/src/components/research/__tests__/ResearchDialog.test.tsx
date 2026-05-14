@@ -107,10 +107,13 @@ describe('ResearchDialog', () => {
     expect(screen.getByText('Iniciar pesquisa')).toBeTruthy()
   })
 
-  it('renders País as read-only with the region display name', () => {
+  it('renders País as read-only with the region display name + somente leitura suffix', () => {
     renderDialog({ regionDisplayName: 'Iberia 868' })
-    // País field surfaces the region name (read-only)
-    expect(screen.getByDisplayValue(/Iberia 868/)).toBeTruthy()
+    // País field is the read-only one with the explicit suffix; Período just
+    // shows "Iberia 868" without the suffix. Disambiguate via the suffix.
+    expect(
+      screen.getByDisplayValue(/Iberia 868 \(somente leitura/),
+    ).toBeTruthy()
   })
 
   it('renders Período seeded from region display_name', () => {
