@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { Box, Flex } from '@radix-ui/themes'
+import { Box, Button, Flex, Text } from '@radix-ui/themes'
+import * as Toast from '@radix-ui/react-toast'
 import { useQueryClient } from '@tanstack/react-query'
+import { useProject, useStatusManifest } from '../api/client'
 import {
-  useExport,
-  useProject,
-  useStatusManifest,
-} from '../api/client'
+  useExportV3,
+  ExportValidationError,
+  type ExportResponse,
+  type ValidationEnvelope,
+} from '../api/useExportV3'
 import { useGenerateStream } from '../api/useGenerateStream'
 import { useRunStore } from '../stores/useRunStore'
 import { CanvasViewer } from '../components/canvas/CanvasViewer'
@@ -16,6 +19,10 @@ import { RunLogPanel } from '../components/workspace/RunLogPanel'
 import { EmptyCanvasState } from '../components/workspace/EmptyCanvasState'
 import { GeneratingCanvasState } from '../components/workspace/GeneratingCanvasState'
 import { ErrorCanvasCallout } from '../components/workspace/ErrorCanvasCallout'
+import {
+  ExportErrorDialog,
+  type DryRunOutcome,
+} from '../components/export/ExportErrorDialog'
 
 /**
  * ProjectDetailWorkspace — Phase 03 Plan 04 read-only Mapbox-style shell.
@@ -30,11 +37,16 @@ export function ProjectDetail() {
   const { id } = useParams<{ id: string }>()
   const projectQ = useProject(id)
   const statusQ = useStatusManifest(id)
-  const exportZip = useExport(id)
+  const exportMut = useExportV3(id)
   const qc = useQueryClient()
   const stream = useGenerateStream()
   const run = useRunStore()
   const [logPanelOpen, setLogPanelOpen] = useState(false)
+  // D-08 envelope from the most recent 422; controls ExportErrorDialog open state.
+  const [exportEnvelope, setExportEnvelope] = useState<ValidationEnvelope | null>(null)
+  // Network/5xx failures render via Toast.Provider (already mounted in main.tsx).
+  const [toastOpen, setToastOpen] = useState(false)
+  const [toastMessage, setToastMessage] = useState('')
 
   const project = projectQ.data
   const status = statusQ.data
@@ -86,9 +98,88 @@ export function ProjectDetail() {
     }
   }, [id, run, stream])
 
-  const handleExport = useCallback(() => {
-    exportZip.mutate()
-  }, [exportZip])
+  /**
+   * Phase 07 Plan 10 — v3 export flow.
+   *
+   * 1. mutateAsync({}) → backend returns 201 + ExportResponse with download_url
+   *    (D-08 envelope on 422 → ExportValidationError → open ExportErrorDialog).
+   * 2. fetch(download_url) → blob().
+   * 3. URL.createObjectURL(blob) → anchor[download] → click → revokeObjectURL.
+   *
+   * Network/5xx (generic Error) surfaces via Toast.Provider per UI-SPEC §Surface 3.
+   */
+  const handleExport = useCallback(async () => {
+    if (!id) return
+    try {
+      const data = (await exportMut.mutateAsync({})) as ExportResponse
+      const downloadRes = await fetch(data.download_url)
+      if (!downloadRes.ok) {
+        throw new Error(`Falha ao baixar o ZIP (${downloadRes.status})`)
+      }
+      const blob = await downloadRes.blob()
+      const url = URL.createObjectURL(blob)
+      try {
+        const a = document.createElement('a')
+        a.href = url
+        a.download = data.zip_filename
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+      } finally {
+        URL.revokeObjectURL(url)
+      }
+    } catch (err) {
+      if (err instanceof ExportValidationError) {
+        setExportEnvelope(err.envelope)
+        return
+      }
+      const message = err instanceof Error ? err.message : String(err)
+      setToastMessage(
+        `Erro ao comunicar com o servidor de exportação: ${message}. Tente novamente.`,
+      )
+      setToastOpen(true)
+    }
+  }, [id, exportMut])
+
+  /**
+   * Dialog dry-run callback: runs the same mutation with `dryRun: true`.
+   * Returns a discriminated outcome so the dialog can render the right body.
+   */
+  const handleDryRun = useCallback(async (): Promise<DryRunOutcome> => {
+    try {
+      const result = (await exportMut.mutateAsync({ dryRun: true })) as {
+        dry_run: true
+        passed: boolean
+        errors: unknown[]
+        warnings: unknown[]
+      }
+      if (result.passed) {
+        return { kind: 'passed', passed: true }
+      }
+      // Defensive: backend wraps non-passing dry-runs in 422 (handled below),
+      // but if a future server returns 200 with passed=false, surface as failure.
+      return {
+        kind: 'failed',
+        envelope: {
+          detail: {
+            summary: `${(result.errors ?? []).length} errors blocked export`,
+            errors: result.errors as never,
+            warnings: result.warnings as never,
+          },
+        },
+      }
+    } catch (err) {
+      if (err instanceof ExportValidationError) {
+        return { kind: 'failed', envelope: err.envelope }
+      }
+      const message = err instanceof Error ? err.message : String(err)
+      return { kind: 'network-error', message }
+    }
+  }, [exportMut])
+
+  const handleCloseExportDialog = useCallback(() => {
+    setExportEnvelope(null)
+  }, [])
 
   const period = project ? `${project.period_start}-${project.period_end}` : ''
   const country = project?.country_qid ?? ''
@@ -165,6 +256,32 @@ export function ProjectDetail() {
           )}
         </Box>
       </Flex>
+
+      <ExportErrorDialog
+        envelope={exportEnvelope}
+        onClose={handleCloseExportDialog}
+        onDryRun={handleDryRun}
+        onRetryExport={handleExport}
+      />
+
+      <Toast.Root
+        open={toastOpen}
+        onOpenChange={setToastOpen}
+        duration={8000}
+        data-testid="export-network-toast"
+        className="rounded-md border border-red-300 bg-white p-3 shadow-md"
+      >
+        <Toast.Title asChild>
+          <Text size="2" color="red">
+            {toastMessage}
+          </Text>
+        </Toast.Title>
+        <Toast.Action altText="Fechar" asChild>
+          <Button size="1" variant="soft" onClick={() => setToastOpen(false)}>
+            Fechar
+          </Button>
+        </Toast.Action>
+      </Toast.Root>
     </Flex>
   )
 }
