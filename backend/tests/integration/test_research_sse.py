@@ -219,6 +219,18 @@ async def test_research_stream_returns_409_when_run_already_in_flight_for_projec
             force_refresh=False,
             session_factory=lambda: db_session,
         )
+    # Drain the first run so its task doesn't leak across the test boundary.
+    from medieval_forge.services.research.runner import _RUN_QUEUES, _RUN_TASKS
+
+    q = _RUN_QUEUES.get(project_id)
+    if q is not None:
+        await _drain_queue(q, timeout=5.0)
+    t = _RUN_TASKS.get(project_id)
+    if t is not None:
+        try:
+            await asyncio.wait_for(t, timeout=5.0)
+        except Exception:  # noqa: BLE001
+            pass
 
 
 # ---------------------------------------------------------------------------
