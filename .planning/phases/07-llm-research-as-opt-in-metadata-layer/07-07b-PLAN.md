@@ -2,7 +2,7 @@
 phase: 07-llm-research-as-opt-in-metadata-layer
 plan: 07b
 type: execute
-wave: 3
+wave: 4
 depends_on: [01, 04, 05, 06, 07a]
 files_modified:
   - backend/medieval_forge/services/research/runner.py

@@ -2,7 +2,7 @@
 phase: 07-llm-research-as-opt-in-metadata-layer
 plan: 09a
 type: execute
-wave: 4
+wave: 5
 depends_on: [07a, 07b, 08]
 files_modified:
   - frontend/src/api/useProviders.ts

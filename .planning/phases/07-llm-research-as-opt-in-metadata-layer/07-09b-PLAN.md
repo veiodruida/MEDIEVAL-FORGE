@@ -2,7 +2,7 @@
 phase: 07-llm-research-as-opt-in-metadata-layer
 plan: 09b
 type: execute
-wave: 4
+wave: 6
 depends_on: [09a]
 files_modified:
   - frontend/src/components/canvas/InspectorSidebar.tsx
