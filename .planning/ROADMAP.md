@@ -164,6 +164,20 @@ Plans:
 1. Project without API key generates and exports successfully (zero LLM calls)
 2. With research run, territories show historical names instead of `Condado_001`
 3. `services/research_runner.py`, `services/llm/`, `services/research_cache.py`, `components/research/` are reused (moved into `v3/` namespace)
+**Plans:** 12 plans
+Plans:
+- [ ] 07-00-PLAN.md — Wave 0 Q2 gate: read Reconquista Unity loader → verdict file flips _ZIP_BOUND_FIELDS (Tolerant vs Strict)
+- [ ] 07-01-PLAN.md — Wave 0 DB foundation: Alembic 0006 + LLMCredential + ResearchCache models + credential_store.py + pytest anthropic marker (D-06, D-11, Discretion #1/#6)
+- [ ] 07-02-PLAN.md — Wave 0 literal-port pt1: base.py (NEW Protocol) + schemas.py + parse.py from 87f8aab~1 (D-01, D-02 — 2 of 4 stateless artifacts)
+- [ ] 07-03-PLAN.md — Wave 1 literal-port pt2: retry.py + prompt.py from 87f8aab~1 + registry.py skeleton (D-02 complete, D-05, Discretion #10)
+- [ ] 07-04-PLAN.md — Wave 2 providers: ClaudeProvider (D-07 auth chain) + OllamaProvider (D-13 defaults) + registry wiring (D-05, Discretion #2/#3/#4, Pitfalls 4+5)
+- [ ] 07-05-PLAN.md — Wave 1 overlay merge: services/export/schemas.py extensions + merge_overlay() pure function + _ZIP_BOUND_FIELDS from Q2 verdict (D-03/D-04, Pitfall 8)
+- [ ] 07-06-PLAN.md — Wave 2 matcher: build_pipeline_condado_list + llm_output_to_overlay (Pattern 7, Pitfall 3)
+- [ ] 07-07-PLAN.md — Wave 3 research orchestration: cache.py + runner.py (SSE mirror) + api/v3/research.py + api/v3/credentials.py + main.py mounts (D-09, D-11, Pitfalls 1+6+7)
+- [ ] 07-08-PLAN.md — Wave 3 export integration: build_unity_zip merge + artifact endpoint merge-on-the-fly + e2e test_research_overlay_iberia.py (Patterns 11+12, Pitfalls 1+2)
+- [ ] 07-09-PLAN.md — Wave 4 frontend research: ResearchDialog + ProviderSelector + ResearchProgress + useResearchStream + InspectorSidebar extensions (D-08, D-09, UI-SPEC §Surface 1+2, Pitfall 9)
+- [ ] 07-10-PLAN.md — Wave 4 frontend Phase 06 absorption: i18n/exportErrors.ts (6 codes) + useExportV3 + ExportErrorDialog + ProjectDetail swap (D-10, UI-SPEC §Surface 3)
+- [ ] 07-11-PLAN.md — Wave 5 validation: parity test_zero_llm_byte_identical (D-12 non-skippable) + Playwright UAT (research dialog, badge, export 422) + manual UAT checkpoint
 
 ---
 
