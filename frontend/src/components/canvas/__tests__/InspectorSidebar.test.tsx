@@ -1,6 +1,7 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { Theme } from '@radix-ui/themes'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { InspectorSidebar } from '../InspectorSidebar'
 import { useUIStore } from '../../../stores/uiStore'
 import type {
@@ -8,6 +9,28 @@ import type {
   TerritoryMetadata,
   TerritoryRender,
 } from '../../../hooks/useCanvasArtifacts'
+
+// Plan 07-09b — mock useResearchOverlay so tests can assert microcopy variants
+// without booting a real fetch chain. The default `useResearchOverlayMock` is
+// reassigned per-suite via `vi.hoisted`.
+const { useResearchOverlayMock } = vi.hoisted(() => ({
+  useResearchOverlayMock: vi.fn(),
+}))
+vi.mock('../../../api/useResearchOverlay', () => ({
+  useResearchOverlay: (...args: unknown[]) => useResearchOverlayMock(...args),
+}))
+
+// Plan 07-09b — silence ResearchDialog internals so InspectorSidebar tests
+// stay focused on the trigger / microcopy / badge / reopen behavior.
+vi.mock('../../research/ResearchDialog', () => ({
+  ResearchDialog: ({ open, initialForceRefresh }: { open: boolean; initialForceRefresh?: boolean }) =>
+    open ? (
+      <div
+        data-testid="research-dialog-mock"
+        data-force-refresh={initialForceRefresh ? 'true' : 'false'}
+      />
+    ) : null,
+}))
 
 const META: TerritoryMetadata = {
   region: 'iberia',
@@ -94,15 +117,35 @@ const BARONIES: BaronyRender[] = [
 ]
 
 const PROJECT = {
+  id: 'proj-1',
   name: 'Reconquista 868',
   country_qid: 'Q29',
   period_start: 868,
   period_end: 900,
+  status: 'generated',
+}
+
+function makeQc() {
+  return new QueryClient({
+    defaultOptions: { queries: { retry: false, staleTime: 0 } },
+  })
 }
 
 function wrap(node: React.ReactNode) {
-  return <Theme>{node}</Theme>
+  return (
+    <QueryClientProvider client={makeQc()}>
+      <Theme>{node}</Theme>
+    </QueryClientProvider>
+  )
 }
+
+// Default overlay: no research applied. Each Plan 07-09b suite overrides
+// per-test via `useResearchOverlayMock.mockReturnValue(...)`.
+beforeEach(() => {
+  useResearchOverlayMock.mockReturnValue({
+    data: { exists: false, covered_condado_ids: [], meta: null },
+  })
+})
 
 describe('InspectorSidebar — placeholder (D-16, no selection)', () => {
   beforeEach(() => {
@@ -358,6 +401,49 @@ describe('InspectorSidebar — barony historical discoverability (D-03)', () => 
     ).toBeInTheDocument()
   })
 
+  it('test_barony_panel_renders_pesquisa_aplicada_badge_when_overlay_covers_parent_condado', () => {
+    useResearchOverlayMock.mockReturnValue({
+      data: {
+        exists: true,
+        covered_condado_ids: ['C_CORUNA'],
+        meta: {
+          provider: 'claude',
+          model: 'claude-sonnet-4-6',
+          generated_at: '2026-05-14T12:30:00Z',
+          applied_at: '2026-05-14T12:30:00Z',
+        },
+      },
+    })
+    render(
+      wrap(<InspectorSidebar metadata={META} territories={TERRITORIES} baronies={BARONIES} project={PROJECT} />),
+    )
+    // Badge text appears for the barony's parent condado C_CORUNA.
+    expect(screen.getAllByText('Pesquisa aplicada').length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('test_barony_panel_atualizar_pesquisa_link_opens_dialog_with_force_refresh', () => {
+    useResearchOverlayMock.mockReturnValue({
+      data: {
+        exists: true,
+        covered_condado_ids: ['C_CORUNA'],
+        meta: {
+          provider: 'claude',
+          model: 'claude-sonnet-4-6',
+          generated_at: '2026-05-14T12:30:00Z',
+          applied_at: '2026-05-14T12:30:00Z',
+        },
+      },
+    })
+    render(
+      wrap(<InspectorSidebar metadata={META} territories={TERRITORIES} baronies={BARONIES} project={PROJECT} />),
+    )
+    const reopen = screen.getAllByText('Atualizar pesquisa')[0]
+    fireEvent.click(reopen)
+    const dialog = screen.getByTestId('research-dialog-mock')
+    expect(dialog).toBeInTheDocument()
+    expect(dialog.getAttribute('data-force-refresh')).toBe('true')
+  })
+
   it('test_barony_panel_falls_back_to_dash_when_centroid_missing', () => {
     // Override the barony fixture: same name selected, but centroid omitted
     const baroniesNoCentroid: BaronyRender[] = [
@@ -385,5 +471,202 @@ describe('InspectorSidebar — barony historical discoverability (D-03)', () => 
     // No NaN, no "undefined" leak
     expect(coordEl.textContent).not.toContain('undefined')
     expect(coordEl.textContent).not.toContain('NaN')
+  })
+})
+
+// Plan 07-09b — Research trigger + dual-timestamp microcopy + badges.
+// UI-SPEC §Surface 2; REVIEWS fix #2 (generated_at vs applied_at).
+describe('InspectorSidebar — Plan 07-09b research trigger (placeholder mode)', () => {
+  beforeEach(() => {
+    useUIStore.setState({
+      selectedTerritoryIds: [],
+      selectedTerritoryId: null,
+      selectedBaronyId: null,
+      layerVisibility: {
+        condados: true,
+        baronies: false,
+        borders: true,
+        capitals: true,
+        labels: false,
+      },
+    })
+  })
+
+  it('placeholder mode renders the "Pesquisar metadados históricos" trigger button', () => {
+    render(
+      wrap(<InspectorSidebar metadata={META} territories={TERRITORIES} baronies={BARONIES} project={PROJECT} />),
+    )
+    const btn = screen.getByRole('button', { name: /Pesquisar metadados históricos/ })
+    expect(btn).toBeInTheDocument()
+  })
+
+  it('trigger is disabled and shows the gating tooltip when project.status !== "generated"', () => {
+    render(
+      wrap(
+        <InspectorSidebar
+          metadata={META}
+          territories={TERRITORIES}
+          baronies={BARONIES}
+          project={{ ...PROJECT, status: 'pending' }}
+        />,
+      ),
+    )
+    const btn = screen.getByRole('button', { name: /Pesquisar metadados históricos/ })
+    expect((btn as HTMLButtonElement).disabled).toBe(true)
+    // Tooltip body is asserted via the wrapper data-* attribute (Radix Tooltip
+    // mounts in a portal lazily; we expose the body via data-tooltip-body so
+    // the assertion does not need pointer events).
+    expect(screen.getByTestId('research-trigger-tooltip').getAttribute('data-tooltip-body'))
+      .toBe('Gere o mapa antes de pesquisar metadados.')
+  })
+
+  it('clicking the trigger opens the ResearchDialog without force-refresh pre-checked', () => {
+    render(
+      wrap(<InspectorSidebar metadata={META} territories={TERRITORIES} baronies={BARONIES} project={PROJECT} />),
+    )
+    fireEvent.click(screen.getByRole('button', { name: /Pesquisar metadados históricos/ }))
+    const dialog = screen.getByTestId('research-dialog-mock')
+    expect(dialog).toBeInTheDocument()
+    expect(dialog.getAttribute('data-force-refresh')).toBe('false')
+  })
+
+  it('REVIEWS fix #2 — renders SINGLE-LINE microcopy when generated_at === applied_at (fresh run)', () => {
+    useResearchOverlayMock.mockReturnValue({
+      data: {
+        exists: true,
+        covered_condado_ids: ['C_CORUNA'],
+        meta: {
+          provider: 'claude',
+          model: 'claude-sonnet-4-6',
+          generated_at: '2026-05-14T12:30:00Z',
+          applied_at: '2026-05-14T12:30:00Z',
+        },
+      },
+    })
+    render(
+      wrap(<InspectorSidebar metadata={META} territories={TERRITORIES} baronies={BARONIES} project={PROJECT} />),
+    )
+    // Single-line microcopy contains "Última pesquisa:" with provider/model/date.
+    const line = screen.getByText((content) =>
+      content.startsWith('Última pesquisa:') &&
+      content.includes('claude') &&
+      content.includes('claude-sonnet-4-6') &&
+      content.includes('2026-05-14'),
+    )
+    expect(line).toBeInTheDocument()
+    // Two-line variant MUST NOT appear.
+    expect(screen.queryByText((c) => c.startsWith('Pesquisa gerada:'))).toBeNull()
+    expect(screen.queryByText((c) => c.startsWith('· aplicada:'))).toBeNull()
+  })
+
+  it('REVIEWS fix #2 — renders TWO-LINE microcopy when generated_at differs from applied_at (cache hit)', () => {
+    useResearchOverlayMock.mockReturnValue({
+      data: {
+        exists: true,
+        covered_condado_ids: ['C_CORUNA'],
+        meta: {
+          provider: 'claude',
+          model: 'claude-sonnet-4-6',
+          generated_at: '2026-05-01T12:00:00Z',
+          applied_at: '2026-05-14T15:00:00Z',
+        },
+      },
+    })
+    render(
+      wrap(<InspectorSidebar metadata={META} territories={TERRITORIES} baronies={BARONIES} project={PROJECT} />),
+    )
+    expect(screen.getByText((c) => c.startsWith('Pesquisa gerada:'))).toBeInTheDocument()
+    expect(screen.getByText((c) => c.startsWith('· aplicada:'))).toBeInTheDocument()
+    // Single-line variant must NOT appear.
+    expect(screen.queryByText((c) => c.startsWith('Última pesquisa:'))).toBeNull()
+  })
+
+  it('microcopy is ABSENT when overlay.meta is null', () => {
+    useResearchOverlayMock.mockReturnValue({
+      data: { exists: false, covered_condado_ids: [], meta: null },
+    })
+    render(
+      wrap(<InspectorSidebar metadata={META} territories={TERRITORIES} baronies={BARONIES} project={PROJECT} />),
+    )
+    expect(screen.queryByText((c) => c.startsWith('Última pesquisa:'))).toBeNull()
+    expect(screen.queryByText((c) => c.startsWith('Pesquisa gerada:'))).toBeNull()
+  })
+})
+
+describe('InspectorSidebar — Plan 07-09b condado-mode research badge', () => {
+  beforeEach(() => {
+    useUIStore.setState({
+      selectedTerritoryIds: ['C_CORUNA'],
+      selectedTerritoryId: 'C_CORUNA',
+      selectedBaronyId: null,
+      layerVisibility: {
+        condados: true,
+        baronies: false,
+        borders: true,
+        capitals: true,
+        labels: false,
+      },
+    })
+  })
+
+  it('condado mode renders "Pesquisa aplicada" badge when overlay covers the condado id', () => {
+    useResearchOverlayMock.mockReturnValue({
+      data: {
+        exists: true,
+        covered_condado_ids: ['C_CORUNA'],
+        meta: {
+          provider: 'claude',
+          model: 'claude-sonnet-4-6',
+          generated_at: '2026-05-14T12:30:00Z',
+          applied_at: '2026-05-14T12:30:00Z',
+        },
+      },
+    })
+    render(
+      wrap(<InspectorSidebar metadata={META} territories={TERRITORIES} baronies={BARONIES} project={PROJECT} />),
+    )
+    expect(screen.getByText('Pesquisa aplicada')).toBeInTheDocument()
+  })
+
+  it('clicking "Atualizar pesquisa" reopens the dialog with force-refresh pre-checked', () => {
+    useResearchOverlayMock.mockReturnValue({
+      data: {
+        exists: true,
+        covered_condado_ids: ['C_CORUNA'],
+        meta: {
+          provider: 'claude',
+          model: 'claude-sonnet-4-6',
+          generated_at: '2026-05-14T12:30:00Z',
+          applied_at: '2026-05-14T12:30:00Z',
+        },
+      },
+    })
+    render(
+      wrap(<InspectorSidebar metadata={META} territories={TERRITORIES} baronies={BARONIES} project={PROJECT} />),
+    )
+    const reopen = screen.getByText('Atualizar pesquisa')
+    fireEvent.click(reopen)
+    const dialog = screen.getByTestId('research-dialog-mock')
+    expect(dialog).toBeInTheDocument()
+    expect(dialog.getAttribute('data-force-refresh')).toBe('true')
+  })
+
+  it('badge is HIDDEN when overlay does not cover the condado id', () => {
+    useResearchOverlayMock.mockReturnValue({
+      data: {
+        exists: true,
+        covered_condado_ids: ['C_OTHER'],
+        meta: {
+          provider: 'claude',
+          model: 'claude-sonnet-4-6',
+          generated_at: '2026-05-14T12:30:00Z',
+          applied_at: '2026-05-14T12:30:00Z',
+        },
+      },
+    })
+    render(
+      wrap(<InspectorSidebar metadata={META} territories={TERRITORIES} baronies={BARONIES} project={PROJECT} />),
+    )
+    expect(screen.queryByText('Pesquisa aplicada')).toBeNull()
   })
 })
