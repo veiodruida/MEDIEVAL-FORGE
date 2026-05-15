@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: + bootstrap v3 infrastructure
 status: executing
-stopped_at: Phase 07 UI-SPEC approved
-last_updated: "2026-05-14T11:03:57.012Z"
-last_activity: 2026-05-14 -- Phase 07 planning complete
+stopped_at: Phase 07.1 context gathered
+last_updated: "2026-05-15T13:37:51.881Z"
+last_activity: 2026-05-14 -- Phase 07 execution started
 progress:
-  total_phases: 10
+  total_phases: 11
   completed_phases: 7
   total_plans: 59
-  completed_plans: 45
-  percent: 76
+  completed_plans: 58
+  percent: 98
 ---
 
 # Project State (v3)
@@ -21,20 +21,24 @@ progress:
 See: .planning/PROJECT.md
 
 **Core value:** A Game Designer goes from "country + historical period" to a validated, Unity-ready map package — driven by geometry, with LLM as opt-in metadata.
-**Current focus:** Phase 06 — export-contract-validation-gate
+**Current focus:** Phase 07 — llm-research-as-opt-in-metadata-layer
 
 ## Current Position
 
-Phase: 07
-Plan: Not started
-Status: Ready to execute
-Last activity: 2026-05-14 -- Phase 07 planning complete
+Phase: 07 (llm-research-as-opt-in-metadata-layer) — EXECUTING
+Plan: 1 of 14
+Status: Executing Phase 07
+Last activity: 2026-05-14 -- Phase 07 execution started
 
 Progress: [█████████░] 93% (25 of 27 plans complete)
 
 **RESUME:** Plan 04.1-03 (D-01 stable projection key + D-02 preview gesture, frontend-only, no dependency on backend or plan 04) is the natural next step. Plan 04.1-05 (Playwright regression sweep) gates phase closure — it consumes the data-testids codified by plan 04.1-04 (`barony-source-coord`, `barony-source-file`, `barony-method-explainer`) for the SC-3 E2E click-through.
 
 ## Accumulated Context
+
+### Roadmap Evolution
+
+- Phase 07.1 inserted after Phase 07: Period numeric inputs + Llama.cpp re-add with auto-launch and local model list (URGENT)
 
 ### Decisions
 
@@ -120,6 +124,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-13T19:55:04.912Z
-Stopped at: Phase 07 UI-SPEC approved
-Resume file: .planning/phases/07-llm-research-as-opt-in-metadata-layer/07-UI-SPEC.md
+Last session: 2026-05-15T13:37:51.878Z
+Stopped at: Phase 07.1 context gathered
+Resume file: .planning/phases/07.1-period-numeric-inputs-llama-cpp-re-add-with-auto-launch-and-/07.1-CONTEXT.md
