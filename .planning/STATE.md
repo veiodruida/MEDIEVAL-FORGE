@@ -114,7 +114,7 @@ See `.planning/PROJECT.md` Key Decisions table (D-V3-01 through D-V3-07).
 
 ### Pending Todos
 
-- [2026-05-15-assert-sidecar-retained-on-tolerant-to-strict-export.md](./todos/pending/2026-05-15-assert-sidecar-retained-on-tolerant-to-strict-export.md) — testing — Phase 07 REVIEWS #9 gap: sidecar retention not asserted on Strict re-export
+None yet.
 
 ### Quick Tasks Completed
 
