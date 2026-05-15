@@ -37,6 +37,7 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable, Optional
 
 from ..llm.registry import PROVIDERS
+from ..llm.schemas import ResearchResult
 from ..paths import project_dir
 from .cache import (
     PROMPT_DIGEST,
@@ -170,7 +171,7 @@ async def _research_producer(
                     f"condado_ids={','.join(condado_ids)}"
                 )
 
-                result = await provider.research(prompt, schema=None, credentials=None, queue=queue)
+                result = await provider.research(prompt, schema=ResearchResult, credentials=None, queue=queue)
                 # Provider may return a Pydantic model OR a dict — normalize.
                 if hasattr(result, "model_dump"):
                     payload = result.model_dump()
