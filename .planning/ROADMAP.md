@@ -186,7 +186,7 @@ Plans:
 **Depends on:** Phase 07
 **Status:** planned
 **Success criteria:**
-1. ResearchDialog renders two numeric inputs (`period_start`, `period_end`) with `start < end` validation; payload to `/api/v3/research/start` carries integers, not a label string.
+1. ResearchDialog renders two numeric inputs (`period_start`, `period_end`) with `start <= end` validation (snapshot-style equality allowed per CONTEXT D-02); payload to `/api/v3/research/start` carries integers, not a label string.
 2. Prompt template composes period range from start/end (no breaking change to LLM prompt semantics).
 3. `LlamaCppProvider` registered in `services/llm/registry.py`; `health()` returns `{ok, message, available_models}` where `available_models` lists `.gguf` files from a configurable models directory.
 4. New `POST /api/v3/llm/llamacpp/launch` spawns `llama-server -m <selected.gguf> --port <port>` via subprocess; idempotent (returns ok if same model already running); cleanup on app exit + via DELETE endpoint.
