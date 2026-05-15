@@ -68,7 +68,7 @@ export function ResearchDialog({
   const { data: providers, isLoading: providersLoading } = useProviders(open)
   const overlay = useResearchOverlay(open ? projectId : undefined)
 
-  const [period, setPeriod] = useState(regionDisplayName)
+  const [period, setPeriod] = useState(regionDisplayName ?? '')
   const [provider, setProvider] = useState<string>('')
   const [model, setModel] = useState<string>('')
   const [forceRefresh, setForceRefresh] = useState(initialForceRefresh)
@@ -88,7 +88,7 @@ export function ResearchDialog({
 
   // Re-seed Período whenever the dialog re-opens against a new region.
   useEffect(() => {
-    if (open) setPeriod(regionDisplayName)
+    if (open) setPeriod(regionDisplayName ?? '')
   }, [open, regionDisplayName])
 
   // Auto-close 1.2s after terminal success (UI-SPEC §Interaction Contract).

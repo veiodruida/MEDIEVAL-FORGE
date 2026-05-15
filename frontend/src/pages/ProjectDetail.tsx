@@ -23,6 +23,7 @@ import {
   ExportErrorDialog,
   type DryRunOutcome,
 } from '../components/export/ExportErrorDialog'
+import { regionDisplayNameFor } from '../utils/regionDisplay'
 
 /**
  * ProjectDetailWorkspace — Phase 03 Plan 04 read-only Mapbox-style shell.
@@ -182,7 +183,7 @@ export function ProjectDetail() {
   }, [])
 
   const period = project ? `${project.period_start}-${project.period_end}` : ''
-  const country = project?.country_qid ?? ''
+  const country = regionDisplayNameFor(project?.country_qid)
   const lastLogLine = run.logLines.length > 0 ? run.logLines[run.logLines.length - 1] : null
 
   const body = (() => {

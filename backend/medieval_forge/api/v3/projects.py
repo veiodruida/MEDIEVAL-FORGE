@@ -41,6 +41,16 @@ def _available_region_keys() -> set[str]:
     return {p.stem for p in _REGIONS_DIR.glob("*.yaml")}
 
 
+# Maps curated region_key values to their Wikidata country_qid.
+# Required so GET /api/projects/{id} returns a non-null country_qid that the
+# frontend's ResearchDialog can use when submitting LLM research requests.
+_REGION_KEY_COUNTRY_QID: dict[str, str] = {
+    "iberia_868": "Q29,Q45",
+    "france_1066": "Q142",
+    "england_1216": "Q145,Q27",
+}
+
+
 @router.post("", status_code=201)
 async def create_v3_project(
     payload: V3ProjectCreate,
@@ -59,7 +69,11 @@ async def create_v3_project(
             status_code=400,
             detail=f"region_key {payload.region_key!r} not in available regions: {sorted(available)}",
         )
-    project = Project(name=payload.name, region_key=payload.region_key)
+    project = Project(
+        name=payload.name,
+        region_key=payload.region_key,
+        country_qid=_REGION_KEY_COUNTRY_QID.get(payload.region_key),
+    )
     db.add(project)
     await db.commit()
     await db.refresh(project)

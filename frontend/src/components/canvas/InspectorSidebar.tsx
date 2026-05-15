@@ -6,6 +6,7 @@ import { MultiSelectInspector } from './MultiSelectInspector'
 import { pixelsToKm2 as pixelsToKm2Util } from '../../lib/pixelsToKm2'
 import { useResearchOverlay } from '../../api/useResearchOverlay'
 import { ResearchDialog } from '../research/ResearchDialog'
+import { regionDisplayNameFor } from '../../utils/regionDisplay'
 import type {
   BaronyRender,
   TerritoryMetadata,
@@ -71,19 +72,6 @@ interface ProjectSummary {
   status: string
 }
 
-/**
- * Plan 07-09b — region display name lookup keyed off country_qid. Mirrors
- * the same mapping used by ResearchDialog when seeding the Período field.
- * Defaults to the qid string when no friendly name is registered yet.
- */
-function regionDisplayNameFor(countryQid: string): string {
-  switch (countryQid) {
-    case 'Q29':
-      return 'Iberia 868 AD'
-    default:
-      return countryQid
-  }
-}
 
 interface InspectorSidebarProps {
   metadata: TerritoryMetadata
