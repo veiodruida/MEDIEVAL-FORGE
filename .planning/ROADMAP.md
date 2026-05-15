@@ -181,6 +181,31 @@ Plans:
 - [ ] 07-10-PLAN.md — Wave 4 frontend Phase 06 absorption: i18n/exportErrors.ts (6 codes) + useExportV3 + ExportErrorDialog + ProjectDetail swap + WARNING 4 legacy useExport DELETION (D-10, D-V3-04, UI-SPEC §Surface 3)
 - [ ] 07-11-PLAN.md — Wave 5 validation: parity test_zero_llm_byte_identical (D-12 non-skippable) + Playwright UAT (research dialog, badge, export 422) + NIT 4 DEV-gated escape hatches + manual UAT checkpoint
 
+### Phase 07.1: Period numeric inputs + Llama.cpp re-add with auto-launch and local model list (INSERTED)
+**Goal:** Replace single-string `period_label` with numeric start+end inputs in ResearchDialog; re-add LlamaCppProvider (deleted in 87f8aab) with filesystem model listing, auto-launch endpoint, and model dropdown in AuthSetupSheet.
+**Depends on:** Phase 07
+**Status:** planned
+**Success criteria:**
+1. ResearchDialog renders two numeric inputs (`period_start`, `period_end`) with `start < end` validation; payload to `/api/v3/research/start` carries integers, not a label string.
+2. Prompt template composes period range from start/end (no breaking change to LLM prompt semantics).
+3. `LlamaCppProvider` registered in `services/llm/registry.py`; `health()` returns `{ok, message, available_models}` where `available_models` lists `.gguf` files from a configurable models directory.
+4. New `POST /api/v3/llm/llamacpp/launch` spawns `llama-server -m <selected.gguf> --port <port>` via subprocess; idempotent (returns ok if same model already running); cleanup on app exit + via DELETE endpoint.
+5. AuthSetupSheet llama.cpp panel replaces free-text model field with a dropdown sourced from `health().available_models`; "Levantar servidor" button invokes the launch endpoint.
+6. All existing Phase 07 tests stay green; new tests cover numeric-period validation, llama.cpp model listing, launch/shutdown lifecycle.
+**Plans:** 11 plans
+Plans:
+- [ ] 07.1-00-PLAN.md — Wave 0 test scaffolds (9 MISSING test files from VALIDATION.md gaps)
+- [ ] 07.1-01-PLAN.md — Wave 1: HealthStatus.available_models additive field (D-09)
+- [ ] 07.1-02-PLAN.md — Wave 1: llamacpp_launcher subprocess lifecycle (D-07a/b, D-08, D-08b) + 16 unit tests + path-traversal guard
+- [ ] 07.1-03-PLAN.md — Wave 2: LlamaCppProvider + registry registration (D-V3-04 rewrite, three v3 deviations)
+- [ ] 07.1-04-PLAN.md — Wave 2: Alembic 0007 + StartResearchBody + runner.py 6-callsite period swap + cache.py signature (D-01/D-02/D-04/D-04b/D-04c)
+- [ ] 07.1-05-PLAN.md — Wave 3: api/v3/llamacpp router POST+DELETE + main.py lifespan + 5 e2e lifecycle tests
+- [ ] 07.1-06-PLAN.md — Wave 4: useProject + useLlamacppHealth + useLlamacppLaunch/Shutdown TanStack hooks (Pitfall 9 invalidation)
+- [ ] 07.1-07-PLAN.md — Wave 5: ResearchDialog two-input swap + rodapé link placeholder + useResearchStream payload + 8 vitest cases (D-01/D-02/D-03/D-04c)
+- [ ] 07.1-08-PLAN.md — Wave 5: AuthSetupSheet new component + ResearchDialog wire-up + 8 vitest cases (D-05/D-06/D-09)
+- [ ] 07.1-09-PLAN.md — Wave 6: Playwright UAT (5 specs) + checkpoint:human-verify live llama-server spawn
+- [ ] 07.1-10-PLAN.md — Wave 6: parity sweep + grep gates + VERIFICATION.md + ROADMAP closure (D-12 invariant + SC-6)
+
 ---
 
 ## Requirement coverage (v3)
