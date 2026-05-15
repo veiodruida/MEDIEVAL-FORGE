@@ -1,10 +1,11 @@
 ---
 phase: 07
 slug: llm-research-as-opt-in-metadata-layer
-status: draft
+status: approved
 shadcn_initialized: false
 preset: none
 created: 2026-05-13
+reviewed_at: 2026-05-15
 ---
 
 # Phase 07 — UI Design Contract
