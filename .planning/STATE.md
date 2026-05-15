@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: + bootstrap v3 infrastructure
 status: executing
-stopped_at: Phase 07.1 context gathered
-last_updated: "2026-05-15T13:37:51.881Z"
+stopped_at: Phase 07 UI-SPEC approved
+last_updated: "2026-05-15T13:56:14.917Z"
 last_activity: 2026-05-14 -- Phase 07 execution started
 progress:
   total_phases: 11
@@ -114,7 +114,7 @@ See `.planning/PROJECT.md` Key Decisions table (D-V3-01 through D-V3-07).
 
 ### Pending Todos
 
-None yet.
+- [2026-05-15-assert-sidecar-retained-on-tolerant-to-strict-export.md](./todos/pending/2026-05-15-assert-sidecar-retained-on-tolerant-to-strict-export.md) — testing — Phase 07 REVIEWS #9 gap: sidecar retention not asserted on Strict re-export
 
 ### Quick Tasks Completed
 
@@ -124,6 +124,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-15T13:37:51.878Z
-Stopped at: Phase 07.1 context gathered
-Resume file: .planning/phases/07.1-period-numeric-inputs-llama-cpp-re-add-with-auto-launch-and-/07.1-CONTEXT.md
+Last session: 2026-05-15T13:56:14.914Z
+Stopped at: Phase 07 UI-SPEC approved
+Resume file: .planning/phases/07-llm-research-as-opt-in-metadata-layer/07-UI-SPEC.md
