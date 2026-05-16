@@ -21,7 +21,8 @@ from medieval_forge.services.llm.base import (
 def test_health_status_round_trips_with_healthy_true_and_message_string():
     hs = HealthStatus(healthy=True, message="Credentials present")
     dumped = hs.model_dump()
-    assert dumped == {"healthy": True, "message": "Credentials present"}
+    # available_models field added in plan 07.1-01 (D-09); None is the default.
+    assert dumped == {"healthy": True, "message": "Credentials present", "available_models": None}
     reconstructed = HealthStatus.model_validate(dumped)
     assert reconstructed.healthy is True
     assert reconstructed.message == "Credentials present"

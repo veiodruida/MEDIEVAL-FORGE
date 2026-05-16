@@ -13,10 +13,18 @@ from pydantic import BaseModel
 
 
 class HealthStatus(BaseModel):
-    """Result of a provider's health_check() — `healthy` plus a UI-rendered message."""
+    """Result of a provider's health_check() — `healthy` plus a UI-rendered message.
+
+    D-09 (Phase 07.1): `available_models` is OPTIONAL. None signals "provider does not
+    surface filesystem/remote model lists" (e.g., Claude). [] or populated list applies
+    to Ollama and Llama.cpp. The existing `healthy: bool` stays canonical; SC-#3's
+    `{ok, message, available_models}` phrasing is satisfied by the additive field — no
+    rename of `healthy` (would force a touch of Claude+Ollama for no behavioral benefit).
+    """
 
     healthy: bool
     message: str = ""
+    available_models: list[str] | None = None
 
 
 class ApiKeyAuth(BaseModel):
