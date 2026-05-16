@@ -166,7 +166,8 @@ async def test_research_stream_emits_4_stage_events_kingdoms_duchies_condados_ba
         provider="stub",
         model="stub-model",
         country_qid="Q29",
-        period_label="868 AD",
+        period_start=868,
+        period_end=1000,
         condado_ids=condado_ids,
         force_refresh=False,
         session_factory=lambda: db_session,
@@ -203,7 +204,8 @@ async def test_research_stream_returns_409_when_run_already_in_flight_for_projec
         provider="stub",
         model="m",
         country_qid="Q29",
-        period_label="868 AD",
+        period_start=868,
+        period_end=1000,
         condado_ids=condado_ids,
         force_refresh=False,
         session_factory=lambda: db_session,
@@ -214,7 +216,8 @@ async def test_research_stream_returns_409_when_run_already_in_flight_for_projec
             provider="stub",
             model="m",
             country_qid="Q29",
-            period_label="868 AD",
+            period_start=868,
+        period_end=1000,
             condado_ids=condado_ids,
             force_refresh=False,
             session_factory=lambda: db_session,
@@ -255,7 +258,8 @@ async def test_research_stop_aborts_in_flight_run_and_evicts_queue(
         provider="stub",
         model="m",
         country_qid="Q29",
-        period_label="868 AD",
+        period_start=868,
+        period_end=1000,
         condado_ids=condado_ids,
         force_refresh=False,
         session_factory=lambda: db_session,
@@ -299,7 +303,8 @@ async def test_research_cache_hit_short_circuits_provider_call(
     # Seed cache row
     ck = cache_key(
         "Q29",
-        "868 AD",
+        868,
+        1000,
         "stub",
         "stub-model",
         condado_ids=condado_ids,
@@ -318,7 +323,8 @@ async def test_research_cache_hit_short_circuits_provider_call(
         provider="stub",
         model="stub-model",
         country_qid="Q29",
-        period_label="868 AD",
+        period_start=868,
+        period_end=1000,
         condado_ids=condado_ids,
         force_refresh=False,
         session_factory=lambda: db_session,
@@ -363,7 +369,8 @@ async def test_research_overlay_written_atomically_via_tmp_replace(
         provider="stub",
         model="stub-model",
         country_qid="Q29",
-        period_label="868 AD",
+        period_start=868,
+        period_end=1000,
         condado_ids=condado_ids,
         force_refresh=False,
         session_factory=lambda: db_session,
@@ -402,7 +409,8 @@ async def test_research_overlay_meta_sidecar_written_with_provider_model_timesta
         provider="stub",
         model="stub-model",
         country_qid="Q29",
-        period_label="868 AD",
+        period_start=868,
+        period_end=1000,
         condado_ids=condado_ids,
         force_refresh=False,
         session_factory=lambda: db_session,
@@ -422,14 +430,16 @@ async def test_research_overlay_meta_sidecar_written_with_provider_model_timesta
         "prompt_digest",
         "schema_version",
         "country",
-        "period",
+        "period_start",
+        "period_end",
     ):
         assert k in meta, f"meta sidecar missing key {k!r}: {meta}"
 
     assert meta["provider"] == "stub"
     assert meta["model"] == "stub-model"
     assert meta["country"] == "Q29"
-    assert meta["period"] == "868 AD"
+    assert meta["period_start"] == 868
+    assert meta["period_end"] == 1000
     assert meta["prompt_digest"] == PROMPT_DIGEST
     assert meta["schema_version"] == SCHEMA_VERSION
 
@@ -454,7 +464,8 @@ async def test_meta_sidecar_generated_at_equals_applied_at_on_fresh_run(
         provider="stub",
         model="stub-model",
         country_qid="Q29",
-        period_label="868 AD",
+        period_start=868,
+        period_end=1000,
         condado_ids=condado_ids,
         force_refresh=False,
         session_factory=lambda: db_session,
@@ -482,7 +493,8 @@ async def test_meta_sidecar_generated_at_predates_applied_at_on_cache_hit(
     # Seed cache row directly with a backdated generated_at.
     ck = cache_key(
         "Q29",
-        "868 AD",
+        868,
+        1000,
         "stub",
         "stub-model",
         condado_ids=condado_ids,
@@ -509,7 +521,8 @@ async def test_meta_sidecar_generated_at_predates_applied_at_on_cache_hit(
         provider="stub",
         model="stub-model",
         country_qid="Q29",
-        period_label="868 AD",
+        period_start=868,
+        period_end=1000,
         condado_ids=condado_ids,
         force_refresh=False,
         session_factory=lambda: db_session,

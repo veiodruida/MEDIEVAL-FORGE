@@ -35,7 +35,7 @@ from typing import Any, AsyncIterator, Optional
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, conint, model_validator
 
 from ...services.llm.registry import PROVIDERS
 from ...services.paths import is_valid_uuid, project_dir
@@ -64,6 +64,11 @@ overlay_router = APIRouter(prefix="/v3/projects", tags=["v3-research"])
 class StartResearchBody(BaseModel):
     """POST /start body — opaque payload validated by the runner.
 
+    D-01 (Phase 07.1): period_start/end are AD positive integers in [1, 2100].
+    D-02 (Phase 07.1): period_start <= period_end (equality allowed for snapshot
+    queries like "Iberia exactly at 868 AD").
+    D-04c (Phase 07.1): atomic swap — no transitional string period field.
+
     `project_id` doubles as the run_id (mirrors api/v3/generate.py — one alive
     run per project). `condado_ids` is the authoritative pipeline list (Plan 06
     matcher consumes it for defense-in-depth filtering).
@@ -73,9 +78,19 @@ class StartResearchBody(BaseModel):
     provider: str
     model: str
     country_qid: str
-    period_label: str
+    period_start: conint(ge=1, le=2100)  # type: ignore[valid-type]  # D-01
+    period_end: conint(ge=1, le=2100)    # type: ignore[valid-type]  # D-01
     condado_ids: list[str]
     force_refresh: bool = False
+
+    @model_validator(mode="after")
+    def _validate_period_range(self) -> "StartResearchBody":
+        if self.period_start > self.period_end:  # D-02: <= allowed
+            raise ValueError(
+                f"period_start ({self.period_start}) must be <= "
+                f"period_end ({self.period_end})"
+            )
+        return self
 
 
 # ---------------------------------------------------------------------------
@@ -101,7 +116,8 @@ async def post_start(body: StartResearchBody) -> dict:
             provider=body.provider,
             model=body.model,
             country_qid=body.country_qid,
-            period_label=body.period_label,
+            period_start=body.period_start,
+            period_end=body.period_end,
             condado_ids=body.condado_ids,
             force_refresh=body.force_refresh,
             session_factory=AsyncSessionLocal,

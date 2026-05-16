@@ -36,6 +36,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Optional
 
+from ..llm.prompt import build_research_prompt
 from ..llm.registry import PROVIDERS
 from ..llm.schemas import ResearchResult
 from ..paths import project_dir
@@ -49,6 +50,28 @@ from .cache import (
 from .matcher import llm_output_to_overlay
 
 logger = logging.getLogger(__name__)
+
+# review-fix #5: resolve QID to human-readable name before prompt rendering.
+# Local LLMs hallucinate when given Wikidata Q-codes verbatim; render the
+# human label instead. Broader Wikidata lookup deferred (see 07.1-10 must_haves).
+_QID_DISPLAY_NAMES: dict[str, str] = {
+    "Q29": "Espanha",
+    "Q45": "Portugal",
+    "Q43175": "Ibéria",
+}
+
+
+def _resolve_country_display_name(country_qid: str) -> str:
+    """Resolve a Wikidata QID to a PT-BR display name for the LLM prompt.
+    Unknown QIDs fall back to the QID itself + WARNING log (review-fix #5)."""
+    name = _QID_DISPLAY_NAMES.get(country_qid)
+    if name is None:
+        logger.warning(
+            "runner: unknown country_qid %r; falling back to raw QID in prompt",
+            country_qid,
+        )
+        return country_qid
+    return name
 
 
 # ---------------------------------------------------------------------------
@@ -110,7 +133,8 @@ async def _research_producer(
     provider_id: str,
     model: str,
     country_qid: str,
-    period_label: str,
+    period_start: int,
+    period_end: int,
     condado_ids: list[str],
     force_refresh: bool,
     queue: asyncio.Queue[Optional[str]],
@@ -130,7 +154,7 @@ async def _research_producer(
         applied_at = datetime.now(timezone.utc)
 
         # 1. Cache lookup ----------------------------------------------------
-        ck = cache_key(country_qid, period_label, provider_id, model, condado_ids)
+        ck = cache_key(country_qid, period_start, period_end, provider_id, model, condado_ids)
         payload: Optional[dict] = None
         generated_at: datetime = applied_at
 
@@ -163,12 +187,14 @@ async def _research_producer(
                 if provider is None:
                     raise KeyError(f"unknown provider_id: {provider_id!r}")
 
-                # Build a minimal prompt placeholder (Plan 09a/09b owns full
-                # prompt composition). Runner stays prompt-agnostic — the
-                # provider sees an opaque string.
-                prompt = (
-                    f"Research request — country={country_qid}, period={period_label}, "
-                    f"condado_ids={','.join(condado_ids)}"
+                # review-fix #5: resolve QID to human-readable display name so
+                # local LLMs don't hallucinate on raw Wikidata Q-codes.
+                country_name = _resolve_country_display_name(country_qid)
+                prompt = build_research_prompt(
+                    country_name=country_name,
+                    period_start=period_start,
+                    period_end=period_end,
+                    bbox=None,
                 )
 
                 result = await provider.research(prompt, schema=ResearchResult, credentials=None, queue=queue)
@@ -221,7 +247,8 @@ async def _research_producer(
             "prompt_digest": PROMPT_DIGEST,
             "schema_version": SCHEMA_VERSION,
             "country": country_qid,
-            "period": period_label,
+            "period_start": period_start,
+            "period_end": period_end,
         }
         _write_json_atomic(meta_path, meta)
 
@@ -269,7 +296,8 @@ async def start_research(
     provider: str,
     model: str,
     country_qid: str,
-    period_label: str,
+    period_start: int,
+    period_end: int,
     condado_ids: list[str],
     force_refresh: bool = False,
     session_factory: Callable[[], Any],
@@ -294,7 +322,8 @@ async def start_research(
             provider_id=provider,
             model=model,
             country_qid=country_qid,
-            period_label=period_label,
+            period_start=period_start,
+            period_end=period_end,
             condado_ids=list(condado_ids),
             force_refresh=force_refresh,
             queue=queue,
@@ -336,10 +365,12 @@ async def stop_research(project_id: str) -> bool:
 
 __all__ = [
     "SingleFlightError",
+    "_QID_DISPLAY_NAMES",
     "_RUN_QUEUES",
     "_RUN_STOP_EVENTS",
     "_RUN_TASKS",
     "_emit",
+    "_resolve_country_display_name",
     "_write_json_atomic",
     "get_stream",
     "start_research",

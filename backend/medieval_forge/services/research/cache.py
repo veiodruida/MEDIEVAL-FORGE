@@ -2,8 +2,11 @@
 
 Key derivation per RESEARCH §Example 2 + §Pitfall 6 + REVIEWS fix #4: canonical
 form is
-``{country_qid_lower}|{period_label_strip_lower}|{provider}|{model}|{PROMPT_DIGEST}|{SCHEMA_VERSION}|{condado_ids_digest}``.
+``{country_qid_lower}|{period_start}|{period_end}|{provider}|{model}|{PROMPT_DIGEST}|{SCHEMA_VERSION}|{condado_ids_digest}``.
 SHA-256 hex digest gives a fixed-width 64-char key.
+
+D-04 (Phase 07.1): period_start/end integers replace the v0.5 string period component.
+Cache rows from the pre-Phase-07.1 schema are truncated by Alembic 0007 (D-04 forward-only).
 
 REVIEWS fix #2: row column is ``generated_at`` (the original LLM-output
 timestamp). Plan 07b reads this and copies it into
@@ -72,7 +75,8 @@ def _condado_ids_digest(condado_ids: list[str]) -> str:
 
 def cache_key(
     country_qid: str,
-    period_label: str,
+    period_start: int,
+    period_end: int,
     provider: str,
     model: str,
     condado_ids: list[str],
@@ -81,14 +85,17 @@ def cache_key(
 ) -> str:
     """Derive a deterministic SHA-256 cache key.
 
-    7 components: country_qid + period_label + provider + model + prompt_digest
-    + schema_version + condado_ids_digest. Normalizes country_qid + period_label
-    to lowercase + stripped (Pitfall 6). Provider + model case preserved (some
-    Ollama tags are case-sensitive, e.g. ``llama3.1:8b`` vs. ``Llama3.1:8b``).
+    8 components: country_qid + period_start + period_end + provider + model + prompt_digest
+    + schema_version + condado_ids_digest. Normalizes country_qid to lowercase + stripped
+    (Pitfall 6). Provider + model case preserved (some Ollama tags are case-sensitive,
+    e.g. ``llama3.1:8b`` vs. ``Llama3.1:8b``).
+
+    D-04 (Phase 07.1): period_start/end integers replace the v0.5 string period component.
+    Cache rows from the pre-Phase-07.1 schema are truncated by Alembic 0007 (D-04 forward-only).
     """
     canonical = (
         f"{country_qid.strip().lower()}|"
-        f"{period_label.strip().lower()}|"
+        f"{period_start}|{period_end}|"
         f"{provider}|"
         f"{model}|"
         f"{prompt_digest}|"
