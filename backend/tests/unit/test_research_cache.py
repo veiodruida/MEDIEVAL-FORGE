@@ -36,30 +36,34 @@ pytestmark = pytest.mark.unit
 
 
 # ---------------------------------------------------------------------------
-# Test 1 — Pitfall 6: canonical strip+lower on country + period;
+# Test 1 — Pitfall 6: canonical strip+lower on country_qid;
 #                     condado_ids order-insensitive via sorted-then-hashed
+#                     D-04 (Phase 07.1): period is now int start+end, no case normalization needed.
 # ---------------------------------------------------------------------------
 async def test_cache_key_sha256_normalizes_case_and_whitespace():
     key_a = cache_key(
         "Q29",
-        "868 AD",
+        868,
+        1000,
         "Claude",
         "claude-sonnet-4-6",
         condado_ids=["oviedo", "leon"],
     )
     key_b = cache_key(
         "q29",
-        "868 ad",
+        868,
+        1000,
         "Claude",
         "claude-sonnet-4-6",
         condado_ids=["leon", "oviedo"],
     )
     assert key_a == key_b
 
-    # Also strip whitespace on country + period
+    # Also strip whitespace on country_qid
     key_c = cache_key(
         "  Q29 ",
-        " 868 AD ",
+        868,
+        1000,
         "Claude",
         "claude-sonnet-4-6",
         condado_ids=["oviedo", "leon"],
@@ -73,7 +77,8 @@ async def test_cache_key_sha256_normalizes_case_and_whitespace():
 async def test_cache_key_returns_64_char_hex_string():
     key = cache_key(
         "Q29",
-        "868 AD",
+        868,
+        1000,
         "claude",
         "claude-sonnet-4-6",
         condado_ids=["oviedo", "leon"],
@@ -88,7 +93,8 @@ async def test_cache_key_returns_64_char_hex_string():
 async def test_cache_key_includes_prompt_digest_so_prompt_template_edit_invalidates():
     base = cache_key(
         "Q29",
-        "868 AD",
+        868,
+        1000,
         "claude",
         "claude-sonnet-4-6",
         condado_ids=["oviedo", "leon"],
@@ -96,7 +102,8 @@ async def test_cache_key_includes_prompt_digest_so_prompt_template_edit_invalida
     )
     bumped = cache_key(
         "Q29",
-        "868 AD",
+        868,
+        1000,
         "claude",
         "claude-sonnet-4-6",
         condado_ids=["oviedo", "leon"],
@@ -112,14 +119,16 @@ async def test_cache_key_includes_prompt_digest_so_prompt_template_edit_invalida
 async def test_cache_key_differs_when_condado_ids_differ_even_with_same_country_and_period():
     iberia_north = cache_key(
         "Q29",
-        "868 AD",
+        868,
+        1000,
         "claude",
         "claude-sonnet-4-6",
         condado_ids=["oviedo", "leon", "burgos"],
     )
     iberia_south = cache_key(
         "Q29",
-        "868 AD",
+        868,
+        1000,
         "claude",
         "claude-sonnet-4-6",
         condado_ids=["sevilla", "cordoba"],
@@ -133,7 +142,8 @@ async def test_cache_key_differs_when_condado_ids_differ_even_with_same_country_
 async def test_cache_key_includes_schema_version_to_force_miss_on_schema_migration():
     v1_key = cache_key(
         "Q29",
-        "868 AD",
+        868,
+        1000,
         "claude",
         "claude-sonnet-4-6",
         condado_ids=["oviedo", "leon"],
@@ -141,7 +151,8 @@ async def test_cache_key_includes_schema_version_to_force_miss_on_schema_migrati
     )
     v2_key = cache_key(
         "Q29",
-        "868 AD",
+        868,
+        1000,
         "claude",
         "claude-sonnet-4-6",
         condado_ids=["oviedo", "leon"],
@@ -151,7 +162,8 @@ async def test_cache_key_includes_schema_version_to_force_miss_on_schema_migrati
     # Sanity: the default SCHEMA_VERSION constant matches v1
     default_key = cache_key(
         "Q29",
-        "868 AD",
+        868,
+        1000,
         "claude",
         "claude-sonnet-4-6",
         condado_ids=["oviedo", "leon"],
@@ -166,7 +178,8 @@ async def test_cache_key_includes_schema_version_to_force_miss_on_schema_migrati
 async def test_cache_hit_returns_payload_without_calling_provider(db_session):
     key = cache_key(
         "Q29",
-        "868 AD",
+        868,
+        1000,
         "claude",
         "claude-sonnet-4-6",
         condado_ids=["oviedo", "leon"],
@@ -189,7 +202,8 @@ async def test_cache_hit_returns_payload_without_calling_provider(db_session):
 async def test_force_refresh_overwrites_cache_entry_on_success(db_session):
     key = cache_key(
         "Q29",
-        "868 AD",
+        868,
+        1000,
         "claude",
         "claude-sonnet-4-6",
         condado_ids=["oviedo", "leon"],
@@ -219,7 +233,8 @@ async def test_cache_miss_returns_none_for_unknown_key(db_session):
 async def test_research_cache_row_uses_generated_at_column_not_created_at(db_session):
     key = cache_key(
         "Q29",
-        "868 AD",
+        868,
+        1000,
         "claude",
         "claude-sonnet-4-6",
         condado_ids=["oviedo", "leon"],
@@ -259,7 +274,8 @@ async def test_cache_row_outlives_credential_row_deletion(db_session):
     # Seed cache row via the real cache_put path
     key = cache_key(
         "Q29",
-        "868 AD",
+        868,
+        1000,
         "claude",
         "claude-sonnet-4-6",
         condado_ids=["oviedo", "leon"],
