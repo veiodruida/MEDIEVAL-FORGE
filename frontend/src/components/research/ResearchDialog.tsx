@@ -29,6 +29,7 @@ import {
   TextField,
 } from '@radix-ui/themes'
 import { useProviders } from '../../api/useProviders'
+import { AuthSetupSheet } from './AuthSetupSheet'
 import { useProject } from '../../api/useProject'
 import { useResearchOverlay } from '../../api/useResearchOverlay'
 import { useResearchStream } from '../../hooks/useResearchStream'
@@ -70,6 +71,7 @@ export function ResearchDialog({
   const overlay = useResearchOverlay(open ? projectId : undefined)
 
   const { data: project } = useProject(projectId)
+  const [authSheetOpen, setAuthSheetOpen] = useState(false)
   const [periodStart, setPeriodStart] = useState<number | null>(null)
   const [periodEnd, setPeriodEnd] = useState<number | null>(null)
   const [hasSeeded, setHasSeeded] = useState(false)
@@ -211,6 +213,7 @@ export function ResearchDialog({
     overlay.data?.exists && !forceRefresh && streamPhase === 'idle'
 
   return (
+    <>
     <Dialog.Root open={open} onOpenChange={handleDialogChange}>
       <Dialog.Content
         data-testid="research-dialog"
@@ -376,10 +379,7 @@ export function ResearchDialog({
                 color="gray"
                 style={{ cursor: 'pointer', textDecoration: 'underline' }}
                 data-testid="auth-setup-sheet-trigger"
-                onClick={() => {
-                  // Placeholder — AuthSetupSheet open-state wiring lands in plan 07.1-08
-                  console.log('AuthSetupSheet trigger clicked')
-                }}
+                onClick={() => setAuthSheetOpen(true)}
               >
                 Configurar provedores
               </Text>
@@ -418,5 +418,7 @@ export function ResearchDialog({
         </form>
       </Dialog.Content>
     </Dialog.Root>
+    <AuthSetupSheet open={authSheetOpen} onOpenChange={setAuthSheetOpen} />
+    </>
   )
 }
