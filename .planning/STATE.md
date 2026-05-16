@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: + bootstrap v3 infrastructure
 status: executing
-stopped_at: Completed 07.1-02-PLAN.md
-last_updated: "2026-05-16T17:18:55.710Z"
+stopped_at: Completed 07.1-03-PLAN.md
+last_updated: "2026-05-16T17:29:33.532Z"
 last_activity: 2026-05-16
 progress:
   total_phases: 11
   completed_phases: 7
   total_plans: 70
-  completed_plans: 61
-  percent: 87
+  completed_plans: 62
+  percent: 89
 ---
 
 # Project State (v3)
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md
 ## Current Position
 
 Phase: 07.1 (period-numeric-inputs-llama-cpp-re-add-with-auto-launch-and-) — EXECUTING
-Plan: 4 of 11
+Plan: 5 of 11
 Status: Ready to execute
 Last activity: 2026-05-16
 
@@ -109,6 +109,8 @@ See `.planning/PROJECT.md` Key Decisions table (D-V3-01 through D-V3-07).
 - [Phase 07.1]: D-09 additive-only: available_models field added to HealthStatus with default None; healthy stays canonical (no rename to ok forces touch of Claude+Ollama)
 - [Phase 07.1]: shutdown() is the single sync entry point (review-fix #4); no shutdown_sync symbol exported
 - [Phase 07.1]: _set_process_for_tests() seam used for Test 13 shutdown real subprocess without importlib.reload
+- [Phase 07.1]: parse_research_json imported at module top level in llamacpp.py (not inline) — required for test monkeypatching
+- [Phase 07.1]: Registry count tests updated 2->3 (Rule 3): adding LlamaCppProvider at import directly breaks len==2 assertions
 
 ### Blockers/Concerns
 
@@ -128,6 +130,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-16T17:18:55.707Z
-Stopped at: Completed 07.1-02-PLAN.md
+Last session: 2026-05-16T17:29:33.529Z
+Stopped at: Completed 07.1-03-PLAN.md
 Resume file: None
