@@ -196,7 +196,7 @@ Plans:
 Plans:
 - [x] 07.1-00-PLAN.md — Wave 0 test scaffolds (9 MISSING test files from VALIDATION.md gaps)
 - [x] 07.1-01-PLAN.md — Wave 1: HealthStatus.available_models additive field (D-09)
-- [ ] 07.1-02-PLAN.md — Wave 1: llamacpp_launcher subprocess lifecycle (D-07a/b, D-08, D-08b) + 16 unit tests + path-traversal guard
+- [x] 07.1-02-PLAN.md — Wave 1: llamacpp_launcher subprocess lifecycle (D-07a/b, D-08, D-08b) + 16 unit tests + path-traversal guard
 - [ ] 07.1-03-PLAN.md — Wave 2: LlamaCppProvider + registry registration (D-V3-04 rewrite, three v3 deviations)
 - [ ] 07.1-04-PLAN.md — Wave 2: Alembic 0007 + StartResearchBody + runner.py 6-callsite period swap + cache.py signature (D-01/D-02/D-04/D-04b/D-04c)
 - [ ] 07.1-05-PLAN.md — Wave 3: api/v3/llamacpp router POST+DELETE + main.py lifespan + 5 e2e lifecycle tests
