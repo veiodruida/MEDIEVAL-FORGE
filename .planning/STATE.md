@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: + bootstrap v3 infrastructure
 status: executing
-stopped_at: Completed 07.1-04-PLAN.md
-last_updated: "2026-05-16T17:43:40.845Z"
+stopped_at: Completed 07.1-05-PLAN.md
+last_updated: "2026-05-16T17:53:57.080Z"
 last_activity: 2026-05-16
 progress:
   total_phases: 11
   completed_phases: 7
   total_plans: 70
-  completed_plans: 63
-  percent: 90
+  completed_plans: 64
+  percent: 91
 ---
 
 # Project State (v3)
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md
 ## Current Position
 
 Phase: 07.1 (period-numeric-inputs-llama-cpp-re-add-with-auto-launch-and-) — EXECUTING
-Plan: 6 of 11
+Plan: 7 of 11
 Status: Ready to execute
 Last activity: 2026-05-16
 
@@ -113,6 +113,8 @@ See `.planning/PROJECT.md` Key Decisions table (D-V3-01 through D-V3-07).
 - [Phase 07.1]: Registry count tests updated 2->3 (Rule 3): adding LlamaCppProvider at import directly breaks len==2 assertions
 - [Phase 07.1]: D-04c atomic swap: all 6 runner.py callsites + cache.py + StartResearchBody changed in ONE commit — no transitional period_label shim
 - [Phase 07.1]: review-fix #5: _QID_DISPLAY_NAMES dict + _resolve_country_display_name() in runner.py prevents local LLM hallucination on raw Wikidata Q-codes
+- [Phase 07.1]: 7 tests implemented (not 5): plan objective was stale; must_haves.artifacts listed 7 — review-fix #4 added GET-running-false + GET-running-true
+- [Phase 07.1]: import logging + logger added to main.py (Rule 3 fix): lifespan snippet used logger without prior definition
 
 ### Blockers/Concerns
 
@@ -132,6 +134,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-16T17:43:36.381Z
-Stopped at: Completed 07.1-04-PLAN.md
+Last session: 2026-05-16T17:53:57.076Z
+Stopped at: Completed 07.1-05-PLAN.md
 Resume file: None
