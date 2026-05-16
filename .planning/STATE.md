@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: + bootstrap v3 infrastructure
 status: executing
-stopped_at: Completed 07.1-00-PLAN.md
-last_updated: "2026-05-16T17:05:26.382Z"
+stopped_at: Completed 07.1-01-PLAN.md
+last_updated: "2026-05-16T17:11:33.871Z"
 last_activity: 2026-05-16
 progress:
   total_phases: 11
   completed_phases: 7
   total_plans: 70
-  completed_plans: 59
-  percent: 84
+  completed_plans: 60
+  percent: 86
 ---
 
 # Project State (v3)
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md
 ## Current Position
 
 Phase: 07.1 (period-numeric-inputs-llama-cpp-re-add-with-auto-launch-and-) — EXECUTING
-Plan: 2 of 11
+Plan: 3 of 11
 Status: Ready to execute
 Last activity: 2026-05-16
 
@@ -106,6 +106,7 @@ See `.planning/PROJECT.md` Key Decisions table (D-V3-01 through D-V3-07).
 - [Phase 06]: Plan 06-02: 5 _check_* bodies implemented + 32 unit tests across 5 D-08-code modules; lazy numpy/PIL imports inside _check_ocean_leak; within-file COLOR_COLLISION scope deferred to e2e (06-03) due to JSON dict-key-collapse; validator runs end-to-end on Iberia output with passed=True; parity 11/11 stays green (validator unwired until 06-03)
 - [Phase 06]: Plan 06-03: validator wired into build_unity_zip (raises ValidationFailedError); POST /api/v3/projects/{id}/export with ?dry_run=true (D-03); D-04 atomic v1 delete (api/export.py + tests/test_export.py); MANIFEST v2 with schema_version/region_key/validation_report/per-file sha256; 10 e2e tests across 3 files cover all 6 D-08 codes; 218/218 tests pass
 - [Phase 07.1]: Wave 0 test scaffolds: 9 skip-marked files created (59 tests) closing VALIDATION.md Wave 0 gaps; no production imports; per-task commit protocol used (2 commits instead of 1 atomic)
+- [Phase 07.1]: D-09 additive-only: available_models field added to HealthStatus with default None; healthy stays canonical (no rename to ok forces touch of Claude+Ollama)
 
 ### Blockers/Concerns
 
@@ -125,6 +126,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-16T17:05:26.379Z
-Stopped at: Completed 07.1-00-PLAN.md
+Last session: 2026-05-16T17:11:33.866Z
+Stopped at: Completed 07.1-01-PLAN.md
 Resume file: None
