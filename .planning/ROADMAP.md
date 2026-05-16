@@ -202,7 +202,7 @@ Plans:
 - [x] 07.1-05-PLAN.md — Wave 3: api/v3/llamacpp router POST+DELETE + main.py lifespan + 5 e2e lifecycle tests
 - [x] 07.1-06-PLAN.md — Wave 4: useProject + useLlamacppHealth + useLlamacppLaunch/Shutdown TanStack hooks (Pitfall 9 invalidation)
 - [x] 07.1-07-PLAN.md — Wave 5: ResearchDialog two-input swap + rodapé link placeholder + useResearchStream payload + 8 vitest cases (D-01/D-02/D-03/D-04c)
-- [ ] 07.1-08-PLAN.md — Wave 5: AuthSetupSheet new component + ResearchDialog wire-up + 8 vitest cases (D-05/D-06/D-09)
+- [x] 07.1-08-PLAN.md — Wave 5: AuthSetupSheet new component + ResearchDialog wire-up + 8 vitest cases (D-05/D-06/D-09)
 - [ ] 07.1-09-PLAN.md — Wave 6: Playwright UAT (5 specs) + checkpoint:human-verify live llama-server spawn
 - [ ] 07.1-10-PLAN.md — Wave 6: parity sweep + grep gates + VERIFICATION.md + ROADMAP closure (D-12 invariant + SC-6)
 
