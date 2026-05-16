@@ -29,6 +29,7 @@ import {
   TextField,
 } from '@radix-ui/themes'
 import { useProviders } from '../../api/useProviders'
+import { useProject } from '../../api/useProject'
 import { useResearchOverlay } from '../../api/useResearchOverlay'
 import { useResearchStream } from '../../hooks/useResearchStream'
 import { ProviderSelector } from './ProviderSelector'
@@ -68,7 +69,10 @@ export function ResearchDialog({
   const { data: providers, isLoading: providersLoading } = useProviders(open)
   const overlay = useResearchOverlay(open ? projectId : undefined)
 
-  const [period, setPeriod] = useState(regionDisplayName ?? '')
+  const { data: project } = useProject(projectId)
+  const [periodStart, setPeriodStart] = useState<number | null>(null)
+  const [periodEnd, setPeriodEnd] = useState<number | null>(null)
+  const [hasSeeded, setHasSeeded] = useState(false)
   const [provider, setProvider] = useState<string>('')
   const [model, setModel] = useState<string>('')
   const [forceRefresh, setForceRefresh] = useState(initialForceRefresh)
@@ -86,10 +90,21 @@ export function ResearchDialog({
     setProvider(pickDefaultProvider(providers))
   }, [open, provider, providers])
 
-  // Re-seed Período whenever the dialog re-opens against a new region.
+  // Seed period inputs from useProject once both the dialog is open AND
+  // useProject has resolved. The hasSeeded gate prevents overwriting user
+  // edits on re-renders. Resets on close so the next open re-seeds fresh.
+  // review-fix #2 (Gemini HIGH): wasOpenRef raced when useProject was still
+  // loading at the open-transition tick — hasSeeded + project truthy guard fixes that.
   useEffect(() => {
-    if (open) setPeriod(regionDisplayName ?? '')
-  }, [open, regionDisplayName])
+    if (open && project && !hasSeeded) {
+      setPeriodStart(project.period_start ?? null)
+      setPeriodEnd(project.period_end ?? null)
+      setHasSeeded(true)
+    }
+    if (!open) {
+      setHasSeeded(false) // arm for the next open
+    }
+  }, [open, project, hasSeeded])
 
   // Auto-close 1.2s after terminal success (UI-SPEC §Interaction Contract).
   const autoCloseRef = useRef<number | null>(null)
@@ -108,10 +123,16 @@ export function ResearchDialog({
 
   const canSubmit = useMemo(() => {
     if (submitting || isStreaming) return false
-    if (period.trim().length === 0 || period.trim().length > 128) return false
+    const periodValid =
+      typeof periodStart === 'number' &&
+      typeof periodEnd === 'number' &&
+      periodStart >= 1 && periodStart <= 2100 &&
+      periodEnd >= 1 && periodEnd <= 2100 &&
+      periodStart <= periodEnd
+    if (!periodValid) return false
     if (!provider) return false
     return true
-  }, [submitting, isStreaming, period, provider])
+  }, [submitting, isStreaming, periodStart, periodEnd, provider])
 
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
@@ -128,7 +149,8 @@ export function ResearchDialog({
             provider,
             model,
             country_qid: countryQid,
-            period_label: period.trim(),
+            period_start: periodStart,
+            period_end: periodEnd,
             condado_ids: condadoIds,
             force_refresh: forceRefresh,
           }),
@@ -155,7 +177,8 @@ export function ResearchDialog({
       provider,
       model,
       countryQid,
-      period,
+      periodStart,
+      periodEnd,
       condadoIds,
       forceRefresh,
       stream,
@@ -218,21 +241,58 @@ export function ResearchDialog({
               </Box>
             </Box>
 
-            {/* Período */}
-            <Box>
-              <Text as="label" size="2" weight="medium" htmlFor="research-period-input">
-                Período
-              </Text>
-              <Box mt="1">
-                <TextField.Root
-                  id="research-period-input"
-                  value={period}
-                  onChange={(e) => setPeriod(e.target.value)}
-                  placeholder="Ex.: Iberia 868 AD"
-                  autoFocus
-                />
-              </Box>
-            </Box>
+            {/* Período — two numeric inputs (D-01, D-02, UI-SPEC §Surface 1) */}
+            <Flex direction="column" gap="1">
+              <Text as="label" size="2" weight="medium">Período</Text>
+              <Flex gap="2">
+                <Box style={{ flex: 1 }}>
+                  <Text as="label" size="2" weight="medium" htmlFor="research-period-start">Início</Text>
+                  <Box mt="1">
+                    <TextField.Root
+                      id="research-period-start"
+                      data-testid="research-period-start"
+                      type="number"
+                      min={1}
+                      max={2100}
+                      step={1}
+                      inputMode="numeric"
+                      placeholder="Ex.: 800"
+                      value={periodStart ?? ''}
+                      onChange={(e) => {
+                        const v = e.target.value
+                        setPeriodStart(v === '' ? null : Number(v))
+                      }}
+                    />
+                  </Box>
+                </Box>
+                <Box style={{ flex: 1 }}>
+                  <Text as="label" size="2" weight="medium" htmlFor="research-period-end">Fim</Text>
+                  <Box mt="1">
+                    <TextField.Root
+                      id="research-period-end"
+                      data-testid="research-period-end"
+                      type="number"
+                      min={1}
+                      max={2100}
+                      step={1}
+                      inputMode="numeric"
+                      placeholder="Ex.: 900"
+                      value={periodEnd ?? ''}
+                      onChange={(e) => {
+                        const v = e.target.value
+                        setPeriodEnd(v === '' ? null : Number(v))
+                      }}
+                    />
+                  </Box>
+                </Box>
+              </Flex>
+              <Text size="1" color="gray">Anos AD (1–2100). Início ≤ Fim.</Text>
+              {periodStart !== null && periodEnd !== null && periodStart > periodEnd && (
+                <Text size="1" color="red" data-testid="period-error-start-gt-end">
+                  O início deve ser menor ou igual ao fim.
+                </Text>
+              )}
+            </Flex>
 
             {/* Provedor LLM + Modelo (sub-component) */}
             <ProviderSelector
@@ -308,36 +368,51 @@ export function ResearchDialog({
               <ResearchProgress state={stream.state} />
             )}
 
-            {/* CTA row */}
-            <Flex gap="2" justify="end" mt="2">
-              {isStreaming ? (
-                <Button
-                  type="button"
-                  color="red"
-                  variant="solid"
-                  onClick={handleCancelStream}
-                  data-testid="research-cancel-stream"
-                >
-                  Cancelar pesquisa
-                </Button>
-              ) : (
-                <>
+            {/* CTA row — rodapé layout (UI-SPEC §Copywriting Surface 1) */}
+            <Flex gap="2" justify="between" mt="2" align="center">
+              {/* Configurar provedores — placeholder link; real open-state wiring in plan 07.1-08 */}
+              <Text
+                size="1"
+                color="gray"
+                style={{ cursor: 'pointer', textDecoration: 'underline' }}
+                data-testid="auth-setup-sheet-trigger"
+                onClick={() => {
+                  // Placeholder — AuthSetupSheet open-state wiring lands in plan 07.1-08
+                  console.log('AuthSetupSheet trigger clicked')
+                }}
+              >
+                Configurar provedores
+              </Text>
+              <Flex gap="2">
+                {isStreaming ? (
                   <Button
                     type="button"
-                    variant="soft"
-                    onClick={() => handleDialogChange(false)}
+                    color="red"
+                    variant="solid"
+                    onClick={handleCancelStream}
+                    data-testid="research-cancel-stream"
                   >
-                    Cancelar
+                    Cancelar pesquisa
                   </Button>
-                  <Button
-                    type="submit"
-                    disabled={!canSubmit}
-                    data-testid="research-submit"
-                  >
-                    {submitting ? 'Iniciando...' : 'Iniciar pesquisa'}
-                  </Button>
-                </>
-              )}
+                ) : (
+                  <>
+                    <Button
+                      type="button"
+                      variant="soft"
+                      onClick={() => handleDialogChange(false)}
+                    >
+                      Cancelar
+                    </Button>
+                    <Button
+                      type="submit"
+                      disabled={!canSubmit}
+                      data-testid="research-submit"
+                    >
+                      {submitting ? 'Iniciando...' : 'Iniciar pesquisa'}
+                    </Button>
+                  </>
+                )}
+              </Flex>
             </Flex>
           </Flex>
         </form>
