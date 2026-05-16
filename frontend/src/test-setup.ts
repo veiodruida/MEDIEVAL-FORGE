@@ -19,3 +19,17 @@ if (typeof globalThis.ResizeObserver === 'undefined') {
 if (typeof Element.prototype.scrollIntoView === 'undefined') {
   Element.prototype.scrollIntoView = function () {}
 }
+
+// jsdom does not implement hasPointerCapture / setPointerCapture (used by Radix
+// Select to manage focus state when the listbox opens). Without these stubs
+// Radix Select throws on any fireEvent.pointerDown / fireEvent.click interaction
+// in jsdom. Real pointer behaviour is covered by Playwright e2e.
+if (typeof Element.prototype.hasPointerCapture === 'undefined') {
+  Element.prototype.hasPointerCapture = function () { return false }
+}
+if (typeof Element.prototype.setPointerCapture === 'undefined') {
+  Element.prototype.setPointerCapture = function () {}
+}
+if (typeof Element.prototype.releasePointerCapture === 'undefined') {
+  Element.prototype.releasePointerCapture = function () {}
+}
