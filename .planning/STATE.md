@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: + bootstrap v3 infrastructure
 status: executing
-stopped_at: Completed 07.1-06-PLAN.md
-last_updated: "2026-05-16T17:59:18.709Z"
+stopped_at: Completed 07.1-07-PLAN.md
+last_updated: "2026-05-16T18:53:53.063Z"
 last_activity: 2026-05-16
 progress:
   total_phases: 11
   completed_phases: 7
   total_plans: 70
-  completed_plans: 65
-  percent: 93
+  completed_plans: 66
+  percent: 94
 ---
 
 # Project State (v3)
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md
 ## Current Position
 
 Phase: 07.1 (period-numeric-inputs-llama-cpp-re-add-with-auto-launch-and-) — EXECUTING
-Plan: 8 of 11
+Plan: 9 of 11
 Status: Ready to execute
 Last activity: 2026-05-16
 
@@ -116,6 +116,7 @@ See `.planning/PROJECT.md` Key Decisions table (D-V3-01 through D-V3-07).
 - [Phase 07.1]: 7 tests implemented (not 5): plan objective was stale; must_haves.artifacts listed 7 — review-fix #4 added GET-running-false + GET-running-true
 - [Phase 07.1]: import logging + logger added to main.py (Rule 3 fix): lifespan snippet used logger without prior definition
 - [Phase 07.1]: GET /api/projects/{id} (v1 legacy) used for useProject hook — v3 only has POST; queryKey ['v3','research','providers'] corrected from plan's ['providers'] to match useProviders.ts actual registration
+- [Phase 07.1]: useResearchStream.ts not modified: period_label was in ResearchDialog.tsx handleSubmit only; plan incorrectly identified the hook as the file target
 
 ### Blockers/Concerns
 
@@ -135,6 +136,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-16T17:59:18.706Z
-Stopped at: Completed 07.1-06-PLAN.md
+Last session: 2026-05-16T18:53:53.060Z
+Stopped at: Completed 07.1-07-PLAN.md
 Resume file: None
