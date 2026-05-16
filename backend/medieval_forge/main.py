@@ -5,8 +5,12 @@ Per RESEARCH.md Pitfall 8: API routers MUST be registered before the catch-all.
 """
 from __future__ import annotations
 
+import asyncio
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 from fastapi import FastAPI
 from fastapi.responses import FileResponse, JSONResponse
@@ -26,6 +30,15 @@ async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     yield
+    # D-08b: llama.cpp lifecycle shutdown (Phase 07.1)
+    # review-fix #4: shutdown() is sync and returns bool; wrap with asyncio.to_thread
+    # to avoid TypeError on `await bool`. The return value is logged but not surfaced.
+    try:
+        from .services.llm.llamacpp_launcher import shutdown as llamacpp_shutdown
+        was_running = await asyncio.to_thread(llamacpp_shutdown)
+        logger.info("llama.cpp shutdown on app exit: was_running=%s", was_running)
+    except Exception:  # noqa: BLE001
+        logger.warning("llama.cpp shutdown raised", exc_info=True)
     # Shutdown: close pool.
     await engine.dispose()
 
@@ -53,6 +66,8 @@ from .api.v3.research import (  # noqa: E402
     overlay_router as research_overlay_router,
 )
 from .api.v3.credentials import router as credentials_router  # noqa: E402
+# Phase 07.1 Plan 05 — llama.cpp launch/delete/status router.
+from .api.v3 import llamacpp as llamacpp_v3  # noqa: E402
 
 app.include_router(projects_router, prefix="/api")
 # v1 export_router mount REMOVED (D-04) -- replaced by v3_export_router below.
@@ -71,6 +86,8 @@ app.include_router(v3_export_router, prefix="/api")
 app.include_router(research_router, prefix="/api")
 app.include_router(research_overlay_router, prefix="/api")
 app.include_router(credentials_router, prefix="/api")
+# Phase 07.1 Plan 05 — llama.cpp router carries /v3/llm; main.py adds /api.
+app.include_router(llamacpp_v3.router, prefix="/api")
 
 # /assets/* — JS/CSS bundles. Only mount if directory exists (frontend may
 # not be built yet during early development).
