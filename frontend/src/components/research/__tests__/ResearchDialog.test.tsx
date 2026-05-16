@@ -116,9 +116,13 @@ describe('ResearchDialog', () => {
     ).toBeTruthy()
   })
 
-  it('renders Período seeded from region display_name', () => {
-    renderDialog({ regionDisplayName: 'Iberia 868 AD' })
-    expect(screen.getByDisplayValue('Iberia 868 AD')).toBeTruthy()
+  it('renders Início and Fim labels for the numeric period inputs', () => {
+    // Plan 07.1-07: single free-text Período replaced with two numeric inputs.
+    // The inputs are seeded from useProject.period_start/end (not regionDisplayName).
+    // Full numeric-input contract tested in ResearchDialog.numeric.spec.tsx.
+    renderDialog()
+    expect(screen.getByText('Início')).toBeTruthy()
+    expect(screen.getByText('Fim')).toBeTruthy()
   })
 
   it("REVIEWS soft codex — renders softened Claude CLI piggyback microcopy", async () => {
