@@ -229,13 +229,15 @@ async def get_providers() -> list[dict]:
             try:
                 hs = await provider.health_check(None)
             except Exception as exc:  # noqa: BLE001
-                hs = None
                 healthy = False
                 message = str(exc)
+                available_models = None
             else:
                 healthy = bool(hs.healthy)
                 message = hs.message
-            available_models = None
+                available_models = (
+                    list(hs.available_models) if hs.available_models is not None else None
+                )
 
         entry = {
             "provider_id": pid,
