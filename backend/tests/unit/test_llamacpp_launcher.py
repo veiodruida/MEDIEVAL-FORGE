@@ -40,6 +40,8 @@ def reset_launcher_state():
 @pytest.fixture
 def models_dir_with_files(tmp_path, monkeypatch):
     monkeypatch.setenv("MEDIEVAL_FORGE_LLAMACPP_MODELS_DIR", str(tmp_path))
+    # Disable well-known extra dirs so tests see only the controlled tmp_path.
+    monkeypatch.setenv("MEDIEVAL_FORGE_LLAMACPP_EXTRA_DIRS", "")
     return tmp_path
 
 
@@ -79,35 +81,42 @@ def _can_create_symlink() -> bool:
 
 def test_list_models_empty_dir_returns_empty_list(tmp_path, monkeypatch):
     monkeypatch.setenv("MEDIEVAL_FORGE_LLAMACPP_MODELS_DIR", str(tmp_path))
+    monkeypatch.setenv("MEDIEVAL_FORGE_LLAMACPP_EXTRA_DIRS", "")
     assert list_models() == []
 
 
 # ---------------------------------------------------------------------------
-# Test 2 — list_models: sorted .gguf only
+# Test 2 — list_models: sorted .gguf only, returns absolute paths
 # ---------------------------------------------------------------------------
 
 
-def test_list_models_returns_sorted_gguf_filenames_only(tmp_path, monkeypatch):
+def test_list_models_returns_sorted_gguf_absolute_paths_only(tmp_path, monkeypatch):
     monkeypatch.setenv("MEDIEVAL_FORGE_LLAMACPP_MODELS_DIR", str(tmp_path))
+    monkeypatch.setenv("MEDIEVAL_FORGE_LLAMACPP_EXTRA_DIRS", "")
     (tmp_path / "c.gguf").touch()
     (tmp_path / "a.gguf").touch()
     (tmp_path / "b.gguf").touch()
     (tmp_path / "noise.txt").touch()
-    assert list_models() == ["a.gguf", "b.gguf", "c.gguf"]
+    expected = [str((tmp_path / name).resolve()) for name in ["a.gguf", "b.gguf", "c.gguf"]]
+    assert list_models() == expected
 
 
 # ---------------------------------------------------------------------------
-# Test 3 — list_models: case-insensitive .gguf suffix
+# Test 3 — list_models: case-insensitive .gguf suffix, returns absolute paths
 # ---------------------------------------------------------------------------
 
 
 def test_list_models_case_insensitive_gguf_suffix(tmp_path, monkeypatch):
     monkeypatch.setenv("MEDIEVAL_FORGE_LLAMACPP_MODELS_DIR", str(tmp_path))
+    monkeypatch.setenv("MEDIEVAL_FORGE_LLAMACPP_EXTRA_DIRS", "")
     (tmp_path / "X.GGUF").touch()
     (tmp_path / "y.Gguf").touch()
     (tmp_path / "z.gguf").touch()
     result = list_models()
-    assert sorted(result) == sorted(["X.GGUF", "y.Gguf", "z.gguf"])
+    expected = sorted(
+        str((tmp_path / name).resolve()) for name in ["X.GGUF", "y.Gguf", "z.gguf"]
+    )
+    assert sorted(result) == expected
 
 
 # ---------------------------------------------------------------------------

@@ -39,6 +39,7 @@ def reset_launcher():
 def models_dir_with_files(tmp_path, monkeypatch):
     """Set MEDIEVAL_FORGE_LLAMACPP_MODELS_DIR to a tmp_path controlled by us."""
     monkeypatch.setenv("MEDIEVAL_FORGE_LLAMACPP_MODELS_DIR", str(tmp_path))
+    monkeypatch.setenv("MEDIEVAL_FORGE_LLAMACPP_EXTRA_DIRS", "")
     return tmp_path
 
 
@@ -96,7 +97,8 @@ async def test_health_lists_only_gguf_alphabetical_with_3_files_plus_txt_noise(
         provider = LlamaCppProvider()
         result = await provider.health()
 
-    assert result["available_models"] == ["a.gguf", "b.gguf", "c.gguf"]
+    basenames = [p.split("\\")[-1].split("/")[-1] for p in result["available_models"]]
+    assert basenames == ["a.gguf", "b.gguf", "c.gguf"]
 
 
 async def test_health_case_insensitive_suffix_GGUF_uppercase(
@@ -109,7 +111,8 @@ async def test_health_case_insensitive_suffix_GGUF_uppercase(
         provider = LlamaCppProvider()
         result = await provider.health()
 
-    assert "X.GGUF" in result["available_models"]
+    basenames = [p.split("\\")[-1].split("/")[-1] for p in result["available_models"]]
+    assert "X.GGUF" in basenames
 
 
 async def test_health_missing_binary_returns_ok_false_with_pt_br_message(

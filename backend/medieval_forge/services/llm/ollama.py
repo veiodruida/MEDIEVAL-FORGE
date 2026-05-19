@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import shutil
 
 import httpx
 from ollama import AsyncClient
@@ -83,10 +84,15 @@ class OllamaProvider:
                 "message": "Ollama unreachable (timeout after 3s)",
                 "available_models": [],
             }
-        except Exception as e:  # noqa: BLE001 — exception message is surfaced to UI
+        except Exception:  # noqa: BLE001
+            binary = shutil.which("ollama")
+            if binary is None:
+                msg = "Ollama não encontrado no PATH. Instale em https://ollama.com"
+            else:
+                msg = "Ollama instalado mas não está em execução. Abra o Ollama e aguarde."
             return {
                 "ok": False,
-                "message": f"Ollama error: {e}",
+                "message": msg,
                 "available_models": [],
             }
 

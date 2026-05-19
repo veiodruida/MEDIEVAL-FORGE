@@ -5,6 +5,13 @@ Centralizes idempotent spawn (D-08 by absolute model path), auto-port allocation
 (D-07b LLAMA_SERVER_BIN | shutil.which) and models directory (D-07a
 MEDIEVAL_FORGE_LLAMACPP_MODELS_DIR | ~/.medieval-forge/models/).
 
+Model discovery scans multiple directories:
+  1. models_dir() — primary (MEDIEVAL_FORGE_LLAMACPP_MODELS_DIR or default)
+  2. Well-known OS paths (C:\\AI_Models, ~/llama.cpp/models, LM Studio, etc.)
+     — only when MEDIEVAL_FORGE_LLAMACPP_EXTRA_DIRS is not set
+  3. MEDIEVAL_FORGE_LLAMACPP_EXTRA_DIRS — semicolon-separated (Windows) or
+     colon-separated (Unix) explicit extras; when set, suppresses well-known dirs
+
 Lifecycle: FastAPI lifespan calls shutdown(); atexit.register(shutdown)
 fires as belt-and-braces fallback. Test isolation via _reset_state_for_tests()
 (CLAUDE.md forbids dynamic module reloading / sys.modules patching).
@@ -12,8 +19,8 @@ fires as belt-and-braces fallback. Test isolation via _reset_state_for_tests()
 Threat model:
 - T-07.1-05-01 command injection: subprocess.Popen([...], shell=False) — list form,
   never f-string into a shell. Mitigated.
-- T-07.1-05-02 path traversal: launch() rejects filename with directory components,
-  non-.gguf suffix, or resolved path escaping models_dir. Mitigated.
+- T-07.1-05-02 path traversal: launch() validates resolved path is under one of
+  the allowed scan_dirs roots (multi-root guard). Symlink-escape guard included.
 - T-07.1-05-03 LLAMA_SERVER_BIN arbitrary binary: accepted — user controls own env,
   consistent with PATH semantics.
 """
@@ -21,6 +28,7 @@ from __future__ import annotations
 
 import atexit
 import os
+import platform
 import shutil
 import socket
 import subprocess
@@ -93,15 +101,77 @@ def models_dir() -> Path:
     return Path(env) if env else DEFAULT_MODELS_DIR
 
 
+def _well_known_extra_dirs() -> list[Path]:
+    """Platform-specific well-known .gguf directories beyond models_dir.
+
+    Only called when MEDIEVAL_FORGE_LLAMACPP_EXTRA_DIRS is not set.
+    Returns only directories that currently exist on disk.
+    """
+    home = Path.home()
+    if platform.system() == "Windows":
+        candidates = [
+            Path("C:/AI_Models"),
+            home / "llama.cpp" / "models",
+            home / ".cache" / "lm-studio" / "models",
+            home / ".lmstudio" / "models",
+        ]
+    elif platform.system() == "Darwin":
+        candidates = [
+            home / "llama.cpp" / "models",
+            home / ".cache" / "lm-studio" / "models",
+            home / ".lmstudio" / "models",
+        ]
+    else:
+        candidates = [
+            home / "llama.cpp" / "models",
+            home / ".cache" / "huggingface" / "hub",
+        ]
+    return [d for d in candidates if d.exists()]
+
+
+def scan_dirs() -> list[Path]:
+    """All directories scanned for .gguf models (ordered, deduplicated).
+
+    1. models_dir() — primary (MEDIEVAL_FORGE_LLAMACPP_MODELS_DIR or default)
+    2. If MEDIEVAL_FORGE_LLAMACPP_EXTRA_DIRS is set: use those dirs only (no well-known).
+       Set to empty string to disable all extras (useful in tests).
+       If not set: add well-known OS-specific dirs that exist on disk.
+    """
+    dirs: list[Path] = [models_dir()]
+
+    env_extra = os.environ.get("MEDIEVAL_FORGE_LLAMACPP_EXTRA_DIRS")
+    if env_extra is None:
+        dirs.extend(_well_known_extra_dirs())
+    else:
+        sep = ";" if platform.system() == "Windows" else ":"
+        for raw in env_extra.split(sep):
+            raw = raw.strip()
+            if raw:
+                dirs.append(Path(raw))
+
+    seen: set[Path] = set()
+    result: list[Path] = []
+    for d in dirs:
+        if d not in seen:
+            seen.add(d)
+            result.append(d)
+    return result
+
+
 def list_models() -> list[str]:
-    """D-07a: alphabetical .gguf-only filenames from models_dir (top-level only)."""
-    d = models_dir()
-    if not d.exists():
-        return []
-    return sorted(
-        p.name for p in d.iterdir()
-        if p.is_file() and p.suffix.lower() == ".gguf"
-    )
+    """Sorted absolute paths of .gguf files across all scan_dirs (top-level only).
+
+    Returns absolute path strings so callers can pass them directly to launch()
+    without knowing which directory each model came from.
+    """
+    found: list[str] = []
+    for d in scan_dirs():
+        if not d.exists():
+            continue
+        for p in sorted(d.iterdir()):
+            if p.is_file() and p.suffix.lower() == ".gguf":
+                found.append(str(p.resolve()))
+    return found
 
 
 def _resolve_binary() -> str | None:
@@ -121,41 +191,81 @@ def _pick_port() -> int:
 # ---------------------------------------------------------------------------
 
 
-def launch(model_filename: str) -> LaunchResult:
+def launch(model_path: str) -> LaunchResult:
     """D-08: idempotent by absolute model path.
 
-    Path-traversal guard (T-07.1-05-02, ASVS V12) runs BEFORE any state mutation:
-    1. Rejects filenames with directory components (basename check).
-    2. Rejects non-.gguf suffixes (extension check).
-    3. Rejects paths whose resolved target escapes models_dir (symlink-escape guard).
+    Accepts either:
+    - Absolute path (as returned by list_models()) — validated against allowed roots.
+    - Bare basename (e.g. "model.gguf") — searched across scan_dirs; first match wins.
+
+    Path-traversal guard (T-07.1-05-02, ASVS V12) runs BEFORE any state mutation.
+    Multi-root allowed-list replaces the old single-root check; symlink-escape guard
+    is preserved — resolved path must land under one of the scan_dirs roots.
 
     Raises:
-        LlamacppInvalidModelFilename: filename fails validation.
-        LlamacppModelNotFound: file does not exist.
+        LlamacppInvalidModelFilename: path fails validation or escapes allowed roots.
+        LlamacppModelNotFound: file does not exist in any scan dir.
         LlamacppBinaryMissing: binary not found via env or PATH.
         LlamacppLaunchConflict: a different model is already running.
     """
     # --- Validation layer (no state mutation yet) ---
-    if not model_filename:
-        raise LlamacppInvalidModelFilename("model filename is empty")
+    if not model_path:
+        raise LlamacppInvalidModelFilename("model path is empty")
 
-    if Path(model_filename).name != model_filename:
+    p = Path(model_path)
+
+    if p.suffix.lower() != ".gguf":
         raise LlamacppInvalidModelFilename(
-            f"model filename must not contain directory components: {model_filename!r}"
+            f"model filename must end with .gguf: {model_path!r}"
         )
 
-    if Path(model_filename).suffix.lower() != ".gguf":
-        raise LlamacppInvalidModelFilename(
-            f"model filename must end with .gguf: {model_filename!r}"
-        )
+    allowed_roots = [d.resolve() for d in scan_dirs() if d.exists()]
 
-    # Symlink-escape guard: resolve() follows symlinks; parent-check catches escapes.
-    resolved_dir = models_dir().resolve()
-    target_path = (resolved_dir / model_filename).resolve()
-    if target_path.parent != resolved_dir and resolved_dir not in target_path.parents:
-        raise LlamacppInvalidModelFilename(
-            f"model path escapes models dir: {target_path}"
-        )
+    if p.is_absolute():
+        # Full path from list_models() — resolve and check against allowed roots.
+        try:
+            target_path = p.resolve(strict=True)
+        except (FileNotFoundError, OSError):
+            raise LlamacppModelNotFound(f"model not found: {model_path}")
+        if not any(
+            target_path == r or r in target_path.parents for r in allowed_roots
+        ):
+            raise LlamacppInvalidModelFilename(
+                f"model path escapes all allowed directories: {target_path}"
+            )
+    else:
+        # Basename-only — reject relative paths with directory components.
+        if p.name != model_path:
+            raise LlamacppInvalidModelFilename(
+                f"model filename must not contain directory components: {model_path!r}"
+            )
+        # Search scan_dirs for the first safe match.
+        target_path = None
+        escaped_candidate: Path | None = None
+        for d in scan_dirs():
+            if not d.exists():
+                continue
+            candidate = d / p.name
+            if not candidate.exists():
+                continue
+            resolved_candidate = candidate.resolve()
+            if any(
+                resolved_candidate == r or r in resolved_candidate.parents
+                for r in allowed_roots
+            ):
+                target_path = resolved_candidate
+                break
+            else:
+                escaped_candidate = resolved_candidate
+
+        if target_path is None:
+            if escaped_candidate is not None:
+                raise LlamacppInvalidModelFilename(
+                    f"model path escapes all allowed directories: {escaped_candidate}"
+                )
+            raise LlamacppModelNotFound(
+                f"model {model_path!r} not found in any scan directory"
+            )
 
     if not target_path.exists():
         raise LlamacppModelNotFound(f"model not found: {target_path}")
@@ -179,7 +289,7 @@ def launch(model_filename: str) -> LaunchResult:
                     ok=True,
                     base_url=f"http://127.0.0.1:{_ACTIVE_PORT}",
                     pid=_PROCESS.pid,
-                    model=model_filename,
+                    model=target_path.name,
                     started_at=_STARTED_AT,
                 )
             raise LlamacppLaunchConflict(
@@ -203,7 +313,7 @@ def launch(model_filename: str) -> LaunchResult:
         ok=True,
         base_url=f"http://127.0.0.1:{port}",
         pid=proc.pid,
-        model=model_filename,
+        model=target_path.name,
         started_at=_STARTED_AT,
     )
 

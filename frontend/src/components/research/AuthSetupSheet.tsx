@@ -134,11 +134,14 @@ export function AuthSetupSheet({ open, onOpenChange }: AuthSetupSheetProps) {
                     placeholder="Selecione um modelo .gguf"
                   />
                   <Select.Content>
-                    {availableModels.map((m) => (
-                      <Select.Item key={m} value={m} data-testid={`model-option-${m}`}>
-                        {m}
-                      </Select.Item>
-                    ))}
+                    {availableModels.map((m) => {
+                      const label = m.replace(/\\/g, '/').split('/').pop() ?? m
+                      return (
+                        <Select.Item key={m} value={m} data-testid={`model-option-${label}`}>
+                          {label}
+                        </Select.Item>
+                      )
+                    })}
                   </Select.Content>
                 </Select.Root>
 
@@ -146,8 +149,9 @@ export function AuthSetupSheet({ open, onOpenChange }: AuthSetupSheetProps) {
                     loading to avoid a flicker on the open transition. */}
                 {availableModels.length === 0 && !health.isLoading && (
                   <Text size="1" color="gray" data-testid="empty-models-hint">
-                    Coloque arquivos .gguf em ~/.medieval-forge/models/{' '}
-                    (ou defina MEDIEVAL_FORGE_LLAMACPP_MODELS_DIR).
+                    Nenhum modelo .gguf encontrado. Coloque arquivos em{' '}
+                    ~/.medieval-forge/models/, ~/llama.cpp/models/ ou C:\AI_Models
+                    (ou defina MEDIEVAL_FORGE_LLAMACPP_EXTRA_DIRS).
                   </Text>
                 )}
               </Flex>

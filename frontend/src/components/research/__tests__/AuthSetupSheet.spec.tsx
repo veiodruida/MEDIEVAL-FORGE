@@ -159,7 +159,7 @@ describe('AuthSetupSheet — Llama.cpp panel (D-05, D-07a/b, D-08, D-08b, D-09)'
     const trigger = await screen.findByTestId('llamacpp-model-select')
     expect(trigger).toBeDisabled()
     expect(await screen.findByTestId('empty-models-hint')).toHaveTextContent(
-      'Coloque arquivos .gguf',
+      'Nenhum modelo .gguf encontrado',
     )
   })
 

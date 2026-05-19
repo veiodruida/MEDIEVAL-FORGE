@@ -80,7 +80,11 @@ async def test_ollama_health_check_returns_unhealthy_with_timeout_message_when_a
 async def test_ollama_health_check_returns_unhealthy_with_exception_message_when_async_client_raises(
     monkeypatch,
 ):
-    """Test 3: arbitrary Exception -> ok=False + error surfaced in message + empty list."""
+    """Test 3: arbitrary Exception -> ok=False + actionable PT-BR message + empty list.
+
+    The exception is no longer forwarded verbatim; health() distinguishes
+    binary-missing ('não encontrado') from daemon-not-running ('não está em execução').
+    """
 
     class _BoomClient(_FakeAsyncClient):
         async def get(self, path: str):
@@ -92,7 +96,10 @@ async def test_ollama_health_check_returns_unhealthy_with_exception_message_when
     provider = OllamaProvider()
     result = await provider.health()
     assert result["ok"] is False
-    assert "connection refused" in result["message"]
+    assert (
+        "não encontrado" in result["message"]
+        or "não está em execução" in result["message"]
+    )
     assert result["available_models"] == []
 
 
