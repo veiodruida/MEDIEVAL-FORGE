@@ -158,20 +158,58 @@ def scan_dirs() -> list[Path]:
     return result
 
 
-def list_models() -> list[str]:
-    """Sorted absolute paths of .gguf files across all scan_dirs (top-level only).
+_GGUF_SCAN_MAX_DEPTH = 4
+_MMPROJ_PREFIX = "mmproj"
 
-    Returns absolute path strings so callers can pass them directly to launch()
-    without knowing which directory each model came from.
+
+def _is_usable_gguf(p: Path) -> bool:
+    """Skip multimodal projection files (mmproj-*.gguf) — not standalone-usable.
+
+    Centraliza.AI parity: dropdown should only list models the user can actually
+    launch with `llama-server -m`.
     """
-    found: list[str] = []
+    if p.suffix.lower() != ".gguf":
+        return False
+    return not p.name.lower().startswith(_MMPROJ_PREFIX)
+
+
+def _iter_gguf_recursive(root: Path, max_depth: int) -> list[Path]:
+    """Bounded-depth recursive .gguf walk (avoids pathological deep trees)."""
+    results: list[Path] = []
+    root_resolved = root.resolve()
+    root_depth = len(root_resolved.parts)
+    try:
+        for p in root.rglob("*.gguf"):
+            try:
+                if not p.is_file():
+                    continue
+                depth = len(p.resolve().parts) - root_depth
+                if depth > max_depth:
+                    continue
+                if _is_usable_gguf(p):
+                    results.append(p)
+            except OSError:
+                continue
+    except OSError:
+        return results
+    return results
+
+
+def list_models() -> list[str]:
+    """Sorted absolute paths of .gguf files across all scan_dirs (recursive).
+
+    Walks each scan dir up to _GGUF_SCAN_MAX_DEPTH levels (mirrors Centraliza.AI
+    `scanDirectory` recursion). Skips mmproj-* files (multimodal projection,
+    not standalone). Returns absolute path strings so callers can pass them
+    directly to launch() without knowing which directory each model came from.
+    """
+    found: set[str] = set()
     for d in scan_dirs():
         if not d.exists():
             continue
-        for p in sorted(d.iterdir()):
-            if p.is_file() and p.suffix.lower() == ".gguf":
-                found.append(str(p.resolve()))
-    return found
+        for p in _iter_gguf_recursive(d, _GGUF_SCAN_MAX_DEPTH):
+            found.add(str(p.resolve()))
+    return sorted(found)
 
 
 def _resolve_binary() -> str | None:
@@ -239,24 +277,26 @@ def launch(model_path: str) -> LaunchResult:
             raise LlamacppInvalidModelFilename(
                 f"model filename must not contain directory components: {model_path!r}"
             )
-        # Search scan_dirs for the first safe match.
+        # Search scan_dirs recursively for the first safe match by basename.
         target_path = None
         escaped_candidate: Path | None = None
         for d in scan_dirs():
             if not d.exists():
                 continue
-            candidate = d / p.name
-            if not candidate.exists():
-                continue
-            resolved_candidate = candidate.resolve()
-            if any(
-                resolved_candidate == r or r in resolved_candidate.parents
-                for r in allowed_roots
-            ):
-                target_path = resolved_candidate
+            for candidate in _iter_gguf_recursive(d, _GGUF_SCAN_MAX_DEPTH):
+                if candidate.name != p.name:
+                    continue
+                resolved_candidate = candidate.resolve()
+                if any(
+                    resolved_candidate == r or r in resolved_candidate.parents
+                    for r in allowed_roots
+                ):
+                    target_path = resolved_candidate
+                    break
+                else:
+                    escaped_candidate = resolved_candidate
+            if target_path is not None:
                 break
-            else:
-                escaped_candidate = resolved_candidate
 
         if target_path is None:
             if escaped_candidate is not None:
