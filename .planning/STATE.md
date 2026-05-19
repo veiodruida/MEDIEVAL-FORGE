@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: + bootstrap v3 infrastructure
 status: executing
-stopped_at: Completed 07.1-08-PLAN.md
-last_updated: "2026-05-16T19:02:36.471Z"
-last_activity: 2026-05-16
+stopped_at: Completed 07.1-09-PLAN.md
+last_updated: "2026-05-19T06:54:46.605Z"
+last_activity: 2026-05-19
 progress:
   total_phases: 11
   completed_phases: 7
   total_plans: 70
-  completed_plans: 67
-  percent: 96
+  completed_plans: 68
+  percent: 97
 ---
 
 # Project State (v3)
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md
 ## Current Position
 
 Phase: 07.1 (period-numeric-inputs-llama-cpp-re-add-with-auto-launch-and-) — EXECUTING
-Plan: 10 of 11
+Plan: 11 of 11
 Status: Ready to execute
-Last activity: 2026-05-16
+Last activity: 2026-05-19
 
 Progress: [█████████░] 93% (25 of 27 plans complete)
 
@@ -119,6 +119,7 @@ See `.planning/PROJECT.md` Key Decisions table (D-V3-01 through D-V3-07).
 - [Phase 07.1]: useResearchStream.ts not modified: period_label was in ResearchDialog.tsx handleSubmit only; plan incorrectly identified the hook as the file target
 - [Phase 07.1]: 11 vitest cases implemented (plan objective said '8'; must_haves.artifacts + acceptance_criteria canonical at 11 — review-fixes #1+#10 add Tests 9/10/11; objective was stale draft)
 - [Phase 07.1]: hasPointerCapture shims added to test-setup.ts (Rule 3: Radix Select pointerDown throws in jsdom without them)
+- [Phase 07.1]: Harness fallback (review-fix #6): test-only /test-routes/research-dialog route created since Phase 07 entry affordance not reachable via stable selector; V2/V4 not testable without real llama-server binary per D-08b
 
 ### Blockers/Concerns
 
@@ -138,6 +139,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-16T19:02:36.468Z
-Stopped at: Completed 07.1-08-PLAN.md
+Last session: 2026-05-19T06:54:46.602Z
+Stopped at: Completed 07.1-09-PLAN.md
 Resume file: None

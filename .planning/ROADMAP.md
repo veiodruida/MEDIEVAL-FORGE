@@ -192,7 +192,7 @@ Plans:
 4. New `POST /api/v3/llm/llamacpp/launch` spawns `llama-server -m <selected.gguf> --port <port>` via subprocess; idempotent (returns ok if same model already running); cleanup on app exit + via DELETE endpoint.
 5. AuthSetupSheet llama.cpp panel replaces free-text model field with a dropdown sourced from `health().available_models`; "Levantar servidor" button invokes the launch endpoint.
 6. All existing Phase 07 tests stay green; new tests cover numeric-period validation, llama.cpp model listing, launch/shutdown lifecycle.
-**Plans:** 8/11 plans executed
+**Plans:** 10/11 plans executed
 Plans:
 - [x] 07.1-00-PLAN.md — Wave 0 test scaffolds (9 MISSING test files from VALIDATION.md gaps)
 - [x] 07.1-01-PLAN.md — Wave 1: HealthStatus.available_models additive field (D-09)
@@ -203,7 +203,7 @@ Plans:
 - [x] 07.1-06-PLAN.md — Wave 4: useProject + useLlamacppHealth + useLlamacppLaunch/Shutdown TanStack hooks (Pitfall 9 invalidation)
 - [x] 07.1-07-PLAN.md — Wave 5: ResearchDialog two-input swap + rodapé link placeholder + useResearchStream payload + 8 vitest cases (D-01/D-02/D-03/D-04c)
 - [x] 07.1-08-PLAN.md — Wave 5: AuthSetupSheet new component + ResearchDialog wire-up + 8 vitest cases (D-05/D-06/D-09)
-- [ ] 07.1-09-PLAN.md — Wave 6: Playwright UAT (5 specs) + checkpoint:human-verify live llama-server spawn
+- [x] 07.1-09-PLAN.md — Wave 6: Playwright UAT (5 specs) + checkpoint:human-verify live llama-server spawn
 - [ ] 07.1-10-PLAN.md — Wave 6: parity sweep + grep gates + VERIFICATION.md + ROADMAP closure (D-12 invariant + SC-6)
 
 ---
