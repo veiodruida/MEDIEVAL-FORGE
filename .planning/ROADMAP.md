@@ -192,7 +192,7 @@ Plans:
 4. New `POST /api/v3/llm/llamacpp/launch` spawns `llama-server -m <selected.gguf> --port <port>` via subprocess; idempotent (returns ok if same model already running); cleanup on app exit + via DELETE endpoint.
 5. AuthSetupSheet llama.cpp panel replaces free-text model field with a dropdown sourced from `health().available_models`; "Levantar servidor" button invokes the launch endpoint.
 6. All existing Phase 07 tests stay green; new tests cover numeric-period validation, llama.cpp model listing, launch/shutdown lifecycle.
-**Plans:** 11/11 plans executed
+**Plans:** 11/11 plans complete
 Plans:
 - [x] 07.1-00-PLAN.md — Wave 0 test scaffolds (9 MISSING test files from VALIDATION.md gaps)
 - [x] 07.1-01-PLAN.md — Wave 1: HealthStatus.available_models additive field (D-09)
