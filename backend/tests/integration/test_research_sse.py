@@ -121,6 +121,18 @@ def _patch_providers(monkeypatch, stub):
     monkeypatch.setitem(llm_registry.PROVIDERS, "stub", stub)
 
 
+def _outer_factory(session):
+    """Return a session_factory lambda flagged as outer-owned (WR-01 fix).
+
+    The runner's `_is_outer_session` checks `getattr(factory, '_is_outer', False)`.
+    Without this flag, the runner would attempt to close the test-fixture session,
+    which is owned by the fixture, not the runner.
+    """
+    factory = lambda: session  # noqa: E731
+    factory._is_outer = True
+    return factory
+
+
 async def _drain_queue(queue, timeout: float = 5.0):
     """Drain SSE queue until terminal None sentinel; return list of payload dicts."""
     events = []
@@ -170,7 +182,7 @@ async def test_research_stream_emits_4_stage_events_kingdoms_duchies_condados_ba
         period_end=1000,
         condado_ids=condado_ids,
         force_refresh=False,
-        session_factory=lambda: db_session,
+        session_factory=_outer_factory(db_session),
     )
     queue = _RUN_QUEUES[project_id]
     events = await _drain_queue(queue)
@@ -208,7 +220,7 @@ async def test_research_stream_returns_409_when_run_already_in_flight_for_projec
         period_end=1000,
         condado_ids=condado_ids,
         force_refresh=False,
-        session_factory=lambda: db_session,
+        session_factory=_outer_factory(db_session),
     )
     with pytest.raises(SingleFlightError):
         await start_research(
@@ -220,7 +232,7 @@ async def test_research_stream_returns_409_when_run_already_in_flight_for_projec
         period_end=1000,
             condado_ids=condado_ids,
             force_refresh=False,
-            session_factory=lambda: db_session,
+            session_factory=_outer_factory(db_session),
         )
     # Drain the first run so its task doesn't leak across the test boundary.
     from medieval_forge.services.research.runner import _RUN_QUEUES, _RUN_TASKS
@@ -262,7 +274,7 @@ async def test_research_stop_aborts_in_flight_run_and_evicts_queue(
         period_end=1000,
         condado_ids=condado_ids,
         force_refresh=False,
-        session_factory=lambda: db_session,
+        session_factory=_outer_factory(db_session),
     )
     assert project_id in _RUN_QUEUES
     # Allow the runner to start and produce at least one event
@@ -327,7 +339,7 @@ async def test_research_cache_hit_short_circuits_provider_call(
         period_end=1000,
         condado_ids=condado_ids,
         force_refresh=False,
-        session_factory=lambda: db_session,
+        session_factory=_outer_factory(db_session),
     )
     queue = _RUN_QUEUES[project_id]
     await _drain_queue(queue)
@@ -373,7 +385,7 @@ async def test_research_overlay_written_atomically_via_tmp_replace(
         period_end=1000,
         condado_ids=condado_ids,
         force_refresh=False,
-        session_factory=lambda: db_session,
+        session_factory=_outer_factory(db_session),
     )
     queue = _RUN_QUEUES[project_id]
     await _drain_queue(queue)
@@ -413,7 +425,7 @@ async def test_research_overlay_meta_sidecar_written_with_provider_model_timesta
         period_end=1000,
         condado_ids=condado_ids,
         force_refresh=False,
-        session_factory=lambda: db_session,
+        session_factory=_outer_factory(db_session),
     )
     queue = _RUN_QUEUES[project_id]
     await _drain_queue(queue)
@@ -468,7 +480,7 @@ async def test_meta_sidecar_generated_at_equals_applied_at_on_fresh_run(
         period_end=1000,
         condado_ids=condado_ids,
         force_refresh=False,
-        session_factory=lambda: db_session,
+        session_factory=_outer_factory(db_session),
     )
     queue = _RUN_QUEUES[project_id]
     await _drain_queue(queue)
@@ -525,7 +537,7 @@ async def test_meta_sidecar_generated_at_predates_applied_at_on_cache_hit(
         period_end=1000,
         condado_ids=condado_ids,
         force_refresh=False,
-        session_factory=lambda: db_session,
+        session_factory=_outer_factory(db_session),
     )
     queue = _RUN_QUEUES[project_id]
     await _drain_queue(queue)

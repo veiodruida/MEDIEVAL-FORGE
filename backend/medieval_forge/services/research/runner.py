@@ -271,20 +271,18 @@ async def _research_producer(
 
 
 def _is_outer_session(session_factory) -> bool:
-    """Detect the test-style `lambda: db_session` factory (returns same session).
+    """Detect a test-owned session factory that must NOT be closed by the runner.
 
-    When tests pass an already-open AsyncSession via `lambda: db_session`, we
-    must NOT close it — the fixture owns its lifetime. We treat any callable
-    whose return value is the SAME object on two consecutive calls as an
-    "outer-owned" session. Production `AsyncSessionLocal` returns a fresh
-    context-managed session each call.
+    Tests pass `lambda: db_session` and mark the lambda with `_is_outer = True`
+    so the runner skips closing the session (the fixture owns its lifetime).
+    Production `AsyncSessionLocal` never carries this attribute, so it returns
+    False and the runner closes the session normally.
+
+    This replaces the previous call-twice-and-compare approach which allocated
+    two real AsyncSession objects from the pool (and leaked them) on every
+    research run completion (WR-01).
     """
-    try:
-        a = session_factory()
-        b = session_factory()
-    except Exception:  # noqa: BLE001
-        return False
-    return a is b
+    return bool(getattr(session_factory, "_is_outer", False))
 
 
 # ---------------------------------------------------------------------------
