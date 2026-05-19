@@ -11,8 +11,8 @@
  *
  * 9 scenarios total — meets `<acceptance_criteria>` `>= 9 tests`.
  *
- * Pattern: each test mounts the page, stubs `/api/v3/projects/*/export/dry-run`
- * or `/export`, and asserts the literal PT-BR substring. Navigation to the
+ * Pattern: each test mounts the page, stubs '/api/v3/projects/{id}/export/dry-run'
+ * or '/export', and asserts the literal PT-BR substring. Navigation to the
  * Export button is owned by Plan 10 + Plan 03 canvas; the spec asserts the
  * PT-BR contract literals from `i18n/exportErrors.ts` so each code's
  * translation is locked at the UAT layer.

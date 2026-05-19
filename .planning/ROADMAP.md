@@ -184,7 +184,7 @@ Plans:
 ### Phase 07.1: Period numeric inputs + Llama.cpp re-add with auto-launch and local model list (INSERTED)
 **Goal:** Replace single-string `period_label` with numeric start+end inputs in ResearchDialog; re-add LlamaCppProvider (deleted in 87f8aab) with filesystem model listing, auto-launch endpoint, and model dropdown in AuthSetupSheet.
 **Depends on:** Phase 07
-**Status:** planned
+**Status:** complete
 **Success criteria:**
 1. ResearchDialog renders two numeric inputs (`period_start`, `period_end`) with `start <= end` validation (snapshot-style equality allowed per CONTEXT D-02); payload to `/api/v3/research/start` carries integers, not a label string.
 2. Prompt template composes period range from start/end (no breaking change to LLM prompt semantics).
@@ -192,7 +192,7 @@ Plans:
 4. New `POST /api/v3/llm/llamacpp/launch` spawns `llama-server -m <selected.gguf> --port <port>` via subprocess; idempotent (returns ok if same model already running); cleanup on app exit + via DELETE endpoint.
 5. AuthSetupSheet llama.cpp panel replaces free-text model field with a dropdown sourced from `health().available_models`; "Levantar servidor" button invokes the launch endpoint.
 6. All existing Phase 07 tests stay green; new tests cover numeric-period validation, llama.cpp model listing, launch/shutdown lifecycle.
-**Plans:** 10/11 plans executed
+**Plans:** 11/11 plans executed
 Plans:
 - [x] 07.1-00-PLAN.md — Wave 0 test scaffolds (9 MISSING test files from VALIDATION.md gaps)
 - [x] 07.1-01-PLAN.md — Wave 1: HealthStatus.available_models additive field (D-09)
@@ -204,7 +204,7 @@ Plans:
 - [x] 07.1-07-PLAN.md — Wave 5: ResearchDialog two-input swap + rodapé link placeholder + useResearchStream payload + 8 vitest cases (D-01/D-02/D-03/D-04c)
 - [x] 07.1-08-PLAN.md — Wave 5: AuthSetupSheet new component + ResearchDialog wire-up + 8 vitest cases (D-05/D-06/D-09)
 - [x] 07.1-09-PLAN.md — Wave 6: Playwright UAT (5 specs) + checkpoint:human-verify live llama-server spawn
-- [ ] 07.1-10-PLAN.md — Wave 6: parity sweep + grep gates + VERIFICATION.md + ROADMAP closure (D-12 invariant + SC-6)
+- [x] 07.1-10-PLAN.md — Wave 6: parity sweep + grep gates + VERIFICATION.md + ROADMAP closure (D-12 invariant + SC-6)
 
 ---
 
