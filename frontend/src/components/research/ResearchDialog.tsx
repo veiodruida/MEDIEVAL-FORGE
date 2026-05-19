@@ -305,6 +305,7 @@ export function ResearchDialog({
               modelValue={model}
               onModelChange={setModel}
               isLoading={providersLoading}
+              onConfigureClick={() => setAuthSheetOpen(true)}
             />
 
             {/* REVIEWS soft codex — softened CLI piggyback microcopy. */}

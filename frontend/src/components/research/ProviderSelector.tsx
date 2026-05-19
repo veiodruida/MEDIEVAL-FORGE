@@ -77,6 +77,7 @@ export interface ProviderSelectorProps {
   modelValue: string
   onModelChange: (model: string) => void
   isLoading?: boolean
+  onConfigureClick?: () => void
 }
 
 export function ProviderSelector({
@@ -86,6 +87,7 @@ export function ProviderSelector({
   modelValue,
   onModelChange,
   isLoading = false,
+  onConfigureClick,
 }: ProviderSelectorProps) {
   const selectedEntry = useMemo(
     () => providers?.find((p) => p.provider_id === value),
@@ -142,7 +144,6 @@ export function ProviderSelector({
                 <Select.Item
                   key={p.provider_id}
                   value={p.provider_id}
-                  disabled={!p.healthy}
                 >
                   <Text size="2">
                     {p.display_name}
@@ -159,8 +160,19 @@ export function ProviderSelector({
           </Select.Root>
         </Box>
         {selectedEntry && !selectedEntry.healthy && (
-          <Text size="1" color="gray" mt="1" as="p">
+          <Text size="1" color="orange" mt="1" as="p">
             {selectedEntry.message}
+            {selectedEntry.provider_id === 'llamacpp' && onConfigureClick && (
+              <>
+                {' '}
+                <span
+                  style={{ cursor: 'pointer', textDecoration: 'underline' }}
+                  onClick={onConfigureClick}
+                >
+                  Iniciar servidor →
+                </span>
+              </>
+            )}
           </Text>
         )}
       </Box>
