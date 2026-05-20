@@ -87,12 +87,21 @@ export function useResearchStream(): ResearchStreamHandle {
   const esRef = useRef<EventSource | null>(null)
   const [state, setState] = useState<StreamState>({ phase: 'idle' })
 
-  const close = useCallback(() => {
+  // Internal — close ES only, keep state. Used by the onerror path so the
+  // failed phase survives until something else resets it.
+  const closeEventSource = useCallback(() => {
     if (esRef.current) {
       esRef.current.close()
       esRef.current = null
     }
   }, [])
+
+  // Public — close ES AND reset state to idle so reopening the dialog
+  // doesn't show stale errors from the previous run.
+  const close = useCallback(() => {
+    closeEventSource()
+    setState({ phase: 'idle' })
+  }, [closeEventSource])
 
   const subscribe = useCallback(
     (runId: string) => {
@@ -124,16 +133,25 @@ export function useResearchStream(): ResearchStreamHandle {
             error_message: 'Pesquisa cancelada pelo usuário.',
           })
         } else {
-          setState({
-            phase: 'failed',
-            error_code: 'network',
-            error_message: 'Falha de rede durante a pesquisa.',
-          })
+          // Do NOT clobber a terminal state we already received via onmessage.
+          // The SSE replay path (backend serving last-terminal for fast
+          // failures) closes the connection immediately after one event;
+          // EventSource fires onerror on close, which would otherwise hide
+          // the real backend message under a generic "network failure".
+          setState((prev) =>
+            prev.phase === 'failed' || prev.phase === 'succeeded'
+              ? prev
+              : {
+                  phase: 'failed',
+                  error_code: 'network',
+                  error_message: 'Falha de rede durante a pesquisa.',
+                },
+          )
         }
-        close()
+        closeEventSource()
       }
     },
-    [close],
+    [close, closeEventSource],
   )
 
   // Effect-cleanup mirrors useRenderStream: closing the EventSource on unmount

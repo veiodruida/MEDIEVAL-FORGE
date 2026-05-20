@@ -91,6 +91,12 @@ _RUN_QUEUES: dict[str, asyncio.Queue[Optional[str]]] = {}
 _RUN_TASKS: dict[str, asyncio.Task] = {}
 _RUN_STOP_EVENTS: dict[str, asyncio.Event] = {}
 
+# Last terminal SSE envelope per project so late subscribers (frontend
+# subscribes a tick AFTER POST /start returns; fast failures can complete
+# the producer before the EventSource opens) can still see what happened.
+# Map cleared when a new run starts for the same project.
+_LAST_TERMINAL: dict[str, str] = {}
+
 
 class SingleFlightError(Exception):
     """Raised by `start_research` when a run is already alive for the project.
@@ -271,7 +277,18 @@ async def _research_producer(
         raise
     except Exception as exc:  # noqa: BLE001 — surface class name only (T-03-05 carry)
         logger.exception("research run failed for project %s", project_id)
-        _emit(queue, "error", None, exc.__class__.__name__, None)
+        # Include the exception message so late subscribers can render the
+        # actionable text (OOM line, HTTP 500 detail, etc.) instead of just
+        # the class name.
+        payload = {
+            "event_type": "error",
+            "stage": None,
+            "message": f"{exc.__class__.__name__}: {exc}",
+            "progress": None,
+        }
+        msg = f"data: {json.dumps(payload)}\n\n"
+        queue.put_nowait(msg)
+        _LAST_TERMINAL[project_id] = msg
     finally:
         # Terminal sentinel — MUST be before evictions so consumers exit cleanly.
         await queue.put(None)
@@ -321,6 +338,10 @@ async def start_research(
             f"research already in flight for project {project_id}"
         )
 
+    # Clear any cached terminal from a previous run so late-subscriber lookup
+    # only ever surfaces the most-recent failure.
+    _LAST_TERMINAL.pop(project_id, None)
+
     queue: asyncio.Queue[Optional[str]] = asyncio.Queue()
     stop_event = asyncio.Event()
     _RUN_QUEUES[project_id] = queue
@@ -357,6 +378,17 @@ def get_stream(project_id: str) -> asyncio.Queue[Optional[str]]:
     if queue is None:
         raise KeyError(f"no active research run for project {project_id}")
     return queue
+
+
+def get_last_terminal(project_id: str) -> Optional[str]:
+    """Return the most-recent terminal SSE envelope for a project, if any.
+
+    Used by the SSE endpoint when get_stream() raises KeyError — fast failures
+    can complete the producer between POST /start returning and the EventSource
+    opening, so the live queue is gone but the terminal envelope is still
+    interesting. Returns None when no terminal is cached.
+    """
+    return _LAST_TERMINAL.get(project_id)
 
 
 async def stop_research(project_id: str) -> bool:

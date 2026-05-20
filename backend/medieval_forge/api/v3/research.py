@@ -42,6 +42,7 @@ from ...services.paths import is_valid_uuid, project_dir
 from ...services.research.runner import (
     SingleFlightError,
     _RUN_QUEUES,
+    get_last_terminal,
     get_stream,
     start_research,
     stop_research,
@@ -145,9 +146,28 @@ async def get_stream_endpoint(run_id: str) -> StreamingResponse:
     try:
         queue = get_stream(run_id)
     except KeyError:
-        raise HTTPException(
-            status_code=404,
-            detail=f"no active research run for {run_id}; POST /start first",
+        # WR-02 fallback: producer may have finished between POST /start
+        # returning and the EventSource opening (fast errors like OOM).
+        # Replay the cached terminal envelope as a one-shot stream so the
+        # frontend gets the real error instead of a 404 "network failure".
+        terminal = get_last_terminal(run_id)
+        if terminal is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"no active research run for {run_id}; POST /start first",
+            )
+
+        async def replay() -> AsyncIterator[str]:
+            yield terminal
+
+        return StreamingResponse(
+            replay(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "X-Accel-Buffering": "no",
+                "Connection": "keep-alive",
+            },
         )
 
     async def gen() -> AsyncIterator[str]:
