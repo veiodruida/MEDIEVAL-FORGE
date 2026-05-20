@@ -25,6 +25,15 @@ def test_resolve_country_display_name_known_qid_returns_display_name() -> None:
     assert _resolve_country_display_name("Q45") == "Portugal"
 
 
+def test_resolve_country_display_name_accepts_iso_2_alpha_aliases() -> None:
+    """Projects persist ISO-3166 codes (ES/PT/FR/GB) in country_qid when
+    created without a Wikidata lookup. Resolver must map them to the same
+    PT-BR display name so prompts don't include raw ISO codes."""
+    assert _resolve_country_display_name("ES") == "Espanha"
+    assert _resolve_country_display_name("PT") == "Portugal"
+    assert _resolve_country_display_name("FR") == "França"
+
+
 def test_resolve_country_display_name_unknown_qid_falls_back_with_warning(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
