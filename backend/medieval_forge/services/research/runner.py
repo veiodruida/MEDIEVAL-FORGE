@@ -58,6 +58,16 @@ _QID_DISPLAY_NAMES: dict[str, str] = {
     "Q29": "Espanha",
     "Q45": "Portugal",
     "Q43175": "Ibéria",
+    "Q142": "França",
+    "Q145": "Reino Unido",
+    "Q21": "Inglaterra",
+    # ISO-3166 alpha-2 fallbacks — projects persist these in
+    # `country_qid` when created without a Wikidata lookup.
+    "ES": "Espanha",
+    "PT": "Portugal",
+    "FR": "França",
+    "GB": "Reino Unido",
+    "EN": "Inglaterra",
 }
 
 
@@ -197,7 +207,8 @@ async def _research_producer(
                     bbox=None,
                 )
 
-                result = await provider.research(prompt, schema=ResearchResult, credentials=None, queue=queue)
+                credentials = {"model": model} if model else None
+                result = await provider.research(prompt, schema=ResearchResult, credentials=credentials, queue=queue)
                 # Provider may return a Pydantic model OR a dict — normalize.
                 if hasattr(result, "model_dump"):
                     payload = result.model_dump()

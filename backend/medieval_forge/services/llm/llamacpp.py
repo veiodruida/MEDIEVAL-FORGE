@@ -161,11 +161,23 @@ class LlamaCppProvider:
 
         model = (credentials or {}).get("model")
         if not model:
-            raise ValueError(
-                "LlamaCppProvider.research requires credentials['model'] — "
-                "Deviation #3: '(server-default)' sentinel is dropped, D-08 "
-                "always passes an explicit model."
-            )
+            # UX fix: when the caller didn't pass a model, fall back to the
+            # model the launcher booted with (it's the only one llama-server
+            # is serving). Avoids forcing users to type the model name in
+            # ResearchDialog after picking it in AuthSetupSheet.
+            running = status() if base_url is None else None
+            launched = running.get("model") if running else None
+            if not launched and base_url is not None:
+                # _test_only_base_url path — still consult status() best-effort
+                launched = (status() or {}).get("model")
+            if launched:
+                model = launched
+            else:
+                raise ValueError(
+                    "LlamaCppProvider.research requires credentials['model'] — "
+                    "Deviation #3: '(server-default)' sentinel is dropped, D-08 "
+                    "always passes an explicit model."
+                )
 
         body: dict[str, Any] = {
             "messages": [
