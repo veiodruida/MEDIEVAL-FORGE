@@ -29,7 +29,6 @@ import {
   TextField,
 } from '@radix-ui/themes'
 import { useProviders } from '../../api/useProviders'
-import { AuthSetupSheet } from './AuthSetupSheet'
 import { useProject } from '../../api/useProject'
 import { useResearchOverlay } from '../../api/useResearchOverlay'
 import { useResearchStream } from '../../hooks/useResearchStream'
@@ -71,7 +70,6 @@ export function ResearchDialog({
   const overlay = useResearchOverlay(open ? projectId : undefined)
 
   const { data: project } = useProject(projectId)
-  const [authSheetOpen, setAuthSheetOpen] = useState(false)
   const [periodStart, setPeriodStart] = useState<number | null>(null)
   const [periodEnd, setPeriodEnd] = useState<number | null>(null)
   const [hasSeeded, setHasSeeded] = useState(false)
@@ -297,7 +295,7 @@ export function ResearchDialog({
               )}
             </Flex>
 
-            {/* Provedor LLM + Modelo (sub-component) */}
+            {/* Provedor LLM + Modelo + Llama.cpp controls (unified panel) */}
             <ProviderSelector
               providers={providers}
               value={provider}
@@ -305,7 +303,6 @@ export function ResearchDialog({
               modelValue={model}
               onModelChange={setModel}
               isLoading={providersLoading}
-              onConfigureClick={() => setAuthSheetOpen(true)}
             />
 
             {/* REVIEWS soft codex — softened CLI piggyback microcopy. */}
@@ -373,17 +370,7 @@ export function ResearchDialog({
             )}
 
             {/* CTA row — rodapé layout (UI-SPEC §Copywriting Surface 1) */}
-            <Flex gap="2" justify="between" mt="2" align="center">
-              {/* Configurar provedores — placeholder link; real open-state wiring in plan 07.1-08 */}
-              <Text
-                size="1"
-                color="gray"
-                style={{ cursor: 'pointer', textDecoration: 'underline' }}
-                data-testid="auth-setup-sheet-trigger"
-                onClick={() => setAuthSheetOpen(true)}
-              >
-                Configurar provedores
-              </Text>
+            <Flex gap="2" justify="end" mt="2" align="center">
               <Flex gap="2">
                 {isStreaming ? (
                   <Button
@@ -419,7 +406,6 @@ export function ResearchDialog({
         </form>
       </Dialog.Content>
     </Dialog.Root>
-    <AuthSetupSheet open={authSheetOpen} onOpenChange={setAuthSheetOpen} />
     </>
   )
 }

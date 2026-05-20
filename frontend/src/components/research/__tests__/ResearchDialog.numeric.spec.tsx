@@ -232,13 +232,6 @@ describe('ResearchDialog — numeric period inputs (D-01, D-02, D-03, D-04c)', (
     expect('period_label' in body).toBe(false)
   })
 
-  it('Configurar provedores rodapé link is rendered with data-testid auth-setup-sheet-trigger', async () => {
-    render(wrap(<ResearchDialog {...DEFAULT_PROPS} open={true} />))
-
-    const link = await screen.findByTestId('auth-setup-sheet-trigger')
-    expect(link).toHaveTextContent('Configurar provedores')
-  })
-
   it('period_inputs_seed_when_project_resolves_after_open', async () => {
     // review-fix #2 (Gemini HIGH): hasSeeded gate must wait for useProject
     // to resolve, not just for the open-transition tick.

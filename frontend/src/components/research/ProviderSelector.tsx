@@ -1,34 +1,36 @@
 /**
- * Phase 07 Plan 09a Task 2 — ProviderSelector sub-component.
+ * Phase 07.1 — unified provider/model picker (replaces the old AuthSetupSheet flow).
  *
- * Used inside `ResearchDialog` to render the Provedor LLM `<Select.Root>`
- * plus the Modelo `<TextField.Root>` underneath. Sources its option list
- * from the `useProviders()` hook and applies the REVIEWS fix #5 ordered
- * preference list to pick a default model when the parent's model value
- * is blank.
+ * Responsibilities:
+ *   1. Provedor LLM dropdown sourced from useProviders().
+ *   2. Modelo dropdown — for llamacpp/ollama populated from provider.available_models;
+ *      for claude a free-form TextField (claude has no installed-model list).
+ *   3. Inline "Levantar / Parar servidor" controls when provider=llamacpp.
  *
- * REVIEWS fix #5 — ordered model preference:
+ * REVIEWS fix #5 ordered preference (ollama only):
  *   1. qwen2.5:7b        (preferred — best balance for our prompts)
- *   2. qwen2.5-coder:14b (acceptable fallback)
- *   3. gemma4:26b        (acceptable fallback)
- *   4. deepseek-r1:14b   (acceptable fallback)
+ *   2. qwen2.5-coder:14b (fallback)
+ *   3. gemma4:26b        (fallback)
+ *   4. deepseek-r1:14b   (fallback)
  *
- * If none match the installed list, fall back to the first available model
- * and surface a PT-BR hint nudging the user to `ollama pull qwen2.5:7b`.
+ * For llamacpp the dropdown shows absolute .gguf paths (label = basename) — the
+ * user picks one and clicks "Levantar servidor" inline; no separate dialog.
  */
 import { useEffect, useMemo } from 'react'
 import {
+  Badge,
   Box,
+  Button,
   Flex,
   Select,
+  Spinner,
   Text,
   TextField,
 } from '@radix-ui/themes'
 import type { ProviderEntry } from '../../api/useProviders'
+import { useLlamacppLaunch, useLlamacppShutdown } from '../../api/useLlamacppLaunch'
+import { useLlamacppStatus } from '../../api/useLlamacppStatus'
 
-// REVIEWS fix #5 — single source of truth for the preference order. Keeping
-// the literal entries as separate string literals so the grep acceptance
-// (`'qwen2.5:7b'|'qwen2.5-coder:14b'|'gemma4:26b'|'deepseek-r1:14b'`) hits.
 const MODEL_PREFERENCE_ORDER = [
   'qwen2.5:7b',
   'qwen2.5-coder:14b',
@@ -41,11 +43,6 @@ interface PickModelResult {
   hint?: string
 }
 
-/**
- * REVIEWS fix #5 — ordered preference. First MODEL_PREFERENCE_ORDER entry
- * present in `availableModels` wins; falls back to first available with a
- * hint when none match; surfaces a no-models hint when the list is empty.
- */
 export function pickDefaultModel(
   availableModels: string[] | undefined,
 ): PickModelResult {
@@ -70,6 +67,10 @@ export function pickDefaultModel(
   }
 }
 
+function basename(path: string): string {
+  return path.replace(/\\/g, '/').split('/').pop() ?? path
+}
+
 export interface ProviderSelectorProps {
   providers: ProviderEntry[] | undefined
   value: string
@@ -77,7 +78,6 @@ export interface ProviderSelectorProps {
   modelValue: string
   onModelChange: (model: string) => void
   isLoading?: boolean
-  onConfigureClick?: () => void
 }
 
 export function ProviderSelector({
@@ -87,33 +87,72 @@ export function ProviderSelector({
   modelValue,
   onModelChange,
   isLoading = false,
-  onConfigureClick,
 }: ProviderSelectorProps) {
   const selectedEntry = useMemo(
     () => providers?.find((p) => p.provider_id === value),
     [providers, value],
   )
 
-  // REVIEWS fix #5 — apply ordered preference whenever Ollama is selected
-  // and the parent has not pinned a model. Auto-fill the model field with
-  // the picked default; surface the PT-BR hint when the first preference
-  // is missing.
-  const pick = useMemo(
+  const availableModels = selectedEntry?.available_models ?? []
+  const isLlamacpp = value === 'llamacpp'
+  const isOllama = value === 'ollama'
+  const isClaude = value === 'claude'
+
+  // Llamacpp launcher state — only enabled when llamacpp is the active provider.
+  const status = useLlamacppStatus(isLlamacpp)
+  const launch = useLlamacppLaunch()
+  const shutdown = useLlamacppShutdown()
+  const isRunning = status.data?.running === true
+
+  const isBinaryMissing =
+    isLlamacpp &&
+    selectedEntry?.healthy === false &&
+    (selectedEntry?.message ?? '').includes('não encontrado')
+
+  // REVIEWS fix #5 — preference-based default for Ollama.
+  const ollamaPick = useMemo(
     () =>
-      value === 'ollama'
-        ? pickDefaultModel(selectedEntry?.available_models)
+      isOllama
+        ? pickDefaultModel(availableModels)
         : ({ model: '', hint: undefined } as PickModelResult),
-    [value, selectedEntry?.available_models],
+    [isOllama, availableModels],
   )
 
+  // Auto-pick a model when one isn't already selected:
+  //   - Ollama: ordered preference list (qwen2.5:7b → fallback chain).
+  //   - Llamacpp: first .gguf in available_models.
+  // Claude: stays free-text (no installed-model list).
   useEffect(() => {
-    if (value !== 'ollama') return
-    if (modelValue !== '' || pick.model === '') return
-    onModelChange(pick.model)
-  }, [value, modelValue, pick.model, onModelChange])
+    if (modelValue !== '') return
+    if (isOllama && ollamaPick.model) {
+      onModelChange(ollamaPick.model)
+      return
+    }
+    if (isLlamacpp && availableModels.length > 0) {
+      onModelChange(availableModels[0])
+    }
+  }, [
+    isOllama,
+    isLlamacpp,
+    modelValue,
+    ollamaPick.model,
+    availableModels,
+    onModelChange,
+  ])
 
-  const modelPlaceholder =
-    value === 'claude' ? 'claude-sonnet-4-6' : 'qwen2.5:7b'
+  // Reset model when the provider changes (the previous selection is
+  // meaningless under a new provider, e.g. ollama tag vs gguf path).
+  useEffect(() => {
+    onModelChange('')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value])
+
+  const modelPlaceholder = isClaude ? 'claude-sonnet-4-6' : 'Selecione um modelo'
+
+  const launchConflictMessage = launch.error?.message ?? ''
+  const isConflict409 =
+    launchConflictMessage.toLowerCase().includes('ativo') &&
+    launchConflictMessage.toLowerCase().includes('pare')
 
   return (
     <Flex direction="column" gap="3">
@@ -141,10 +180,7 @@ export function ProviderSelector({
             />
             <Select.Content>
               {providers?.map((p) => (
-                <Select.Item
-                  key={p.provider_id}
-                  value={p.provider_id}
-                >
+                <Select.Item key={p.provider_id} value={p.provider_id}>
                   <Text size="2">
                     {p.display_name}
                     {!p.healthy && (
@@ -159,20 +195,9 @@ export function ProviderSelector({
             </Select.Content>
           </Select.Root>
         </Box>
-        {selectedEntry && !selectedEntry.healthy && (
+        {selectedEntry && !selectedEntry.healthy && !isLlamacpp && (
           <Text size="1" color="orange" mt="1" as="p">
             {selectedEntry.message}
-            {selectedEntry.provider_id === 'llamacpp' && onConfigureClick && (
-              <>
-                {' '}
-                <span
-                  style={{ cursor: 'pointer', textDecoration: 'underline' }}
-                  onClick={onConfigureClick}
-                >
-                  Iniciar servidor →
-                </span>
-              </>
-            )}
           </Text>
         )}
       </Box>
@@ -187,20 +212,149 @@ export function ProviderSelector({
           Modelo
         </Text>
         <Box mt="1">
-          <TextField.Root
-            id="research-model-input"
-            data-testid="research-model-input"
-            value={modelValue}
-            onChange={(e) => onModelChange(e.target.value)}
-            placeholder={modelPlaceholder}
-          />
+          {isClaude ? (
+            <TextField.Root
+              id="research-model-input"
+              data-testid="research-model-input"
+              value={modelValue}
+              onChange={(e) => onModelChange(e.target.value)}
+              placeholder={modelPlaceholder}
+            />
+          ) : (
+            <Select.Root
+              value={modelValue || undefined}
+              onValueChange={onModelChange}
+              disabled={availableModels.length === 0}
+            >
+              <Select.Trigger
+                id="research-model-input"
+                data-testid="research-model-select"
+                placeholder={
+                  availableModels.length === 0
+                    ? isLlamacpp
+                      ? 'Nenhum .gguf encontrado'
+                      : 'Nenhum modelo Ollama instalado'
+                    : modelPlaceholder
+                }
+              />
+              <Select.Content>
+                {availableModels.map((m) => {
+                  const label = isLlamacpp ? basename(m) : m
+                  return (
+                    <Select.Item
+                      key={m}
+                      value={m}
+                      data-testid={`model-option-${label}`}
+                    >
+                      {label}
+                    </Select.Item>
+                  )
+                })}
+              </Select.Content>
+            </Select.Root>
+          )}
         </Box>
-        {pick.hint && (
+        {isOllama && ollamaPick.hint && (
           <Text size="1" color="orange" mt="1" as="p">
-            {pick.hint}
+            {ollamaPick.hint}
+          </Text>
+        )}
+        {isLlamacpp && availableModels.length === 0 && !isLoading && (
+          <Text size="1" color="gray" mt="1" as="p">
+            Nenhum modelo .gguf encontrado. Coloque arquivos em
+            ~/.medieval-forge/models/, ~/llama.cpp/models/ ou C:\AI_Models (ou
+            defina MEDIEVAL_FORGE_LLAMACPP_EXTRA_DIRS).
           </Text>
         )}
       </Box>
+
+      {isLlamacpp && (
+        <Box>
+          {isBinaryMissing && (
+            <Text size="2" color="orange" as="p" data-testid="binary-missing-warning">
+              llama-server não encontrado no PATH. Instale o llama.cpp ou defina
+              LLAMA_SERVER_BIN.
+            </Text>
+          )}
+
+          <Flex align="center" gap="2" mt="2" data-testid="server-status-line">
+            {launch.isPending && (
+              <>
+                <Spinner size="1" />
+                <Text size="2" color="gray">
+                  Iniciando servidor…
+                </Text>
+              </>
+            )}
+            {shutdown.isPending && (
+              <>
+                <Spinner size="1" />
+                <Text size="2" color="gray">
+                  Parando servidor…
+                </Text>
+              </>
+            )}
+            {!launch.isPending && !shutdown.isPending && isRunning && status.data && (
+              <>
+                <Badge color="green" variant="soft">
+                  Servidor ativo
+                </Badge>
+                <Text size="2">
+                  {status.data.base_url} · PID {status.data.pid}
+                </Text>
+              </>
+            )}
+            {!launch.isPending && !shutdown.isPending && !isRunning && (
+              <Text size="2" color="gray">
+                Nenhum servidor ativo.
+              </Text>
+            )}
+          </Flex>
+
+          {launch.isError && (
+            <Text size="2" color="red" as="p" mt="1" data-testid="launch-error">
+              {isConflict409
+                ? launch.error?.message
+                : `Erro ao iniciar o servidor: ${launch.error?.message}. Verifique os logs do backend.`}
+            </Text>
+          )}
+
+          {shutdown.isError && (
+            <Text size="2" color="red" as="p" mt="1" data-testid="shutdown-error">
+              Erro ao parar o servidor: {shutdown.error?.message}.
+            </Text>
+          )}
+
+          <Box mt="2">
+            {!isRunning ? (
+              <Button
+                type="button"
+                data-testid="launch-button"
+                onClick={() => modelValue && launch.mutate({ model: modelValue })}
+                disabled={
+                  !modelValue ||
+                  availableModels.length === 0 ||
+                  isBinaryMissing ||
+                  launch.isPending
+                }
+              >
+                Levantar servidor
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                data-testid="shutdown-button"
+                color="red"
+                variant="solid"
+                onClick={() => shutdown.mutate()}
+                disabled={shutdown.isPending}
+              >
+                Parar servidor
+              </Button>
+            )}
+          </Box>
+        </Box>
+      )}
     </Flex>
   )
 }
