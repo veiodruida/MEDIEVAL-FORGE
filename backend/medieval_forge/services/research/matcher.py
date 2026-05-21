@@ -69,13 +69,23 @@ def llm_output_to_overlay(
     """
     allowed = set(pipeline_condado_ids)
     overlay: dict = {}
-    for kingdom in llm_result.get("kingdoms", []):
+    # Small local models (qwen2.5:1.5b, gemma3:1b, ...) often ignore the
+    # nested-schema instruction and return arrays of strings, mixed shapes,
+    # or single dicts where lists were asked for. Defend each level so a
+    # malformed branch is dropped rather than crashing the whole run.
+    for kingdom in llm_result.get("kingdoms", []) or []:
+        if not isinstance(kingdom, dict):
+            continue
         # NIT 3: empty string OR missing key -> None (NOT "").
         # `dict.get("name")` returns None when key absent; `or None` collapses
         # the empty-string case (and any other falsy value) to None.
         kingdom_owner = kingdom.get("name") or None
-        for duchy in kingdom.get("duchies", []):
-            for condado in duchy.get("condados", []):
+        for duchy in kingdom.get("duchies", []) or []:
+            if not isinstance(duchy, dict):
+                continue
+            for condado in duchy.get("condados", []) or []:
+                if not isinstance(condado, dict):
+                    continue
                 cid = condado.get("id")
                 if cid not in allowed:
                     # T-07-06-01: drop unknown ids (defense-in-depth).

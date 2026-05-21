@@ -269,7 +269,20 @@ async def _research_producer(
         }
         _write_json_atomic(meta_path, meta)
 
-        _emit(queue, "done", None, "OK", 1.0)
+        # Frontend listens for {event_type: "terminal", status: "success"}.
+        # `done` was a legacy alias that the SSE consumer never recognized,
+        # so successful runs left the UI stuck in "running" until the stream
+        # close turned into a fake "Falha de rede" message.
+        success_payload = {
+            "event_type": "terminal",
+            "status": "success",
+            "stage": None,
+            "message": "OK",
+            "progress": 1.0,
+        }
+        success_msg = f"data: {json.dumps(success_payload)}\n\n"
+        queue.put_nowait(success_msg)
+        _LAST_TERMINAL[project_id] = success_msg
     except SingleFlightError:
         raise
     except asyncio.CancelledError:

@@ -254,7 +254,7 @@ export function ProviderSelector({
             </Select.Root>
           )}
         </Box>
-        {isOllama && ollamaPick.hint && (
+        {isOllama && ollamaPick.hint && (modelValue === '' || modelValue === ollamaPick.model) && (
           <Text size="1" color="orange" mt="1" as="p">
             {ollamaPick.hint}
           </Text>
