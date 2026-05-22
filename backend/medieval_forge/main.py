@@ -68,6 +68,8 @@ from .api.v3.research import (  # noqa: E402
 from .api.v3.credentials import router as credentials_router  # noqa: E402
 # Phase 07.1 Plan 05 — llama.cpp launch/delete/status router.
 from .api.v3 import llamacpp as llamacpp_v3  # noqa: E402
+# UAT 2026-05-21 — Ollama daemon launcher (POST /api/v3/llm/ollama/launch).
+from .api.v3 import ollama as ollama_v3  # noqa: E402
 
 app.include_router(projects_router, prefix="/api")
 # v1 export_router mount REMOVED (D-04) -- replaced by v3_export_router below.
@@ -88,6 +90,8 @@ app.include_router(research_overlay_router, prefix="/api")
 app.include_router(credentials_router, prefix="/api")
 # Phase 07.1 Plan 05 — llama.cpp router carries /v3/llm; main.py adds /api.
 app.include_router(llamacpp_v3.router, prefix="/api")
+# UAT 2026-05-21 — Ollama daemon launcher router (same /v3/llm prefix).
+app.include_router(ollama_v3.router, prefix="/api")
 
 # /assets/* — JS/CSS bundles. Only mount if directory exists (frontend may
 # not be built yet during early development).

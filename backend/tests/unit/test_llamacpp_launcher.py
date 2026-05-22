@@ -37,6 +37,19 @@ def reset_launcher_state():
     _reset_state_for_tests()
 
 
+@pytest.fixture(autouse=True)
+def stub_readiness_probe(monkeypatch):
+    """All unit tests mock subprocess.Popen, so the real /health probe would
+    hang for the full timeout (no llama-server listening on the picked port).
+    Default to "ready" — tests that exercise the timeout path opt back in by
+    patching `_wait_for_ready` themselves.
+    """
+    monkeypatch.setattr(
+        "medieval_forge.services.llm.llamacpp_launcher._wait_for_ready",
+        lambda port, timeout_s: True,
+    )
+
+
 @pytest.fixture
 def models_dir_with_files(tmp_path, monkeypatch):
     monkeypatch.setenv("MEDIEVAL_FORGE_LLAMACPP_MODELS_DIR", str(tmp_path))

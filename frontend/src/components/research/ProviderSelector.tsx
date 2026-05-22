@@ -30,6 +30,7 @@ import {
 import type { ProviderEntry } from '../../api/useProviders'
 import { useLlamacppLaunch, useLlamacppShutdown } from '../../api/useLlamacppLaunch'
 import { useLlamacppStatus } from '../../api/useLlamacppStatus'
+import { useOllamaLaunch, useOllamaStatus } from '../../api/useOllamaLaunch'
 
 const MODEL_PREFERENCE_ORDER = [
   'qwen2.5:7b',
@@ -49,22 +50,19 @@ export function pickDefaultModel(
   if (!availableModels || availableModels.length === 0) {
     return {
       model: '',
-      hint: 'Nenhum modelo Ollama instalado. Execute "ollama pull qwen2.5:7b".',
+      hint: 'Nenhum modelo Ollama instalado. Execute "ollama pull <modelo>".',
     }
   }
+  // Honor the historical preference list when one of those models happens
+  // to be installed, but DO NOT nag the user with "use qwen2.5:7b instead"
+  // copy when they have a perfectly valid local model — only the dropdown
+  // entries the user actually has on disk are recommendations.
   for (const pref of MODEL_PREFERENCE_ORDER) {
     if (availableModels.includes(pref)) {
-      const hint =
-        pref !== MODEL_PREFERENCE_ORDER[0]
-          ? `Modelo padrão qwen2.5:7b não encontrado — usando ${pref}. Execute "ollama pull qwen2.5:7b" para o melhor resultado.`
-          : undefined
-      return { model: pref, hint }
+      return { model: pref }
     }
   }
-  return {
-    model: availableModels[0],
-    hint: `Nenhum modelo da lista de preferência encontrado — usando ${availableModels[0]}. Execute "ollama pull qwen2.5:7b" para o melhor resultado.`,
-  }
+  return { model: availableModels[0] }
 }
 
 function basename(path: string): string {
@@ -103,6 +101,16 @@ export function ProviderSelector({
   const launch = useLlamacppLaunch()
   const shutdown = useLlamacppShutdown()
   const isRunning = status.data?.running === true
+
+  // Ollama daemon launcher — only enabled when ollama is the active provider.
+  // Mirrors the llamacpp panel but with no shutdown (Ollama is a shared service).
+  const ollamaStatus = useOllamaStatus(isOllama)
+  const ollamaLaunch = useOllamaLaunch()
+  const isOllamaRunning = ollamaStatus.data?.running === true
+  const isOllamaBinaryMissing =
+    isOllama &&
+    selectedEntry?.healthy === false &&
+    (selectedEntry?.message ?? '').includes('não encontrado')
 
   const isBinaryMissing =
     isLlamacpp &&
@@ -353,6 +361,59 @@ export function ProviderSelector({
               </Button>
             )}
           </Box>
+        </Box>
+      )}
+
+      {isOllama && (
+        <Box>
+          {isOllamaBinaryMissing && (
+            <Text size="2" color="orange" as="p" data-testid="ollama-binary-missing-warning">
+              Ollama não encontrado no PATH. Instale em https://ollama.com
+            </Text>
+          )}
+
+          <Flex align="center" gap="2" mt="2" data-testid="ollama-status-line">
+            {ollamaLaunch.isPending && (
+              <>
+                <Spinner size="1" />
+                <Text size="2" color="gray">
+                  Iniciando Ollama…
+                </Text>
+              </>
+            )}
+            {!ollamaLaunch.isPending && isOllamaRunning && (
+              <>
+                <Badge color="green" variant="soft">
+                  Daemon ativo
+                </Badge>
+                <Text size="2">{ollamaStatus.data?.base_url}</Text>
+              </>
+            )}
+            {!ollamaLaunch.isPending && !isOllamaRunning && (
+              <Text size="2" color="gray">
+                Ollama não está em execução.
+              </Text>
+            )}
+          </Flex>
+
+          {ollamaLaunch.isError && (
+            <Text size="2" color="red" as="p" mt="1" data-testid="ollama-launch-error">
+              Erro ao iniciar Ollama: {ollamaLaunch.error?.message}.
+            </Text>
+          )}
+
+          {!isOllamaRunning && (
+            <Box mt="2">
+              <Button
+                type="button"
+                data-testid="ollama-launch-button"
+                onClick={() => ollamaLaunch.mutate()}
+                disabled={isOllamaBinaryMissing || ollamaLaunch.isPending}
+              >
+                Iniciar Ollama
+              </Button>
+            </Box>
+          )}
         </Box>
       )}
     </Flex>

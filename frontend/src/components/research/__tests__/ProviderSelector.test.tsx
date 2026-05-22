@@ -42,7 +42,11 @@ const PROVIDERS_BOTH_HEALTHY: ProviderEntry[] = [
 ]
 
 describe('ProviderSelector — REVIEWS fix #5 ordered preference', () => {
-  it('falls back to qwen2.5-coder:14b when qwen2.5:7b is missing and shows PT-BR hint', () => {
+  it('falls back to qwen2.5-coder:14b when qwen2.5:7b is missing (no nag hint)', () => {
+    // UAT 2026-05-21 — the "Modelo padrão qwen2.5:7b não encontrado" hint
+    // confused users with locally-curated model sets. pickDefaultModel still
+    // honors the preference order but no longer surfaces the recommendation
+    // copy when the chosen model came from the user's actual list.
     const ollamaMissingPreferred: ProviderEntry[] = [
       {
         provider_id: 'ollama',
@@ -62,9 +66,10 @@ describe('ProviderSelector — REVIEWS fix #5 ordered preference', () => {
         onModelChange={() => {}}
       />,
     )
+    // Hint must NOT appear.
     expect(
-      screen.getByText(/Modelo padrão qwen2\.5:7b não encontrado/),
-    ).toBeTruthy()
+      screen.queryByText(/Modelo padrão qwen2\.5:7b não encontrado/),
+    ).toBeNull()
   })
 
   it('renders Provedor LLM and Modelo labels', () => {
@@ -109,7 +114,7 @@ describe('ProviderSelector — REVIEWS fix #5 ordered preference', () => {
     ).toBeTruthy()
   })
 
-  it('falls back to first available when none of the preferred models match', () => {
+  it('falls back to first available when none of the preferred models match (no nag)', () => {
     const ollamaOnlyExotic: ProviderEntry[] = [
       {
         provider_id: 'ollama',
@@ -130,8 +135,8 @@ describe('ProviderSelector — REVIEWS fix #5 ordered preference', () => {
       />,
     )
     expect(
-      screen.getByText(/Nenhum modelo da lista de preferência encontrado/),
-    ).toBeTruthy()
+      screen.queryByText(/Nenhum modelo da lista de preferência encontrado/),
+    ).toBeNull()
   })
 })
 

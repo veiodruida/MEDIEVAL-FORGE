@@ -33,12 +33,25 @@ import shutil
 import socket
 import subprocess
 import threading
+import time
+import urllib.error
+import urllib.request
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
 DEFAULT_MODELS_DIR: Path = Path.home() / ".medieval-forge" / "models"
 SHUTDOWN_TIMEOUT_S: float = 5.0
+
+# Readiness probe — llama-server returns 503 while loading the model into
+# memory and 200 once ready. Large GGUF files can take 60s+ to mmap on
+# spinning disks, so allow a generous deadline. Overridable for tests.
+READINESS_TIMEOUT_S: float = 120.0
+READINESS_POLL_INTERVAL_S: float = 0.5
+
+
+class LlamacppLaunchTimeout(RuntimeError):
+    """Raised when llama-server is alive but never reports ready within the deadline."""
 
 
 # ---------------------------------------------------------------------------
@@ -349,6 +362,27 @@ def launch(model_path: str) -> LaunchResult:
         _ACTIVE_PORT = port
         _STARTED_AT = datetime.now(timezone.utc).isoformat()
 
+    # Wait for llama-server to be ready BEFORE returning. Without this the
+    # frontend POSTs /v1/chat/completions while the model is still loading
+    # and gets a 503 with no helpful message (UAT report 2026-05-21).
+    if not _wait_for_ready(port, READINESS_TIMEOUT_S):
+        # Process is alive but never reported ready — kill it so the user
+        # is not stuck with a zombie holding a port.
+        try:
+            proc.terminate()
+            proc.wait(timeout=2.0)
+        except Exception:  # noqa: BLE001
+            try:
+                proc.kill()
+            except Exception:  # noqa: BLE001
+                pass
+        with _STATE_LOCK:
+            _PROCESS = _ACTIVE_MODEL_PATH = _ACTIVE_PORT = _STARTED_AT = None
+        raise LlamacppLaunchTimeout(
+            f"llama-server iniciou mas não respondeu /health em {READINESS_TIMEOUT_S:.0f}s. "
+            "Modelo grande demais pra memória ou binário travado."
+        )
+
     return LaunchResult(
         ok=True,
         base_url=f"http://127.0.0.1:{port}",
@@ -356,6 +390,35 @@ def launch(model_path: str) -> LaunchResult:
         model=target_path.name,
         started_at=_STARTED_AT,
     )
+
+
+def _wait_for_ready(port: int, timeout_s: float) -> bool:
+    """Poll llama-server's /health endpoint until 200 OK or deadline.
+
+    Returns True when the server reports ready; False on timeout. Treats
+    503 and connection refused as "still loading" rather than fatal —
+    llama-server emits 503 while mmap'ing the model and refuses connections
+    until the listen socket binds.
+    """
+    deadline = time.monotonic() + timeout_s
+    url = f"http://127.0.0.1:{port}/health"
+    while time.monotonic() < deadline:
+        try:
+            req = urllib.request.Request(url, method="GET")
+            with urllib.request.urlopen(req, timeout=1.0) as resp:
+                if 200 <= resp.status < 300:
+                    return True
+        except urllib.error.HTTPError as exc:
+            if exc.code == 503:
+                pass  # still loading
+            else:
+                # Anything else is an unexpected response — keep polling
+                # within the deadline; might transition to 200.
+                pass
+        except (urllib.error.URLError, ConnectionRefusedError, TimeoutError, OSError):
+            pass  # socket not yet bound or transient network blip
+        time.sleep(READINESS_POLL_INTERVAL_S)
+    return False
 
 
 def shutdown() -> bool:
