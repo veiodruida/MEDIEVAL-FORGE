@@ -1,9 +1,13 @@
 /**
  * TanStack Query mutation + status hook for the Ollama daemon launcher.
  *
- * The "Iniciar Ollama" button in ProviderSelector calls useOllamaLaunch().mutate();
- * useOllamaStatus polls GET /api/v3/llm/ollama/launch every 5s while enabled,
- * mirroring useLlamacppStatus. No shutdown — Ollama is a shared system service.
+ * "Iniciar Ollama" → useOllamaLaunch().mutate()
+ * "Parar Ollama"   → useOllamaShutdown().mutate()  (only when status.owned)
+ * useOllamaStatus polls GET /api/v3/llm/ollama/launch every 5s while enabled.
+ *
+ * The status payload's `owned` flag is true iff this backend spawned the
+ * running daemon; DELETE is a no-op against pre-existing Ollama Desktop
+ * daemons, and the UI hides the "Parar Ollama" button in that case.
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
@@ -13,8 +17,14 @@ export interface OllamaLaunchResult {
   base_url: string
 }
 
+export interface OllamaShutdownResult {
+  ok: boolean
+  was_running: boolean
+}
+
 export interface OllamaStatus {
   running: boolean
+  owned: boolean
   base_url: string | null
 }
 
@@ -34,6 +44,30 @@ export function useOllamaLaunch() {
         throw new Error(msg)
       }
       return r.json() as Promise<OllamaLaunchResult>
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['v3', 'research', 'providers'] })
+      qc.invalidateQueries({ queryKey: ['ollama-status'] })
+    },
+  })
+}
+
+export function useOllamaShutdown() {
+  const qc = useQueryClient()
+  return useMutation<OllamaShutdownResult, Error, void>({
+    mutationFn: async () => {
+      const r = await fetch('/api/v3/llm/ollama/launch', { method: 'DELETE' })
+      if (!r.ok) {
+        let msg = `shutdown failed: ${r.status}`
+        try {
+          const body = await r.json()
+          if (body?.detail) msg = body.detail
+        } catch {
+          /* ignore parse errors */
+        }
+        throw new Error(msg)
+      }
+      return r.json() as Promise<OllamaShutdownResult>
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['v3', 'research', 'providers'] })

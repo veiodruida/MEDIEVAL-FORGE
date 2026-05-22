@@ -207,40 +207,34 @@ async def _collect_queue(queue: asyncio.Queue, timeout: float = 2.0) -> list:
     return items
 
 
-async def test_research_streams_via_httpx_mock_to_queue(monkeypatch) -> None:
-    """Test 7: mock httpx stream -> SSE delta events arrive in queue during streaming.
+def _make_non_stream_response(content: str):
+    """Build a fake httpx response object exposing .raise_for_status + .json().
 
-    The provider emits 'started' event + one delta event per content chunk.
-    Queue receives data: ... strings for each delta; final result is a parsed ResearchResult.
+    UAT 2026-05-22: provider switched from SSE streaming to a single
+    `client.post()` call because llama-server occasionally never emits the
+    SSE `[DONE]` sentinel, leaving aiter_lines() blocked forever. Tests
+    follow the new shape: one full response body matching the OpenAI
+    chat-completion contract.
     """
-    # Use valid ResearchResult JSON split across two SSE delta chunks
-    part1 = '{"kingdoms": {}, "duchies": {}, '
-    part2 = '"condados": [], "baronies": {}}'
-    lines = [
-        _make_sse_line(part1),
-        _make_sse_line(part2),
-        _make_done_line(),
-    ]
 
-    async def _fake_aiter_lines() -> AsyncIterator[str]:
-        for line in lines:
-            yield line
-
-    class _FakeStreamResponse:
+    class _FakeResp:
         status_code = 200
 
         def raise_for_status(self):
             pass
 
-        def aiter_lines(self):
-            return _fake_aiter_lines()
+        def json(self):
+            return {
+                "choices": [
+                    {"message": {"role": "assistant", "content": content}}
+                ]
+            }
 
-    class _FakeStream:
-        async def __aenter__(self):
-            return _FakeStreamResponse()
+    return _FakeResp()
 
-        async def __aexit__(self, *a):
-            pass
+
+def _fake_async_client_factory(response_obj):
+    """Build a fake httpx.AsyncClient class returning `response_obj` from post()."""
 
     class _FakeAsyncClient:
         def __init__(self, *args, **kwargs):
@@ -252,8 +246,17 @@ async def test_research_streams_via_httpx_mock_to_queue(monkeypatch) -> None:
         async def __aexit__(self, *a):
             pass
 
-        def stream(self, method, url, **kwargs):
-            return _FakeStream()
+        async def post(self, url, json=None, **kwargs):
+            return response_obj
+
+    return _FakeAsyncClient
+
+
+async def test_research_via_httpx_post_returns_parsed_result(monkeypatch) -> None:
+    """Provider posts a single chat-completion request and parses the
+    `choices[0].message.content` as ResearchResult JSON."""
+    research_json = '{"kingdoms": {}, "duchies": {}, "condados": [], "baronies": {}}'
+    fake_client = _fake_async_client_factory(_make_non_stream_response(research_json))
 
     queue: asyncio.Queue = asyncio.Queue()
     provider = LlamaCppProvider()
@@ -261,7 +264,7 @@ async def test_research_streams_via_httpx_mock_to_queue(monkeypatch) -> None:
 
     from medieval_forge.services.llm.schemas import ResearchResult
 
-    with patch("medieval_forge.services.llm.llamacpp.httpx.AsyncClient", _FakeAsyncClient):
+    with patch("medieval_forge.services.llm.llamacpp.httpx.AsyncClient", fake_client):
         result = await provider.research(
             prompt="Test prompt",
             schema=ResearchResult,
@@ -269,59 +272,25 @@ async def test_research_streams_via_httpx_mock_to_queue(monkeypatch) -> None:
             queue=queue,
         )
 
-    # At least the 'started' event + two delta data events must be in queue
+    # `started` envelope must land on the queue at least once.
     items: list = []
     while not queue.empty():
         items.append(queue.get_nowait())
-    assert len(items) >= 1, "No events received in queue"
-    # All items are strings (data: ... format)
-    assert all(isinstance(i, str) for i in items), "Queue items should be strings"
-    # Final result is a valid ResearchResult
+    assert len(items) >= 1
     assert isinstance(result, ResearchResult)
 
 
-async def test_research_handles_partial_sse_chunks_across_boundaries(monkeypatch) -> None:
-    """Test 8 (review-fix #7): SSE payload split across chunk boundaries is reassembled correctly.
+async def test_research_rejects_malformed_response_body(monkeypatch) -> None:
+    """A non-JSON response body raises LlamaCppProviderError (typed)."""
 
-    The streaming aggregator must buffer across chunk boundaries, not just consume
-    whole lines. We feed the httpx mock lines that contain a partial JSON split
-    across 3 separate aiter_lines() yields, and assert the final aggregated content
-    equals the expected string.
-    """
-    # We simulate a content delta split at JSON-token boundaries by emitting
-    # the content delta in 3 separate delta messages (each is a complete SSE line,
-    # but the CONTENT itself is split across them — this tests the aggregator)
-    part1 = "Hello"
-    part2 = " beautiful"
-    part3 = " world"
-    expected_full = part1 + part2 + part3
-
-    lines = [
-        _make_sse_line(part1),
-        _make_sse_line(part2),
-        _make_sse_line(part3),
-        _make_done_line(),
-    ]
-
-    async def _fake_aiter_lines() -> AsyncIterator[str]:
-        for line in lines:
-            yield line
-
-    class _FakeStreamResponse:
+    class _BadResp:
         status_code = 200
 
         def raise_for_status(self):
             pass
 
-        def aiter_lines(self):
-            return _fake_aiter_lines()
-
-    class _FakeStream:
-        async def __aenter__(self):
-            return _FakeStreamResponse()
-
-        async def __aexit__(self, *a):
-            pass
+        def json(self):
+            raise ValueError("not json")
 
     class _FakeAsyncClient:
         def __init__(self, *args, **kwargs):
@@ -333,83 +302,8 @@ async def test_research_handles_partial_sse_chunks_across_boundaries(monkeypatch
         async def __aexit__(self, *a):
             pass
 
-        def stream(self, method, url, **kwargs):
-            return _FakeStream()
-
-    queue: asyncio.Queue = asyncio.Queue()
-    provider = LlamaCppProvider()
-    provider._test_only_base_url = "http://127.0.0.1:38291"
-
-    from medieval_forge.services.llm.schemas import ResearchResult
-
-    # Override parse_research_json to capture the aggregated content string
-    # and return a valid ResearchResult (avoids JSON-parse failure on partial strings)
-    captured: list[str] = []
-
-    def _capture_parse(content: str):
-        captured.append(content)
-        # Return a valid ResearchResult stub
-        return ResearchResult(kingdoms={}, duchies={}, condados=[], baronies={})
-
-    with (
-        patch("medieval_forge.services.llm.llamacpp.httpx.AsyncClient", _FakeAsyncClient),
-        patch("medieval_forge.services.llm.llamacpp.parse_research_json", _capture_parse),
-    ):
-        await provider.research(
-            prompt="Test partial SSE",
-            schema=ResearchResult,
-            credentials={"model": "test.gguf"},
-            queue=queue,
-        )
-
-    assert len(captured) == 1, "parse_research_json should be called once with aggregated content"
-    assert captured[0] == expected_full, (
-        f"Aggregated content mismatch: expected {expected_full!r}, got {captured[0]!r}"
-    )
-
-
-async def test_research_rejects_malformed_sse_with_clear_error(monkeypatch) -> None:
-    """Test 9 (review-fix #7): malformed SSE data raises LlamaCppProviderError (typed error).
-
-    The provider MUST NOT silently swallow malformed JSON payloads.
-    """
-    lines = [
-        "data: <not-valid-json>",
-        "",  # blank line after SSE event
-    ]
-
-    async def _fake_aiter_lines() -> AsyncIterator[str]:
-        for line in lines:
-            yield line
-
-    class _FakeStreamResponse:
-        status_code = 200
-
-        def raise_for_status(self):
-            pass
-
-        def aiter_lines(self):
-            return _fake_aiter_lines()
-
-    class _FakeStream:
-        async def __aenter__(self):
-            return _FakeStreamResponse()
-
-        async def __aexit__(self, *a):
-            pass
-
-    class _FakeAsyncClient:
-        def __init__(self, *args, **kwargs):
-            pass
-
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, *a):
-            pass
-
-        def stream(self, method, url, **kwargs):
-            return _FakeStream()
+        async def post(self, url, json=None, **kwargs):
+            return _BadResp()
 
     queue: asyncio.Queue = asyncio.Queue()
     provider = LlamaCppProvider()
@@ -422,7 +316,7 @@ async def test_research_rejects_malformed_sse_with_clear_error(monkeypatch) -> N
         pytest.raises(LlamaCppProviderError),
     ):
         await provider.research(
-            prompt="Test malformed SSE",
+            prompt="Test malformed body",
             schema=ResearchResult,
             credentials={"model": "test.gguf"},
             queue=queue,
@@ -432,53 +326,12 @@ async def test_research_rejects_malformed_sse_with_clear_error(monkeypatch) -> N
 async def test_research_final_payload_extraction_matches_claude_ollama_shape(
     monkeypatch,
 ) -> None:
-    """Test 10 (review-fix #7): well-formed SSE stream ending with [DONE] produces
-    a parsed result structurally identical to Ollama provider output for same prompt.
-
-    Comparison: both return a ResearchResult (same type + same key shape).
-    """
-    # Build a well-formed SSE stream that yields valid ResearchResult JSON
-    # ResearchResult requires: kingdoms (dict), duchies (dict), condados (list), baronies (dict)
+    """Well-formed chat-completion body yields a ResearchResult shape identical
+    to Ollama provider output for the same prompt."""
     research_json = json.dumps(
         {"kingdoms": {}, "duchies": {}, "condados": [], "baronies": {}}
     )
-    lines = [
-        _make_sse_line(research_json),
-        _make_done_line(),
-    ]
-
-    async def _fake_aiter_lines() -> AsyncIterator[str]:
-        for line in lines:
-            yield line
-
-    class _FakeStreamResponse:
-        status_code = 200
-
-        def raise_for_status(self):
-            pass
-
-        def aiter_lines(self):
-            return _fake_aiter_lines()
-
-    class _FakeStream:
-        async def __aenter__(self):
-            return _FakeStreamResponse()
-
-        async def __aexit__(self, *a):
-            pass
-
-    class _FakeAsyncClient:
-        def __init__(self, *args, **kwargs):
-            pass
-
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, *a):
-            pass
-
-        def stream(self, method, url, **kwargs):
-            return _FakeStream()
+    fake_client = _fake_async_client_factory(_make_non_stream_response(research_json))
 
     queue: asyncio.Queue = asyncio.Queue()
     provider = LlamaCppProvider()
@@ -486,7 +339,7 @@ async def test_research_final_payload_extraction_matches_claude_ollama_shape(
 
     from medieval_forge.services.llm.schemas import ResearchResult
 
-    with patch("medieval_forge.services.llm.llamacpp.httpx.AsyncClient", _FakeAsyncClient):
+    with patch("medieval_forge.services.llm.llamacpp.httpx.AsyncClient", fake_client):
         result = await provider.research(
             prompt="Test final payload",
             schema=ResearchResult,

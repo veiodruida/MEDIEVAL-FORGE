@@ -30,7 +30,7 @@ import {
 import type { ProviderEntry } from '../../api/useProviders'
 import { useLlamacppLaunch, useLlamacppShutdown } from '../../api/useLlamacppLaunch'
 import { useLlamacppStatus } from '../../api/useLlamacppStatus'
-import { useOllamaLaunch, useOllamaStatus } from '../../api/useOllamaLaunch'
+import { useOllamaLaunch, useOllamaShutdown, useOllamaStatus } from '../../api/useOllamaLaunch'
 
 const MODEL_PREFERENCE_ORDER = [
   'qwen2.5:7b',
@@ -102,11 +102,13 @@ export function ProviderSelector({
   const shutdown = useLlamacppShutdown()
   const isRunning = status.data?.running === true
 
-  // Ollama daemon launcher — only enabled when ollama is the active provider.
-  // Mirrors the llamacpp panel but with no shutdown (Ollama is a shared service).
+  // Ollama daemon launcher — enabled when ollama is the active provider.
+  // Shutdown is only exposed when we own the spawned subprocess (status.owned).
   const ollamaStatus = useOllamaStatus(isOllama)
   const ollamaLaunch = useOllamaLaunch()
+  const ollamaShutdown = useOllamaShutdown()
   const isOllamaRunning = ollamaStatus.data?.running === true
+  const isOllamaOwned = ollamaStatus.data?.owned === true
   const isOllamaBinaryMissing =
     isOllama &&
     selectedEntry?.healthy === false &&
@@ -402,8 +404,14 @@ export function ProviderSelector({
             </Text>
           )}
 
-          {!isOllamaRunning && (
-            <Box mt="2">
+          {ollamaShutdown.isError && (
+            <Text size="2" color="red" as="p" mt="1" data-testid="ollama-shutdown-error">
+              Erro ao parar Ollama: {ollamaShutdown.error?.message}.
+            </Text>
+          )}
+
+          <Box mt="2">
+            {!isOllamaRunning ? (
               <Button
                 type="button"
                 data-testid="ollama-launch-button"
@@ -412,8 +420,24 @@ export function ProviderSelector({
               >
                 Iniciar Ollama
               </Button>
-            </Box>
-          )}
+            ) : isOllamaOwned ? (
+              <Button
+                type="button"
+                data-testid="ollama-shutdown-button"
+                color="red"
+                variant="solid"
+                onClick={() => ollamaShutdown.mutate()}
+                disabled={ollamaShutdown.isPending}
+              >
+                Parar Ollama
+              </Button>
+            ) : (
+              <Text size="1" color="gray" as="p">
+                Daemon iniciado externamente (Ollama Desktop) — pare pelo ícone
+                da bandeja.
+              </Text>
+            )}
+          </Box>
         </Box>
       )}
     </Flex>

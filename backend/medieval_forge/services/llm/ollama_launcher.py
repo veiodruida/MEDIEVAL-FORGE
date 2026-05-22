@@ -45,6 +45,13 @@ _LOG_BUFFER: "deque[str]" = deque(maxlen=_LOG_BUFFER_MAX)
 _LOG_LOCK = threading.Lock()
 _LOG_READER_THREAD: threading.Thread | None = None
 
+# Track the subprocess we spawned so shutdown() can kill it. None means we
+# never launched (daemon was already up) — in that case shutdown is a no-op
+# because we don't own the lifecycle of a pre-existing Ollama Desktop daemon.
+_OWNED_PROC: subprocess.Popen | None = None
+_PROC_LOCK = threading.Lock()
+SHUTDOWN_TIMEOUT_S: float = 5.0
+
 
 @dataclass(frozen=True)
 class OllamaLaunchResult:
@@ -154,6 +161,11 @@ def launch() -> OllamaLaunchResult:
     )
     _LOG_READER_THREAD.start()
 
+    # Remember the PID we own so shutdown() can kill exactly this subprocess.
+    with _PROC_LOCK:
+        global _OWNED_PROC
+        _OWNED_PROC = proc
+
     if not _wait_for_ready(READINESS_TIMEOUT_S):
         raise OllamaLaunchTimeout(
             f"`ollama serve` iniciado mas /api/tags não respondeu em {READINESS_TIMEOUT_S:.0f}s."
@@ -162,10 +174,55 @@ def launch() -> OllamaLaunchResult:
     return OllamaLaunchResult(ok=True, was_running=False, base_url=OLLAMA_HOST)
 
 
+def owns_daemon() -> bool:
+    """True iff this backend launched the currently-running `ollama serve`.
+
+    Used by the API layer to decide whether to expose the "Parar Ollama"
+    affordance — we only ever kill subprocesses we own, never a pre-existing
+    Ollama Desktop daemon.
+    """
+    with _PROC_LOCK:
+        proc = _OWNED_PROC
+    if proc is None:
+        return False
+    return proc.poll() is None
+
+
+def shutdown() -> bool:
+    """Kill the `ollama serve` subprocess we spawned (if any).
+
+    Returns True when a process was running and is now dead, False when there
+    was nothing to kill (no launch on record, daemon was pre-existing, or
+    subprocess already exited).
+    """
+    with _PROC_LOCK:
+        global _OWNED_PROC
+        proc = _OWNED_PROC
+        if proc is None or proc.poll() is not None:
+            _OWNED_PROC = None
+            return False
+
+    proc.terminate()
+    try:
+        proc.wait(timeout=SHUTDOWN_TIMEOUT_S)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        try:
+            proc.wait(timeout=1.0)
+        except subprocess.TimeoutExpired:
+            pass
+
+    with _PROC_LOCK:
+        _OWNED_PROC = None
+    return True
+
+
 __all__ = [
     "OllamaBinaryMissing",
     "OllamaLaunchResult",
     "OllamaLaunchTimeout",
     "get_logs",
     "launch",
+    "owns_daemon",
+    "shutdown",
 ]

@@ -1,12 +1,15 @@
 """POST /api/v3/llm/ollama/launch — start the ollama daemon if it isn't already.
 
-Router prefix is /v3/llm — main.py adds /api at mount time. Full path:
+Router prefix is /v3/llm — main.py adds /api at mount time. Full paths:
 - POST   /api/v3/llm/ollama/launch
-- GET    /api/v3/llm/ollama/launch  (status)
+- DELETE /api/v3/llm/ollama/launch  (kills the subprocess WE spawned only)
+- GET    /api/v3/llm/ollama/launch  (status + `owned` flag)
+- GET    /api/v3/llm/ollama/logs
 
-No DELETE: the Ollama daemon is a shared system service (LMStudio + other
-local-LLM apps may depend on it), not owned by Medieval Forge. Users stop it
-via the Ollama Desktop tray icon.
+DELETE only kills the daemon when this backend launched it. A pre-existing
+Ollama Desktop daemon is left alone (other apps may depend on it). The GET
+response carries an `owned` boolean so the UI can hide the "Parar Ollama"
+affordance when we don't own the lifecycle.
 """
 from __future__ import annotations
 
@@ -22,6 +25,8 @@ from ...services.llm.ollama_launcher import (
     _is_running,
     get_logs as launcher_get_logs,
     launch as launcher_launch,
+    owns_daemon as launcher_owns_daemon,
+    shutdown as launcher_shutdown,
 )
 
 logger = logging.getLogger(__name__)
@@ -55,9 +60,29 @@ async def post_launch() -> dict:
 
 @router.get("/ollama/launch")
 async def get_launch() -> dict:
-    """Canonical 'is the ollama daemon up?' status (mirrors llamacpp shape)."""
+    """Status of the ollama daemon.
+
+    `owned` is True iff this backend spawned the running subprocess — only
+    then will DELETE actually kill anything.
+    """
     running = await asyncio.to_thread(_is_running)
-    return {"running": running, "base_url": OLLAMA_HOST if running else None}
+    owned = await asyncio.to_thread(launcher_owns_daemon)
+    return {
+        "running": running,
+        "owned": owned,
+        "base_url": OLLAMA_HOST if running else None,
+    }
+
+
+@router.delete("/ollama/launch")
+async def delete_launch() -> dict:
+    """Kill the `ollama serve` subprocess this backend launched (if any).
+
+    Idempotent — returns ok=True regardless of whether something was killed.
+    Pre-existing Ollama Desktop daemons are NEVER touched.
+    """
+    was_running = await asyncio.to_thread(launcher_shutdown)
+    return {"ok": True, "was_running": was_running}
 
 
 @router.get("/ollama/logs")
