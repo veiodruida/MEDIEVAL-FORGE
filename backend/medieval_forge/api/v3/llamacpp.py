@@ -30,6 +30,7 @@ from ...services.llm.llamacpp_launcher import (
     LlamacppInvalidModelFilename,
     LlamacppLaunchConflict,
     LlamacppModelNotFound,
+    get_logs as launcher_get_logs,
     launch as launcher_launch,
     shutdown as launcher_shutdown,  # review-fix #4: single sync entry point
     status as launcher_status,
@@ -123,6 +124,17 @@ async def get_launch() -> dict:
         "base_url": s["base_url"],
         "started_at": s["started_at"],
     }
+
+
+@router.get("/llamacpp/logs")
+async def get_llamacpp_logs(tail: int = 200) -> dict:
+    """Return the last `tail` lines of llama-server combined stdout/stderr.
+
+    UAT 2026-05-22 — the user couldn't see what the model was doing during a
+    research run. Ring buffer is reset on each launch and capped at 1000 lines.
+    """
+    tail = max(1, min(tail, 1000))
+    return {"lines": launcher_get_logs(tail)}
 
 
 __all__ = ["router"]

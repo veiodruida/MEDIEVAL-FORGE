@@ -32,8 +32,10 @@ import { useProviders } from '../../api/useProviders'
 import { useProject } from '../../api/useProject'
 import { useResearchOverlay } from '../../api/useResearchOverlay'
 import { useResearchStream } from '../../hooks/useResearchStream'
+import { useLlamacppShutdown } from '../../api/useLlamacppLaunch'
 import { ProviderSelector } from './ProviderSelector'
 import { ResearchProgress } from './ResearchProgress'
+import { LogPanel } from './LogPanel'
 
 export interface ResearchDialogProps {
   open: boolean
@@ -82,6 +84,11 @@ export function ResearchDialog({
 
   const stream = useResearchStream()
   const streamPhase = stream.state.phase
+  // UAT 2026-05-22 — Cancel must free server memory, not just kill the
+  // research task. Llama.cpp keeps the model resident until the subprocess
+  // dies; ollama keeps it loaded for keep_alive seconds. We shut down the
+  // llama-server subprocess on cancel; ollama's lifecycle stays user-managed.
+  const llamacppShutdown = useLlamacppShutdown()
 
   // Default provider once the /providers query lands.
   useEffect(() => {
@@ -191,8 +198,19 @@ export function ResearchDialog({
     fetch(`/api/v3/research/stop/${projectId}`, { method: 'POST' }).catch(() => {
       // best-effort
     })
+    // UAT 2026-05-22 — also kill the llama-server subprocess so the model is
+    // evicted from RAM. Without this the user reported "clico em cancelar e o
+    // servidor continua executando e ocupando memoria". Best-effort; ignore
+    // errors so cancel still closes the stream cleanly.
+    if (provider === 'llamacpp') {
+      llamacppShutdown.mutate(undefined, {
+        onError: () => {
+          /* best-effort */
+        },
+      })
+    }
     stream.close()
-  }, [projectId, stream])
+  }, [projectId, provider, stream, llamacppShutdown])
 
   const handleDialogChange = useCallback(
     (next: boolean) => {
@@ -368,6 +386,9 @@ export function ResearchDialog({
             {(isStreaming || streamPhase === 'failed' || streamPhase === 'succeeded') && (
               <ResearchProgress state={stream.state} />
             )}
+
+            {/* UAT 2026-05-22 — collapsible log tail for the local subprocess. */}
+            <LogPanel provider={provider} enabled={open} />
 
             {/* CTA row — rodapé layout (UI-SPEC §Copywriting Surface 1) */}
             <Flex gap="2" justify="end" mt="2" align="center">

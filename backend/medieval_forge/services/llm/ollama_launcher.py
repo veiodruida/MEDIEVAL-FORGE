@@ -17,20 +17,33 @@ Idempotency:
     is already up, returns LaunchResult(ok=True, was_running=True) without
     spawning a duplicate. Otherwise spawns `ollama serve` and waits for the
     HTTP endpoint to come up (similar to llamacpp readiness probe).
+
+Logs (UAT 2026-05-22):
+    When we spawn the daemon ourselves we keep stdout open and tail it into a
+    bounded ring buffer (`_LOG_BUFFER`) so the UI can show "what is ollama
+    doing right now". If the daemon was already up before we got here, there
+    is no PID to attach to and `get_logs()` returns an empty list.
 """
 from __future__ import annotations
 
 import os
 import shutil
 import subprocess
+import threading
 import time
 import urllib.error
 import urllib.request
+from collections import deque
 from dataclasses import dataclass
 
 OLLAMA_HOST = "http://127.0.0.1:11434"
 READINESS_TIMEOUT_S: float = 30.0
 READINESS_POLL_INTERVAL_S: float = 0.5
+
+_LOG_BUFFER_MAX = 1000
+_LOG_BUFFER: "deque[str]" = deque(maxlen=_LOG_BUFFER_MAX)
+_LOG_LOCK = threading.Lock()
+_LOG_READER_THREAD: threading.Thread | None = None
 
 
 @dataclass(frozen=True)
@@ -72,6 +85,33 @@ def _wait_for_ready(timeout_s: float) -> bool:
     return False
 
 
+def _log_reader(proc: subprocess.Popen) -> None:
+    """Drain `ollama serve` stdout into the ring buffer."""
+    try:
+        if proc.stdout is None:
+            return
+        for raw in proc.stdout:
+            if not raw:
+                continue
+            line = raw.rstrip("\r\n")
+            if not line:
+                continue
+            with _LOG_LOCK:
+                _LOG_BUFFER.append(line)
+    except (OSError, ValueError):
+        return
+
+
+def get_logs(tail: int = 200) -> list[str]:
+    """Snapshot of the last `tail` ollama-server log lines."""
+    if tail <= 0:
+        return []
+    with _LOG_LOCK:
+        if tail >= len(_LOG_BUFFER):
+            return list(_LOG_BUFFER)
+        return list(_LOG_BUFFER)[-tail:]
+
+
 def launch() -> OllamaLaunchResult:
     """Start `ollama serve` if the daemon isn't already up. Idempotent.
 
@@ -88,20 +128,31 @@ def launch() -> OllamaLaunchResult:
             "Ollama não encontrado no PATH. Instale em https://ollama.com"
         )
 
-    # Detached subprocess — we don't track its PID because ollama is a
-    # shared system service. If the user wants to stop it, they do so via
-    # the Ollama Desktop tray icon.
+    # Spawn with PIPE so we can tail logs. CREATE_NEW_PROCESS_GROUP on Windows
+    # so the daemon survives backend restarts; the reader thread is a daemon
+    # and dies with us — logs are lost on restart but ollama keeps running.
     creationflags = 0
     if hasattr(subprocess, "CREATE_NEW_PROCESS_GROUP"):
         creationflags = subprocess.CREATE_NEW_PROCESS_GROUP  # Windows
-    subprocess.Popen(
+    proc = subprocess.Popen(
         [binary, "serve"],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
         stdin=subprocess.DEVNULL,
+        bufsize=1,
+        universal_newlines=True,
         creationflags=creationflags,
         close_fds=True,
     )
+
+    # Reset buffer for the new daemon + spawn reader thread.
+    with _LOG_LOCK:
+        _LOG_BUFFER.clear()
+    global _LOG_READER_THREAD
+    _LOG_READER_THREAD = threading.Thread(
+        target=_log_reader, args=(proc,), daemon=True, name="ollama-log-reader"
+    )
+    _LOG_READER_THREAD.start()
 
     if not _wait_for_ready(READINESS_TIMEOUT_S):
         raise OllamaLaunchTimeout(
@@ -115,5 +166,6 @@ __all__ = [
     "OllamaBinaryMissing",
     "OllamaLaunchResult",
     "OllamaLaunchTimeout",
+    "get_logs",
     "launch",
 ]

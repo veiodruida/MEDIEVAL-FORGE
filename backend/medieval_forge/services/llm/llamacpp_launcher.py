@@ -102,6 +102,16 @@ _STARTED_AT: str | None = None
 # atexit guard — must be registered exactly once
 _ATEXIT_REGISTERED: bool = False
 
+# Ring buffer for llama-server combined stdout+stderr so the UI can tail
+# the subprocess output in real time. Capped to avoid runaway memory if a
+# server logs verbosely. Reader thread is a daemon — dies with the process.
+from collections import deque  # local import to keep the imports block tight
+
+_LOG_BUFFER_MAX = 1000
+_LOG_BUFFER: "deque[str]" = deque(maxlen=_LOG_BUFFER_MAX)
+_LOG_LOCK = threading.Lock()
+_LOG_READER_THREAD: threading.Thread | None = None
+
 
 # ---------------------------------------------------------------------------
 # Discovery helpers (D-07a, D-07b)
@@ -352,15 +362,29 @@ def launch(model_path: str) -> LaunchResult:
         port = _pick_port()
         # T-07.1-05-01: list-form argv, shell=False — never pass user input to a shell.
         # T-07.1-05-06: DEVNULL avoids pipe-buffer deadlock (Pitfall 8).
+        # Combine stderr into stdout for a single chronological stream.
+        # bufsize=1 + universal_newlines=True gives us line-buffered text.
         proc = subprocess.Popen(
             [binary, "-m", str(target_path), "--ctx-size", "8192", "--port", str(port)],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            bufsize=1,
+            universal_newlines=True,
         )
         _PROCESS = proc
         _ACTIVE_MODEL_PATH = target_path
         _ACTIVE_PORT = port
         _STARTED_AT = datetime.now(timezone.utc).isoformat()
+
+        # Reset log buffer + start daemon reader thread. Previous run's
+        # output is discarded — users care about the CURRENT server.
+        with _LOG_LOCK:
+            _LOG_BUFFER.clear()
+        global _LOG_READER_THREAD
+        _LOG_READER_THREAD = threading.Thread(
+            target=_log_reader, args=(proc,), daemon=True, name="llamacpp-log-reader"
+        )
+        _LOG_READER_THREAD.start()
 
     # Wait for llama-server to be ready BEFORE returning. Without this the
     # frontend POSTs /v1/chat/completions while the model is still loading
@@ -419,6 +443,38 @@ def _wait_for_ready(port: int, timeout_s: float) -> bool:
             pass  # socket not yet bound or transient network blip
         time.sleep(READINESS_POLL_INTERVAL_S)
     return False
+
+
+def _log_reader(proc: subprocess.Popen) -> None:
+    """Drain `proc.stdout` line by line into the ring buffer.
+
+    Runs in a daemon thread; exits when the process closes its stdout
+    (i.e. dies). Any read/decode error is swallowed — we don't want a
+    crashed reader to take down the API.
+    """
+    try:
+        if proc.stdout is None:
+            return
+        for raw in proc.stdout:
+            if not raw:
+                continue
+            line = raw.rstrip("\r\n")
+            if not line:
+                continue
+            with _LOG_LOCK:
+                _LOG_BUFFER.append(line)
+    except (OSError, ValueError):
+        return
+
+
+def get_logs(tail: int = 200) -> list[str]:
+    """Snapshot of the last `tail` log lines from llama-server."""
+    if tail <= 0:
+        return []
+    with _LOG_LOCK:
+        if tail >= len(_LOG_BUFFER):
+            return list(_LOG_BUFFER)
+        return list(_LOG_BUFFER)[-tail:]
 
 
 def shutdown() -> bool:

@@ -20,6 +20,7 @@ from ...services.llm.ollama_launcher import (
     OllamaLaunchTimeout,
     OLLAMA_HOST,
     _is_running,
+    get_logs as launcher_get_logs,
     launch as launcher_launch,
 )
 
@@ -57,6 +58,17 @@ async def get_launch() -> dict:
     """Canonical 'is the ollama daemon up?' status (mirrors llamacpp shape)."""
     running = await asyncio.to_thread(_is_running)
     return {"running": running, "base_url": OLLAMA_HOST if running else None}
+
+
+@router.get("/ollama/logs")
+async def get_ollama_logs(tail: int = 200) -> dict:
+    """Return the last `tail` lines of `ollama serve` stdout/stderr.
+
+    Only populated when this backend launched the daemon (PIPE attached).
+    If Ollama was already running before launch, returns an empty list.
+    """
+    tail = max(1, min(tail, 1000))
+    return {"lines": launcher_get_logs(tail)}
 
 
 __all__ = ["router"]
