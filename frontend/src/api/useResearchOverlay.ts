@@ -24,15 +24,28 @@ export interface ResearchOverlayMeta {
   applied_at: string
 }
 
+export interface ResearchOverlayEntry {
+  name: string | null
+  kingdom_owner: string | null
+  historical_notes: string | null
+}
+
 export interface ResearchOverlay {
   exists: boolean
   covered_condado_ids: string[]
+  /**
+   * UAT 2026-05-22 — full per-condado overlay payload. The dialog renders a
+   * "Resultado" panel from this map after a successful run. Empty `{}` on
+   * miss; absent on backends that pre-date this field (treated as empty).
+   */
+  entries?: Record<string, ResearchOverlayEntry>
   meta: ResearchOverlayMeta | null
 }
 
 const EMPTY_OVERLAY: ResearchOverlay = {
   exists: false,
   covered_condado_ids: [],
+  entries: {},
   meta: null,
 }
 

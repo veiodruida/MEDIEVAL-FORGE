@@ -18,7 +18,7 @@
  * stays mounted for 1.2s to render the success affordance, then closes
  * via `onOpenChange(false)`.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Box,
   Button,
@@ -28,6 +28,7 @@ import {
   Text,
   TextField,
 } from '@radix-ui/themes'
+import { useQueryClient } from '@tanstack/react-query'
 import { useProviders } from '../../api/useProviders'
 import { useProject } from '../../api/useProject'
 import { useResearchOverlay } from '../../api/useResearchOverlay'
@@ -36,6 +37,8 @@ import { useLlamacppShutdown } from '../../api/useLlamacppLaunch'
 import { ProviderSelector } from './ProviderSelector'
 import { ResearchProgress } from './ResearchProgress'
 import { LogPanel } from './LogPanel'
+import { ModelOutputPanel } from './ModelOutputPanel'
+import { ResearchResultPanel } from './ResearchResultPanel'
 
 export interface ResearchDialogProps {
   open: boolean
@@ -89,6 +92,7 @@ export function ResearchDialog({
   // dies; ollama keeps it loaded for keep_alive seconds. We shut down the
   // llama-server subprocess on cancel; ollama's lifecycle stays user-managed.
   const llamacppShutdown = useLlamacppShutdown()
+  const qc = useQueryClient()
 
   // Default provider once the /providers query lands.
   useEffect(() => {
@@ -113,18 +117,18 @@ export function ResearchDialog({
     }
   }, [open, project, hasSeeded])
 
-  // Auto-close 1.2s after terminal success (UI-SPEC §Interaction Contract).
-  const autoCloseRef = useRef<number | null>(null)
+  // UAT 2026-05-22 — auto-close removed. The user wants to see the result
+  // ("Quero poder ver o rsultado do que foi feito"), so the dialog now
+  // stays mounted after success and the user dismisses it manually via the
+  // "Fechar" button (or by clicking outside). Instead, on terminal success
+  // we invalidate the overlay query so the ResearchResultPanel reads the
+  // freshly-written research_overlay.json without a manual refresh.
   useEffect(() => {
     if (streamPhase !== 'succeeded') return
-    autoCloseRef.current = window.setTimeout(() => { onOpenChange(false) }, 1200)
-    return () => {
-      if (autoCloseRef.current !== null) {
-        window.clearTimeout(autoCloseRef.current)
-        autoCloseRef.current = null
-      }
-    }
-  }, [streamPhase, onOpenChange])
+    qc.invalidateQueries({
+      queryKey: ['v3', 'projects', projectId, 'research', 'overlay'],
+    })
+  }, [streamPhase, qc, projectId])
 
   const isStreaming = streamPhase === 'running' || streamPhase === 'starting'
 
@@ -387,8 +391,29 @@ export function ResearchDialog({
               <ResearchProgress state={stream.state} />
             )}
 
-            {/* UAT 2026-05-22 — collapsible log tail for the local subprocess. */}
-            <LogPanel provider={provider} enabled={open} />
+            {/* UAT 2026-05-22 — live model output (token stream from the
+                provider) is rendered while the run is active and stays
+                visible after terminal so the user can read what the model
+                produced even on failure. */}
+            <ModelOutputPanel
+              text={stream.state.modelOutput ?? ''}
+              active={isStreaming}
+            />
+
+            {/* UAT 2026-05-22 — collapsible log tail for the local subprocess.
+                Auto-opens during streaming so the user sees server activity
+                without an extra click. */}
+            <LogPanel provider={provider} enabled={open} autoOpen={isStreaming} />
+
+            {/* UAT 2026-05-22 — Resultado panel renders the per-condado
+                overlay payload once the run completes. Replaces the previous
+                1.2s auto-close behavior. */}
+            {streamPhase === 'succeeded' && (
+              <ResearchResultPanel
+                overlay={overlay.data}
+                isLoading={overlay.isLoading}
+              />
+            )}
 
             {/* CTA row — rodapé layout (UI-SPEC §Copywriting Surface 1) */}
             <Flex gap="2" justify="end" mt="2" align="center">
@@ -402,6 +427,15 @@ export function ResearchDialog({
                     data-testid="research-cancel-stream"
                   >
                     Cancelar pesquisa
+                  </Button>
+                ) : streamPhase === 'succeeded' ? (
+                  <Button
+                    type="button"
+                    variant="solid"
+                    onClick={() => handleDialogChange(false)}
+                    data-testid="research-close-success"
+                  >
+                    Fechar
                   </Button>
                 ) : (
                   <>

@@ -60,6 +60,9 @@ describe('useResearchOverlay', () => {
       covered_condado_ids: [],
       meta: null,
     })
+    // The hook only injects the new `entries: {}` default on the 404
+    // defensive path; the happy-path payload is forwarded verbatim, so this
+    // assertion does NOT enforce a key the backend omitted.
   })
 
   it('returns exists:true + meta with BOTH generated_at AND applied_at (REVIEWS fix #2)', async () => {
@@ -175,6 +178,7 @@ describe('useResearchOverlay', () => {
     expect(result.current.data).toEqual({
       exists: false,
       covered_condado_ids: [],
+      entries: {},
       meta: null,
     })
   })

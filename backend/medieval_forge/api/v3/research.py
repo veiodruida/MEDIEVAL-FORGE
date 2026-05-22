@@ -285,14 +285,22 @@ async def get_health() -> dict:
 async def get_overlay(project_id: str) -> dict:
     """Return {exists, covered_condado_ids, meta} for the project's overlay.
 
-    Shape on miss: `{"exists": false, "covered_condado_ids": [], "meta": None}`.
+    Shape on miss: `{"exists": false, "covered_condado_ids": [], "entries": {},
+                     "meta": None}`.
     Shape on hit:  `{"exists": true, "covered_condado_ids": [...],
+                     "entries": {condado_id: {name, kingdom_owner,
+                                              historical_notes}, ...},
                      "meta": {provider, model, generated_at, applied_at}}`.
 
     REVIEWS fix #2: meta carries BOTH generated_at (original LLM-output
     timestamp, possibly older than applied_at on cache-hit paths) AND
     applied_at (when the runner wrote this overlay to the project). Plan 09b
     microcopy renders single-line when they match, two-line when they differ.
+
+    UAT 2026-05-22: `entries` returns the full per-condado overlay payload so
+    the ResearchDialog can render a "Resultado" panel after a successful run
+    without an extra round-trip. Already-public fields (name, kingdom_owner,
+    historical_notes) only — no internal-only metadata leaks.
 
     T-07-07b-08 mitigation: trims raw meta sidecar to UI-bound subset — does
     NOT echo prompt_digest / schema_version / country / period to UI
@@ -303,7 +311,12 @@ async def get_overlay(project_id: str) -> dict:
     pdir = project_dir(project_id)
     overlay_path = pdir / "research_overlay.json"
     if not overlay_path.exists():
-        return {"exists": False, "covered_condado_ids": [], "meta": None}
+        return {
+            "exists": False,
+            "covered_condado_ids": [],
+            "entries": {},
+            "meta": None,
+        }
     overlay = json.loads(overlay_path.read_text(encoding="utf-8"))
     covered = list(overlay.keys())
 
@@ -317,7 +330,12 @@ async def get_overlay(project_id: str) -> dict:
             "generated_at": raw_meta.get("generated_at"),  # REVIEWS fix #2
             "applied_at": raw_meta.get("applied_at"),      # REVIEWS fix #2
         }
-    return {"exists": True, "covered_condado_ids": covered, "meta": meta}
+    return {
+        "exists": True,
+        "covered_condado_ids": covered,
+        "entries": overlay,
+        "meta": meta,
+    }
 
 
 __all__ = ["router", "overlay_router"]

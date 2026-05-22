@@ -18,6 +18,12 @@ export interface LogPanelProps {
   provider: string
   /** When false, queries idle and panel collapses to its header. */
   enabled: boolean
+  /**
+   * UAT 2026-05-22 — auto-open the disclosure while a research stream is
+   * active so users see what the server is doing without an extra click.
+   * Once toggled manually by the user the explicit state wins.
+   */
+  autoOpen?: boolean
 }
 
 const LOG_BOX_STYLE: React.CSSProperties = {
@@ -37,10 +43,20 @@ const LOG_BOX_STYLE: React.CSSProperties = {
   wordBreak: 'break-word',
 }
 
-export function LogPanel({ provider, enabled }: LogPanelProps) {
+export function LogPanel({ provider, enabled, autoOpen = false }: LogPanelProps) {
   // Default open while a run is happening so the user sees the model's
   // chatter without an extra click. Persists across re-renders.
   const [open, setOpen] = useState(false)
+  const [userToggled, setUserToggled] = useState(false)
+
+  // When `autoOpen` flips true (research stream starts) and the user hasn't
+  // yet expressed a preference this session, expand the disclosure. We do
+  // NOT auto-collapse — once the user has the panel open we trust them.
+  useEffect(() => {
+    if (autoOpen && !userToggled && !open) {
+      setOpen(true)
+    }
+  }, [autoOpen, userToggled, open])
 
   const showLlamacpp = enabled && open && provider === 'llamacpp'
   const showOllama = enabled && open && provider === 'ollama'
@@ -80,7 +96,10 @@ export function LogPanel({ provider, enabled }: LogPanelProps) {
       <Flex
         align="center"
         gap="2"
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => {
+          setUserToggled(true)
+          setOpen((v) => !v)
+        }}
         style={{ cursor: 'pointer', userSelect: 'none' }}
         data-testid="server-log-panel-toggle"
       >

@@ -185,13 +185,17 @@ class LlamaCppProvider:
                 {"role": "user", "content": prompt},
             ],
             "response_format": {"type": "json_object"},
-            # Non-streaming: we don't render tokens to the UI as they arrive
-            # (the full JSON has to be reassembled before parse_research_json
-            # can run), so streaming added complexity for zero benefit. UAT
-            # 2026-05-22 — llama-server occasionally never sent the SSE
-            # `[DONE]` sentinel after responding 200, leaving aiter_lines()
-            # blocked forever and the dialog stuck on "Cancelar pesquisa".
-            "stream": False,
+            # Streaming: UAT 2026-05-22 — the user wants to watch the model's
+            # output as it is produced ("Quero ver o output do modelo bem como
+            # o seu processamento"). We aggregate `delta.content` from every
+            # `data: {json}` SSE frame and exit the loop on the FIRST of:
+            #   - explicit `[DONE]` sentinel, OR
+            #   - `finish_reason` != null on the latest choice.
+            # The previous hang was caused by waiting indefinitely on `[DONE]`
+            # — breaking on `finish_reason` removes that dependency. The
+            # per-read 60s httpx timeout provides a final fallback if the
+            # server stops emitting frames mid-response.
+            "stream": True,
             "model": model,
         }
 
@@ -207,21 +211,56 @@ class LlamaCppProvider:
                 + "\n\n"
             )
 
-        # Bounded total deadline so a hung server still surfaces an error
-        # within ~10 minutes instead of looping forever on the read.
-        timeout = httpx.Timeout(connect=15.0, read=600.0, write=60.0, pool=15.0)
+        timeout = httpx.Timeout(connect=15.0, read=60.0, write=60.0, pool=15.0)
+        content_parts: list[str] = []
+        finished = False
         async with httpx.AsyncClient(timeout=timeout) as client:
-            resp = await client.post(f"{base_url}/v1/chat/completions", json=body)
-            resp.raise_for_status()
-            try:
-                obj = resp.json()
-            except ValueError as exc:
-                raise LlamaCppProviderError(
-                    f"llama-server returned non-JSON body (status={resp.status_code})"
-                ) from exc
+            async with client.stream(
+                "POST", f"{base_url}/v1/chat/completions", json=body
+            ) as resp:
+                resp.raise_for_status()
+                async for line in resp.aiter_lines():
+                    if not line:
+                        continue
+                    if not line.startswith("data:"):
+                        continue
+                    payload = line[5:].strip()
+                    if not payload:
+                        continue
+                    if payload == "[DONE]":
+                        finished = True
+                        break
+                    try:
+                        obj = json.loads(payload)
+                    except json.JSONDecodeError as exc:
+                        raise LlamaCppProviderError(
+                            f"malformed SSE data line from llama-server: {payload!r}"
+                        ) from exc
+                    choices = obj.get("choices") or []
+                    if not choices:
+                        continue
+                    first = choices[0] or {}
+                    delta = (first.get("delta") or {}).get("content", "") or ""
+                    if delta:
+                        content_parts.append(delta)
+                        if queue is not None:
+                            await queue.put(
+                                "data: "
+                                + json.dumps(
+                                    {"event_type": "token", "text": delta}
+                                )
+                                + "\n\n"
+                            )
+                    if first.get("finish_reason"):
+                        finished = True
+                        break
 
-        choices = obj.get("choices") or [{}]
-        content = (choices[0].get("message") or {}).get("content", "") or ""
+        content = "".join(content_parts)
+        if not content:
+            raise LlamaCppProviderError(
+                "llama-server stream produced no content"
+                + (" (no finish_reason)" if not finished else "")
+            )
 
         if schema is ResearchResult:
             return parse_research_json(content)

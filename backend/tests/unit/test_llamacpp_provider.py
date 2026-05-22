@@ -13,8 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from typing import AsyncIterator
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -178,63 +177,24 @@ async def test_health_running_server_returns_ok_true_with_base_url(
 # ---------------------------------------------------------------------------
 
 
-def _make_sse_line(content_delta: str) -> str:
-    """Build a well-formed SSE data line from a delta string."""
-    payload = json.dumps({"choices": [{"delta": {"content": content_delta}}]})
-    return f"data: {payload}"
+def _fake_streaming_client_factory(sse_lines: list[str]):
+    """Build a fake httpx.AsyncClient class whose `.stream("POST", ...)` yields
+    the given list of raw SSE lines via `aiter_lines()`.
 
-
-def _make_done_line() -> str:
-    return "data: [DONE]"
-
-
-async def _collect_queue(queue: asyncio.Queue, timeout: float = 2.0) -> list:
-    """Drain an asyncio.Queue into a list, stopping at None sentinel."""
-    items = []
-    deadline = asyncio.get_event_loop().time() + timeout
-    while True:
-        remaining = deadline - asyncio.get_event_loop().time()
-        if remaining <= 0:
-            break
-        try:
-            item = await asyncio.wait_for(queue.get(), timeout=remaining)
-        except asyncio.TimeoutError:
-            break
-        if item is None:
-            items.append(None)
-            break
-        items.append(item)
-    return items
-
-
-def _make_non_stream_response(content: str):
-    """Build a fake httpx response object exposing .raise_for_status + .json().
-
-    UAT 2026-05-22: provider switched from SSE streaming to a single
-    `client.post()` call because llama-server occasionally never emits the
-    SSE `[DONE]` sentinel, leaving aiter_lines() blocked forever. Tests
-    follow the new shape: one full response body matching the OpenAI
-    chat-completion contract.
+    UAT 2026-05-22: provider streams the chat-completion response so the UI
+    can render tokens as they arrive. Tests must drive the `client.stream(...)
+    -> aiter_lines()` pipeline because that is the production code path.
     """
 
-    class _FakeResp:
+    class _FakeStreamResponse:
         status_code = 200
 
-        def raise_for_status(self):
-            pass
+        def raise_for_status(self) -> None:
+            return None
 
-        def json(self):
-            return {
-                "choices": [
-                    {"message": {"role": "assistant", "content": content}}
-                ]
-            }
-
-    return _FakeResp()
-
-
-def _fake_async_client_factory(response_obj):
-    """Build a fake httpx.AsyncClient class returning `response_obj` from post()."""
+        async def aiter_lines(self):
+            for line in sse_lines:
+                yield line
 
     class _FakeAsyncClient:
         def __init__(self, *args, **kwargs):
@@ -246,17 +206,44 @@ def _fake_async_client_factory(response_obj):
         async def __aexit__(self, *a):
             pass
 
-        async def post(self, url, json=None, **kwargs):
-            return response_obj
+        def stream(self, method: str, url: str, **kwargs):
+            outer = self
+
+            class _Ctx:
+                async def __aenter__(self_inner):
+                    return _FakeStreamResponse()
+
+                async def __aexit__(self_inner, *a):
+                    return None
+
+            del outer
+            return _Ctx()
 
     return _FakeAsyncClient
 
 
-async def test_research_via_httpx_post_returns_parsed_result(monkeypatch) -> None:
-    """Provider posts a single chat-completion request and parses the
-    `choices[0].message.content` as ResearchResult JSON."""
+def _sse_delta(content: str) -> str:
+    return (
+        "data: "
+        + json.dumps({"choices": [{"delta": {"content": content}, "finish_reason": None}]})
+    )
+
+
+def _sse_finish(reason: str = "stop") -> str:
+    return (
+        "data: "
+        + json.dumps({"choices": [{"delta": {}, "finish_reason": reason}]})
+    )
+
+
+async def test_research_streams_tokens_and_returns_parsed_result(monkeypatch) -> None:
+    """Provider opens an SSE stream, emits `token` envelopes per delta, and
+    parses the concatenated content as ResearchResult JSON."""
     research_json = '{"kingdoms": {}, "duchies": {}, "condados": [], "baronies": {}}'
-    fake_client = _fake_async_client_factory(_make_non_stream_response(research_json))
+    # Split the JSON across three deltas so the test verifies aggregation.
+    chunks = [research_json[:10], research_json[10:30], research_json[30:]]
+    sse_lines = [_sse_delta(c) for c in chunks] + [_sse_finish("stop"), "data: [DONE]"]
+    fake_client = _fake_streaming_client_factory(sse_lines)
 
     queue: asyncio.Queue = asyncio.Queue()
     provider = LlamaCppProvider()
@@ -272,38 +259,25 @@ async def test_research_via_httpx_post_returns_parsed_result(monkeypatch) -> Non
             queue=queue,
         )
 
-    # `started` envelope must land on the queue at least once.
     items: list = []
     while not queue.empty():
         items.append(queue.get_nowait())
-    assert len(items) >= 1
+    # At least: `started` + 3 `token` envelopes.
+    assert len(items) >= 4
+    token_payloads = [
+        json.loads(it.removeprefix("data: ").strip())
+        for it in items
+        if "event_type" in it and "token" in it
+    ]
+    assert [p["text"] for p in token_payloads] == chunks
     assert isinstance(result, ResearchResult)
 
 
-async def test_research_rejects_malformed_response_body(monkeypatch) -> None:
-    """A non-JSON response body raises LlamaCppProviderError (typed)."""
-
-    class _BadResp:
-        status_code = 200
-
-        def raise_for_status(self):
-            pass
-
-        def json(self):
-            raise ValueError("not json")
-
-    class _FakeAsyncClient:
-        def __init__(self, *args, **kwargs):
-            pass
-
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, *a):
-            pass
-
-        async def post(self, url, json=None, **kwargs):
-            return _BadResp()
+async def test_research_rejects_malformed_sse_data_line(monkeypatch) -> None:
+    """A non-JSON `data:` line raises LlamaCppProviderError."""
+    fake_client = _fake_streaming_client_factory(
+        ["data: not-json", "data: [DONE]"]
+    )
 
     queue: asyncio.Queue = asyncio.Queue()
     provider = LlamaCppProvider()
@@ -312,26 +286,55 @@ async def test_research_rejects_malformed_response_body(monkeypatch) -> None:
     from medieval_forge.services.llm.schemas import ResearchResult
 
     with (
-        patch("medieval_forge.services.llm.llamacpp.httpx.AsyncClient", _FakeAsyncClient),
+        patch("medieval_forge.services.llm.llamacpp.httpx.AsyncClient", fake_client),
         pytest.raises(LlamaCppProviderError),
     ):
         await provider.research(
-            prompt="Test malformed body",
+            prompt="Test malformed",
             schema=ResearchResult,
             credentials={"model": "test.gguf"},
             queue=queue,
         )
 
 
-async def test_research_final_payload_extraction_matches_claude_ollama_shape(
+async def test_research_terminates_on_finish_reason_without_done_sentinel(
     monkeypatch,
 ) -> None:
-    """Well-formed chat-completion body yields a ResearchResult shape identical
-    to Ollama provider output for the same prompt."""
+    """The loop exits on `finish_reason: stop` even if `[DONE]` never arrives.
+
+    UAT 2026-05-22: this guards against the regression that motivated the
+    earlier non-streaming switch — llama-server sometimes drops the [DONE]
+    sentinel, but it reliably emits `finish_reason` on the last delta.
+    """
+    research_json = '{"kingdoms": {}, "duchies": {}, "condados": [], "baronies": {}}'
+    sse_lines = [_sse_delta(research_json), _sse_finish("stop")]
+    fake_client = _fake_streaming_client_factory(sse_lines)
+
+    queue: asyncio.Queue = asyncio.Queue()
+    provider = LlamaCppProvider()
+    provider._test_only_base_url = "http://127.0.0.1:38291"
+
+    from medieval_forge.services.llm.schemas import ResearchResult
+
+    with patch("medieval_forge.services.llm.llamacpp.httpx.AsyncClient", fake_client):
+        result = await provider.research(
+            prompt="Test no-done",
+            schema=ResearchResult,
+            credentials={"model": "test.gguf"},
+            queue=queue,
+        )
+    assert isinstance(result, ResearchResult)
+
+
+async def test_research_final_payload_shape_matches_ollama(monkeypatch) -> None:
+    """Aggregated SSE deltas produce a ResearchResult identical in shape to
+    Ollama's research() output for the same prompt."""
     research_json = json.dumps(
         {"kingdoms": {}, "duchies": {}, "condados": [], "baronies": {}}
     )
-    fake_client = _fake_async_client_factory(_make_non_stream_response(research_json))
+    fake_client = _fake_streaming_client_factory(
+        [_sse_delta(research_json), _sse_finish("stop")]
+    )
 
     queue: asyncio.Queue = asyncio.Queue()
     provider = LlamaCppProvider()
@@ -347,16 +350,7 @@ async def test_research_final_payload_extraction_matches_claude_ollama_shape(
             queue=queue,
         )
 
-    # Structural comparison with Ollama's expected output shape:
-    # Ollama.research also returns ResearchResult (same type check)
-    assert isinstance(result, ResearchResult), (
-        f"Expected ResearchResult, got {type(result)}"
-    )
-    # Key-level comparison: ResearchResult has kingdoms, duchies, condados, baronies
-    assert hasattr(result, "kingdoms")
-    assert hasattr(result, "duchies")
-    assert hasattr(result, "condados")
-    assert hasattr(result, "baronies")
+    assert isinstance(result, ResearchResult)
     assert isinstance(result.kingdoms, dict)
     assert isinstance(result.duchies, dict)
     assert isinstance(result.condados, list)

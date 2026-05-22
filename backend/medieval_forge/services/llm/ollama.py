@@ -106,7 +106,14 @@ class OllamaProvider:
         return HealthStatus(healthy=result["ok"], message=result["message"])
 
     async def research(self, prompt, schema, credentials, queue):
-        """Single-shot chat with format=schema JSON enforcement.
+        """Stream chat completion with format=schema JSON enforcement.
+
+        UAT 2026-05-22 — switched from a single blocking `chat(stream=False)`
+        to `stream=True`. The user reported "Quero ver o output do modelo bem
+        como o seu processamento". Each delta chunk is forwarded to the SSE
+        queue as a `token` envelope so the dialog can render the model's
+        output as it streams. The full content is reassembled and validated
+        against the schema once `done=True` arrives.
 
         The provider does NOT auto-fallback to a different model — the UI picks
         based on `available_models` (REVIEWS fix #5). Provider accepts whatever
@@ -126,35 +133,29 @@ class OllamaProvider:
                 + "\n\n"
             )
 
-        # Heartbeat task — blocking call may take 30-120s on local hw.
-        async def heartbeat() -> None:
-            elapsed = 0
-            while queue is not None:
-                await asyncio.sleep(3.0)
-                elapsed += 3
-                await queue.put(
-                    "data: "
-                    + json.dumps({"event_type": "heartbeat", "elapsed_s": elapsed})
-                    + "\n\n"
-                )
+        content_parts: list[str] = []
+        async for chunk in await client.chat(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+            format=schema.model_json_schema(),
+            stream=True,
+        ):
+            msg = chunk.get("message") if isinstance(chunk, dict) else None
+            delta = ""
+            if isinstance(msg, dict):
+                delta = msg.get("content", "") or ""
+            if delta:
+                content_parts.append(delta)
+                if queue is not None:
+                    await queue.put(
+                        "data: "
+                        + json.dumps({"event_type": "token", "text": delta})
+                        + "\n\n"
+                    )
+            if isinstance(chunk, dict) and chunk.get("done"):
+                break
 
-        hb_task = asyncio.create_task(heartbeat()) if queue is not None else None
-        try:
-            response = await client.chat(
-                model=model,
-                messages=[{"role": "user", "content": prompt}],
-                format=schema.model_json_schema(),
-                stream=False,
-            )
-        finally:
-            if hb_task is not None:
-                hb_task.cancel()
-                try:
-                    await hb_task
-                except (asyncio.CancelledError, Exception):
-                    pass
-
-        content = response["message"]["content"]
+        content = "".join(content_parts)
         # Lenient parser (literal-port schemas.parse_research_json) handles
         # small-model tendency to add extra top-level keys.
         from .schemas import ResearchResult, parse_research_json

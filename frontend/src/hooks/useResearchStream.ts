@@ -51,6 +51,13 @@ export interface StreamState {
   error_code?: string
   /** REVIEWS fix #7 — human-readable PT-BR. */
   error_message?: string
+  /**
+   * UAT 2026-05-22 — accumulated raw model output. Backend providers
+   * (ollama / llamacpp) forward delta chunks as `token` envelopes so the
+   * dialog can render the model's output live. Empty when the provider
+   * does not stream (e.g. claude cache-hit, or before the first token).
+   */
+  modelOutput?: string
 }
 
 interface ResearchSseEnvelope {
@@ -62,6 +69,8 @@ interface ResearchSseEnvelope {
   error_code?: string
   attempt?: number
   max_retries?: number
+  /** `token` envelope — raw model output delta forwarded by the provider. */
+  text?: string
 }
 
 const STAGE_SET = new Set<ResearchStage>([
@@ -110,7 +119,7 @@ export function useResearchStream(): ResearchStreamHandle {
       const es = new EventSource(url)
       esRef.current = es
 
-      setState({ phase: 'starting' })
+      setState({ phase: 'starting', modelOutput: '' })
 
       es.onmessage = (e: MessageEvent) => {
         // CLAUDE.md zundo discipline — temporal.pause/resume wraps every
@@ -238,6 +247,18 @@ function dispatchStructured(
         }))
       }
       return
+    case 'token': {
+      // UAT 2026-05-22 — append the provider-emitted delta to the live
+      // model output. `text` is a small chunk (single token or short run);
+      // the buffer is unbounded but capped implicitly by JSON response size.
+      const delta = typeof env.text === 'string' ? env.text : ''
+      if (!delta) return
+      setState((prev) => ({
+        ...prev,
+        modelOutput: (prev.modelOutput ?? '') + delta,
+      }))
+      return
+    }
     case 'terminal':
       if (env.status === 'success') {
         setState((prev) => ({
