@@ -364,8 +364,25 @@ def launch(model_path: str) -> LaunchResult:
         # T-07.1-05-06: DEVNULL avoids pipe-buffer deadlock (Pitfall 8).
         # Combine stderr into stdout for a single chronological stream.
         # bufsize=1 + universal_newlines=True gives us line-buffered text.
+        # UAT 2026-05-23 — user asked the launcher to "use max VRAM left for
+        # context". We bump --ctx-size from 8192 to a sane upper bound and
+        # always pass -ngl 999 so every layer is offloaded to the GPU.
+        # llama-server clamps the context to min(requested, trained) and
+        # gracefully falls back to CPU for layers that don't fit in VRAM, so
+        # neither flag can crash a launch — worst case the user gets a
+        # slower spillover.
+        ctx_size = os.environ.get("MEDIEVAL_FORGE_LLAMACPP_CTX_SIZE", "32768")
+        n_gpu_layers = os.environ.get(
+            "MEDIEVAL_FORGE_LLAMACPP_N_GPU_LAYERS", "999"
+        )
         proc = subprocess.Popen(
-            [binary, "-m", str(target_path), "--ctx-size", "8192", "--port", str(port)],
+            [
+                binary,
+                "-m", str(target_path),
+                "--ctx-size", str(ctx_size),
+                "--n-gpu-layers", str(n_gpu_layers),
+                "--port", str(port),
+            ],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             bufsize=1,

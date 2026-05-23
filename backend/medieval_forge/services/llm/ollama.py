@@ -138,28 +138,70 @@ class OllamaProvider:
         # num_predict (-1 falls back to model defaults, often ~2048-4096) and
         # truncates the stream mid-JSON, raising `EOF while parsing a string`
         # in parse_research_json. 8192 tokens covers the largest realistic
-        # map without retuning per-model config.
-        async for chunk in await client.chat(
-            model=model,
-            messages=[{"role": "user", "content": prompt}],
-            format=schema.model_json_schema(),
-            stream=True,
-            options={"num_predict": 8192},
-        ):
-            msg = chunk.get("message") if isinstance(chunk, dict) else None
-            delta = ""
-            if isinstance(msg, dict):
-                delta = msg.get("content", "") or ""
-            if delta:
-                content_parts.append(delta)
+        # map without retuning per-model config. num_ctx + num_gpu pushed to
+        # the limit per user request "use max VRAM left for context" —
+        # Ollama silently clamps to what fits, so over-requesting is safe.
+        loop = asyncio.get_event_loop()
+        start_t = loop.time()
+        hb_task: asyncio.Task | None = None
+        first_token_arrived = False
+
+        async def _heartbeat() -> None:
+            elapsed = 0.0
+            while not first_token_arrived:
+                await asyncio.sleep(2.0)
+                elapsed = loop.time() - start_t
                 if queue is not None:
                     await queue.put(
                         "data: "
-                        + json.dumps({"event_type": "token", "text": delta})
+                        + json.dumps(
+                            {
+                                "event_type": "progress",
+                                "message": f"Carregando modelo / processando prompt… ({elapsed:.0f}s)",
+                            }
+                        )
                         + "\n\n"
                     )
-            if isinstance(chunk, dict) and chunk.get("done"):
-                break
+
+        if queue is not None:
+            hb_task = asyncio.create_task(_heartbeat())
+
+        try:
+            async for chunk in await client.chat(
+                model=model,
+                messages=[{"role": "user", "content": prompt}],
+                format=schema.model_json_schema(),
+                stream=True,
+                options={
+                    "num_predict": 8192,
+                    "num_ctx": 32768,
+                    "num_gpu": 999,
+                },
+            ):
+                msg = chunk.get("message") if isinstance(chunk, dict) else None
+                delta = ""
+                if isinstance(msg, dict):
+                    delta = msg.get("content", "") or ""
+                if delta:
+                    if not first_token_arrived:
+                        first_token_arrived = True
+                    content_parts.append(delta)
+                    if queue is not None:
+                        await queue.put(
+                            "data: "
+                            + json.dumps({"event_type": "token", "text": delta})
+                            + "\n\n"
+                        )
+                if isinstance(chunk, dict) and chunk.get("done"):
+                    break
+        finally:
+            first_token_arrived = True
+            if hb_task is not None:
+                hb_task.cancel()
+                try:
+                    await hb_task
+                except (asyncio.CancelledError, Exception):
+                    pass
 
         content = "".join(content_parts)
         # Lenient parser (literal-port schemas.parse_research_json) handles

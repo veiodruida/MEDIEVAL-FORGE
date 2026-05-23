@@ -221,46 +221,89 @@ class LlamaCppProvider:
         timeout = httpx.Timeout(connect=15.0, read=60.0, write=60.0, pool=15.0)
         content_parts: list[str] = []
         finished = False
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            async with client.stream(
-                "POST", f"{base_url}/v1/chat/completions", json=body
-            ) as resp:
-                resp.raise_for_status()
-                async for line in resp.aiter_lines():
-                    if not line:
-                        continue
-                    if not line.startswith("data:"):
-                        continue
-                    payload = line[5:].strip()
-                    if not payload:
-                        continue
-                    if payload == "[DONE]":
-                        finished = True
-                        break
-                    try:
-                        obj = json.loads(payload)
-                    except json.JSONDecodeError as exc:
-                        raise LlamaCppProviderError(
-                            f"malformed SSE data line from llama-server: {payload!r}"
-                        ) from exc
-                    choices = obj.get("choices") or []
-                    if not choices:
-                        continue
-                    first = choices[0] or {}
-                    delta = (first.get("delta") or {}).get("content", "") or ""
-                    if delta:
-                        content_parts.append(delta)
-                        if queue is not None:
-                            await queue.put(
-                                "data: "
-                                + json.dumps(
-                                    {"event_type": "token", "text": delta}
+
+        # UAT 2026-05-23 — user complained that "(aguardando primeiro token…)"
+        # gives no signal during prefill. Emit periodic `progress` envelopes
+        # while no token has arrived so the dialog can surface elapsed time
+        # + a "still working" status to the user. Cancelled the moment the
+        # first delta lands.
+        loop = asyncio.get_event_loop()
+        start_t = loop.time()
+        first_token_arrived = False
+
+        async def _heartbeat() -> None:
+            while not first_token_arrived:
+                await asyncio.sleep(2.0)
+                if first_token_arrived:
+                    return
+                elapsed = loop.time() - start_t
+                if queue is not None:
+                    await queue.put(
+                        "data: "
+                        + json.dumps(
+                            {
+                                "event_type": "progress",
+                                "message": f"Processando prompt… ({elapsed:.0f}s)",
+                            }
+                        )
+                        + "\n\n"
+                    )
+
+        hb_task: asyncio.Task | None = (
+            asyncio.create_task(_heartbeat()) if queue is not None else None
+        )
+
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                async with client.stream(
+                    "POST", f"{base_url}/v1/chat/completions", json=body
+                ) as resp:
+                    resp.raise_for_status()
+                    async for line in resp.aiter_lines():
+                        if not line:
+                            continue
+                        if not line.startswith("data:"):
+                            continue
+                        payload = line[5:].strip()
+                        if not payload:
+                            continue
+                        if payload == "[DONE]":
+                            finished = True
+                            break
+                        try:
+                            obj = json.loads(payload)
+                        except json.JSONDecodeError as exc:
+                            raise LlamaCppProviderError(
+                                f"malformed SSE data line from llama-server: {payload!r}"
+                            ) from exc
+                        choices = obj.get("choices") or []
+                        if not choices:
+                            continue
+                        first = choices[0] or {}
+                        delta = (first.get("delta") or {}).get("content", "") or ""
+                        if delta:
+                            if not first_token_arrived:
+                                first_token_arrived = True
+                            content_parts.append(delta)
+                            if queue is not None:
+                                await queue.put(
+                                    "data: "
+                                    + json.dumps(
+                                        {"event_type": "token", "text": delta}
+                                    )
+                                    + "\n\n"
                                 )
-                                + "\n\n"
-                            )
-                    if first.get("finish_reason"):
-                        finished = True
-                        break
+                        if first.get("finish_reason"):
+                            finished = True
+                            break
+        finally:
+            first_token_arrived = True
+            if hb_task is not None:
+                hb_task.cancel()
+                try:
+                    await hb_task
+                except (asyncio.CancelledError, Exception):
+                    pass
 
         content = "".join(content_parts)
         if not content:

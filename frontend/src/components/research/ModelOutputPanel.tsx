@@ -33,9 +33,15 @@ export interface ModelOutputPanelProps {
   text: string
   /** When true, the panel renders even before any token arrives. */
   active: boolean
+  /**
+   * UAT 2026-05-23 — provider heartbeat message (PT-BR) shown while the
+   * model is loading / processing the prompt and no token has arrived yet.
+   * Cleared by useResearchStream once the first token lands.
+   */
+  progressMessage?: string
 }
 
-export function ModelOutputPanel({ text, active }: ModelOutputPanelProps) {
+export function ModelOutputPanel({ text, active, progressMessage }: ModelOutputPanelProps) {
   const [open, setOpen] = useState(true)
   const preRef = useRef<HTMLPreElement>(null)
 
@@ -69,7 +75,7 @@ export function ModelOutputPanel({ text, active }: ModelOutputPanelProps) {
       {open && (
         <Box mt="2">
           <pre ref={preRef} style={OUTPUT_BOX_STYLE} data-testid="model-output-text">
-            {text || '(aguardando primeiro token…)'}
+            {text || progressMessage || '(aguardando primeiro token…)'}
           </pre>
         </Box>
       )}

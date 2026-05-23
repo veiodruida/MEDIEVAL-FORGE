@@ -58,6 +58,13 @@ export interface StreamState {
    * does not stream (e.g. claude cache-hit, or before the first token).
    */
   modelOutput?: string
+  /**
+   * UAT 2026-05-23 — last `progress` envelope's message (PT-BR). Providers
+   * emit one every 2s while waiting for the first token so the user knows
+   * the model is loading / prompt is being processed, not stuck. Cleared
+   * once the first token arrives.
+   */
+  progressMessage?: string
 }
 
 interface ResearchSseEnvelope {
@@ -256,7 +263,18 @@ function dispatchStructured(
       setState((prev) => ({
         ...prev,
         modelOutput: (prev.modelOutput ?? '') + delta,
+        // First token replaces the "Processando prompt…" placeholder.
+        progressMessage: undefined,
       }))
+      return
+    }
+    case 'progress': {
+      // UAT 2026-05-23 — heartbeat envelope emitted while waiting for the
+      // first token. Surfaces elapsed time + status so the user sees the
+      // model is loading / processing the prompt, not hung.
+      const msg = typeof env.message === 'string' ? env.message : ''
+      if (!msg) return
+      setState((prev) => ({ ...prev, progressMessage: msg }))
       return
     }
     case 'terminal':

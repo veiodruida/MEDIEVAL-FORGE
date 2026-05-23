@@ -398,6 +398,7 @@ export function ResearchDialog({
             <ModelOutputPanel
               text={stream.state.modelOutput ?? ''}
               active={isStreaming}
+              progressMessage={stream.state.progressMessage}
             />
 
             {/* UAT 2026-05-22 — collapsible log tail for the local subprocess.
