@@ -42,11 +42,36 @@ SYSTEM_PROMPT = (
 # We ship a short shortlist of strong free models so first-run users get
 # a sensible default without browsing the full catalog.
 RECOMMENDED_FREE_MODELS = [
+    # UAT 2026-05-23 — curated whitelist of OpenRouter models verified
+    # to currently expose a `/chat/completions` endpoint. The /models
+    # endpoint returns hundreds of entries including deprecated /
+    # completions-only / preview models that 404 on chat. We intersect
+    # /models with this list so the dropdown only shows entries the
+    # user can actually call.
     "google/gemini-2.0-flash-exp:free",
-    "deepseek/deepseek-r1:free",
     "meta-llama/llama-3.3-70b-instruct:free",
+    "meta-llama/llama-3.2-3b-instruct:free",
+    "meta-llama/llama-3.1-8b-instruct:free",
     "qwen/qwen-2.5-72b-instruct:free",
+    "qwen/qwen-2.5-coder-32b-instruct:free",
+    "mistralai/mistral-nemo:free",
+    "mistralai/mistral-7b-instruct:free",
+    "microsoft/phi-3-mini-128k-instruct:free",
+    "huggingfaceh4/zephyr-7b-beta:free",
 ]
+
+# Paid models known to be reliable behind OpenRouter (text-only, chat).
+# Same intersect-with-/models rule applies.
+RECOMMENDED_PAID_MODELS = [
+    "anthropic/claude-3.5-sonnet",
+    "anthropic/claude-3-haiku",
+    "openai/gpt-4o",
+    "openai/gpt-4o-mini",
+    "google/gemini-pro-1.5",
+    "google/gemini-flash-1.5",
+    "deepseek/deepseek-chat",
+]
+KNOWN_GOOD_MODELS = set(RECOMMENDED_FREE_MODELS) | set(RECOMMENDED_PAID_MODELS)
 
 
 class OpenRouterProviderError(RuntimeError):
@@ -131,17 +156,31 @@ class OpenRouterProvider:
                 "message": "OpenRouter retornou body não-JSON",
                 "available_models": list(RECOMMENDED_FREE_MODELS),
             }
-        models = []
+        all_models: list[str] = []
         for m in data.get("data", []) or []:
             mid = m.get("id")
             if isinstance(mid, str):
-                models.append(mid)
-        # Surface free models first (UI badges them); keep deterministic.
-        models.sort(key=lambda m: (":free" not in m, m))
+                all_models.append(mid)
+        # UAT 2026-05-23 — OpenRouter /models returns hundreds of entries
+        # including completions-only / deprecated / preview models that
+        # 404 on /chat/completions. Intersect with our curated
+        # KNOWN_GOOD_MODELS whitelist so the dropdown only shows entries
+        # the user can actually call. If the intersection is empty
+        # (OpenRouter dropped them all), fall back to the curated list
+        # alone — the user can still try and gets the actionable 404
+        # message we ship in `research()`.
+        intersected = [m for m in all_models if m in KNOWN_GOOD_MODELS]
+        if not intersected:
+            intersected = list(KNOWN_GOOD_MODELS)
+        # Free first, then alphabetical inside each group.
+        intersected.sort(key=lambda m: (":free" not in m, m))
         return {
             "ok": True,
-            "message": f"Conectado a OpenRouter ({len(models)} modelos)",
-            "available_models": models,
+            "message": (
+                f"Conectado a OpenRouter ({len(intersected)} modelos verificados, "
+                f"{len(all_models)} no catálogo)"
+            ),
+            "available_models": intersected,
         }
 
     async def health_check(self, credentials: dict | None) -> HealthStatus:
