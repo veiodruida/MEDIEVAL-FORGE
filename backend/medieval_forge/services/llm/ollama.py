@@ -134,22 +134,31 @@ class OllamaProvider:
             )
 
         content_parts: list[str] = []
-        # UAT 2026-05-23 — research JSON for Iberia exceeds Ollama's default
-        # num_predict (-1 falls back to model defaults, often ~2048-4096) and
-        # truncates the stream mid-JSON, raising `EOF while parsing a string`
-        # in parse_research_json. 8192 tokens covers the largest realistic
-        # map without retuning per-model config. num_ctx + num_gpu pushed to
-        # the limit per user request "use max VRAM left for context" —
-        # Ollama silently clamps to what fits, so over-requesting is safe.
         loop = asyncio.get_event_loop()
         start_t = loop.time()
         hb_task: asyncio.Task | None = None
         first_token_arrived = False
 
         async def _heartbeat() -> None:
-            elapsed = 0.0
+            # Fire one heartbeat right away so the dialog leaves the
+            # "(aguardando primeiro token…)" placeholder within the first
+            # frame — without this the first signal arrives 2s later and
+            # users on slow models thought the request was stuck.
+            if queue is not None:
+                await queue.put(
+                    "data: "
+                    + json.dumps(
+                        {
+                            "event_type": "progress",
+                            "message": "Conectando a Ollama…",
+                        }
+                    )
+                    + "\n\n"
+                )
             while not first_token_arrived:
                 await asyncio.sleep(2.0)
+                if first_token_arrived:
+                    return
                 elapsed = loop.time() - start_t
                 if queue is not None:
                     await queue.put(
@@ -157,7 +166,7 @@ class OllamaProvider:
                         + json.dumps(
                             {
                                 "event_type": "progress",
-                                "message": f"Carregando modelo / processando prompt… ({elapsed:.0f}s)",
+                                "message": f"Ollama carregando modelo / processando prompt… ({elapsed:.0f}s)",
                             }
                         )
                         + "\n\n"
@@ -166,19 +175,23 @@ class OllamaProvider:
         if queue is not None:
             hb_task = asyncio.create_task(_heartbeat())
 
+        # UAT 2026-05-23 (round 3) — user reported Ollama "ficou parado".
+        # Forcing num_ctx=32768 + num_gpu=999 with a 7B model + 8GB VRAM
+        # blows the KV cache (~8GB at 32k ctx) and the daemon either
+        # crashes silently (Ollama Desktop swallows the stderr) or hangs
+        # waiting for memory the OS can't deliver. Drop the aggressive
+        # overrides — let Ollama use the model's modelfile defaults and
+        # auto-pick GPU layers based on free VRAM. We KEEP `num_predict`
+        # because output truncation is the only setting the server can't
+        # reasonably auto-tune (model authors don't ship a sensible
+        # default for our 15-25k JSON output).
         try:
             async for chunk in await client.chat(
                 model=model,
                 messages=[{"role": "user", "content": prompt}],
                 format=schema.model_json_schema(),
                 stream=True,
-                options={
-                    # UAT 2026-05-23 (round 2) — Iberia hierarchy needs
-                    # 15-25k output tokens; 8192 truncated mid-baronies.
-                    "num_predict": 24576,
-                    "num_ctx": 32768,
-                    "num_gpu": 999,
-                },
+                options={"num_predict": 24576},
             ):
                 msg = chunk.get("message") if isinstance(chunk, dict) else None
                 delta = ""
