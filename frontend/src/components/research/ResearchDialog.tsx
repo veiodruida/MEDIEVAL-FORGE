@@ -338,6 +338,7 @@ export function ResearchDialog({
               modelValue={model}
               onModelChange={setModel}
               isLoading={providersLoading}
+              onOpenCredentials={() => setCredentialsOpen(true)}
             />
 
             {/* REVIEWS soft codex — softened CLI piggyback microcopy. */}

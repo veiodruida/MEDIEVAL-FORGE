@@ -220,6 +220,14 @@ async def _research_producer(
                     period_start=period_start,
                     period_end=period_end,
                     bbox=None,
+                    # UAT 2026-05-23 — pin the LLM to the pipeline's
+                    # condado_ids so the matcher's allowlist actually
+                    # accepts the output. Without this the LLM invents
+                    # `C_BRAGA`-style slugs that never match the
+                    # `Condado_001`-style ids the geometric pipeline
+                    # minted, and every condado is dropped → "0 condados"
+                    # in the result panel.
+                    pipeline_condado_ids=list(condado_ids) if condado_ids else None,
                 )
 
                 # UAT 2026-05-23 — merge DB-resident credentials (API key set

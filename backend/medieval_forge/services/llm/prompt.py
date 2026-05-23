@@ -81,6 +81,7 @@ def build_research_prompt(
     period_start: int,
     period_end: int,
     bbox: tuple[float, float, float, float] | None = None,
+    pipeline_condado_ids: list[str] | None = None,
 ) -> str:
     """Build the full research prompt string for LLM submission.
 
@@ -90,12 +91,19 @@ def build_research_prompt(
         period_end: End year of the historical period (AD).
         bbox: Optional (lon_min, lat_min, lon_max, lat_max) bounding box for
               geographic context. Passed when available to anchor coordinates.
+        pipeline_condado_ids: Optional authoritative list of condado ids the
+              pipeline has already assigned (e.g. ["Condado_001", "Condado_002",
+              ...]). When provided, the LLM is INSTRUCTED to reuse these exact
+              ids in its `condados[].id` field — otherwise the runner's
+              defense-in-depth matcher drops everything as unknown. Without
+              this parameter the LLM keeps inventing `C_BRAGA`-style slugs
+              (legacy behavior preserved for stub-provider tests).
 
     Structure (order matters for small local models):
       1. System role instruction
       2. Example output (concrete, copy-paste shape)
       3. Hard rules with negative examples
-      4. Task parameters (country + period + optional bbox)
+      4. Task parameters (country + period + optional bbox + optional id list)
       5. Final "go" instruction
     """
     geo_hint = ""
@@ -107,6 +115,23 @@ def build_research_prompt(
             "All condado/barony coordinates MUST fall within or near this box.\n"
         )
 
+    id_hint = ""
+    if pipeline_condado_ids:
+        # UAT 2026-05-23 — without this section the LLM invents `C_BRAGA`
+        # style ids, the runner's matcher allowlist drops them all, and
+        # the user sees "0 condados" applied. Pin the LLM to the exact
+        # ids the pipeline already minted; the LLM only fills in
+        # historical name + coords + hierarchy.
+        joined = ", ".join(f'"{cid}"' for cid in pipeline_condado_ids)
+        id_hint = (
+            "MANDATORY CONDADO IDS:\n"
+            "Use EXACTLY these ids in the `condados` array — one entry per id, "
+            "in any order. Do NOT invent new ids, do NOT skip any:\n"
+            f"  [{joined}]\n"
+            "The `id` field of every condado MUST be one of the strings above, "
+            "verbatim. Override any `C_*` slug you would otherwise have invented.\n\n"
+        )
+
     return (
         f"{SYSTEM_INSTRUCTIONS}\n\n"
         f"EXAMPLE OUTPUT (follow this EXACT shape):\n{EXAMPLE_OUTPUT}\n\n"
@@ -116,6 +141,7 @@ def build_research_prompt(
         f"Historical period: {period_start} AD (focus on this START year for territory layout)\n"
         f"Period end reference: {period_end} AD\n"
         f"{geo_hint}"
+        f"{id_hint}"
         f"\nGenerate the complete territorial hierarchy as it existed at {period_start} AD. "
         f"Output the JSON object following the example shape. "
         f"Do not include any other top-level keys."

@@ -76,6 +76,12 @@ export interface ProviderSelectorProps {
   modelValue: string
   onModelChange: (model: string) => void
   isLoading?: boolean
+  /**
+   * UAT 2026-05-23 — opens the CredentialsManager modal so the user can
+   * paste a key inline. Wired by ResearchDialog. Optional so the
+   * component still mounts in isolation tests.
+   */
+  onOpenCredentials?: () => void
 }
 
 export function ProviderSelector({
@@ -85,6 +91,7 @@ export function ProviderSelector({
   modelValue,
   onModelChange,
   isLoading = false,
+  onOpenCredentials,
 }: ProviderSelectorProps) {
   const selectedEntry = useMemo(
     () => providers?.find((p) => p.provider_id === value),
@@ -219,9 +226,30 @@ export function ProviderSelector({
           </Select.Root>
         </Box>
         {selectedEntry && !selectedEntry.healthy && !isLlamacpp && (
-          <Text size="1" color="orange" mt="1" as="p">
-            {selectedEntry.message}
-          </Text>
+          <Flex direction="column" gap="2" mt="1">
+            <Text size="1" color="orange" as="p">
+              {selectedEntry.message}
+            </Text>
+            {/* UAT 2026-05-23 — when the error message tells the user to
+                "Cole sua X em Configurações ou importe um .env", make
+                that action one click away instead of a buried button
+                in the dialog title row. */}
+            {onOpenCredentials &&
+              !isOllama &&
+              (selectedEntry.message ?? '').toLowerCase().includes('chave') && (
+                <Box>
+                  <Button
+                    type="button"
+                    size="1"
+                    variant="solid"
+                    onClick={onOpenCredentials}
+                    data-testid="provider-configure-key"
+                  >
+                    Configurar chave de API
+                  </Button>
+                </Box>
+              )}
+          </Flex>
         )}
       </Box>
 
