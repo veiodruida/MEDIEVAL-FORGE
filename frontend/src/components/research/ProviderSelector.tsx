@@ -102,6 +102,12 @@ export function ProviderSelector({
   const isLlamacpp = value === 'llamacpp'
   const isOllama = value === 'ollama'
   const isClaude = value === 'claude'
+  // UAT 2026-05-23 — cloud providers all need an API key. Used to decide
+  // whether to surface the inline "Configurar chave de API" button on
+  // health failures (the orange copy alone isn't enough — the user
+  // missed the title-row trigger).
+  const CLOUD_PROVIDERS = new Set(['claude', 'openai', 'openrouter', 'gemini'])
+  const isCloudProvider = CLOUD_PROVIDERS.has(value)
 
   // UAT 2026-05-23 — OpenRouter exposes hundreds of models, so the user
   // needs a search filter to find one. We always render the filter
@@ -226,30 +232,29 @@ export function ProviderSelector({
           </Select.Root>
         </Box>
         {selectedEntry && !selectedEntry.healthy && !isLlamacpp && (
-          <Flex direction="column" gap="2" mt="1">
-            <Text size="1" color="orange" as="p">
-              {selectedEntry.message}
-            </Text>
-            {/* UAT 2026-05-23 — when the error message tells the user to
-                "Cole sua X em Configurações ou importe um .env", make
-                that action one click away instead of a buried button
-                in the dialog title row. */}
-            {onOpenCredentials &&
-              !isOllama &&
-              (selectedEntry.message ?? '').toLowerCase().includes('chave') && (
-                <Box>
-                  <Button
-                    type="button"
-                    size="1"
-                    variant="solid"
-                    onClick={onOpenCredentials}
-                    data-testid="provider-configure-key"
-                  >
-                    Configurar chave de API
-                  </Button>
-                </Box>
-              )}
-          </Flex>
+          <Text size="1" color="orange" mt="1" as="p">
+            {selectedEntry.message}
+          </Text>
+        )}
+        {/* UAT 2026-05-23 — always show the inline "Configurar chave de
+            API" button when a cloud provider is selected, regardless of
+            current health. Previous version gated on `!healthy &&
+            message.includes('chave')` which depended on the exact
+            provider error copy and stayed hidden for healthy-with-no-key
+            edge cases. The user-visible button is the single entry
+            point to CredentialsManager from the dialog body. */}
+        {onOpenCredentials && isCloudProvider && (
+          <Box mt="2">
+            <Button
+              type="button"
+              size="1"
+              variant="solid"
+              onClick={onOpenCredentials}
+              data-testid="provider-configure-key"
+            >
+              Configurar chave de API
+            </Button>
+          </Box>
         )}
       </Box>
 
