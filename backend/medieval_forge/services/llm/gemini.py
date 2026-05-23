@@ -115,8 +115,27 @@ class GeminiProvider:
             methods = m.get("supportedGenerationMethods") or []
             if "generateContent" not in methods:
                 continue
+            # UAT 2026-05-23 — Google's /models endpoint returns dozens of
+            # internal preview / experimental / non-chat models (vision-only,
+            # embedding-only, "antigravity-preview-*" research releases) that
+            # streamGenerateContent rejects with 429 / 404. Keep only the
+            # documented public Gemini families (`gemini-1.5-*` / `gemini-2.*`
+            # / `gemini-pro` / `gemini-flash`) so the dropdown matches what
+            # the user finds in AI Studio docs.
+            if not short.startswith("gemini-"):
+                continue
+            # Skip preview / experimental qualifiers that frequently 429.
+            if any(tag in short for tag in ("antigravity", "preview-tts", "audio")):
+                continue
             models.append(short)
-        models.sort()
+        # Stable order: pro families first, then flash, then numeric tail.
+        def _rank(m: str) -> tuple[int, str]:
+            if "pro" in m:
+                return (0, m)
+            if "flash" in m:
+                return (1, m)
+            return (2, m)
+        models.sort(key=_rank)
         return {
             "ok": True,
             "message": f"Conectado a Gemini ({len(models)} modelos)",
@@ -200,6 +219,20 @@ class GeminiProvider:
                     if resp.status_code in (401, 403):
                         raise GeminiProviderError(
                             f"Gemini recusou a chave (HTTP {resp.status_code})."
+                        )
+                    if resp.status_code == 429:
+                        body_bytes = await resp.aread()
+                        raise GeminiProviderError(
+                            "Gemini HTTP 429 — quota AI Studio esgotada. "
+                            "Aguarde até o reset da janela (~1min para flash, "
+                            "~1h para pro) ou troque para outro provider. "
+                            f"Upstream: {body_bytes.decode('utf-8','replace')[:200]}"
+                        )
+                    if resp.status_code >= 400:
+                        body_bytes = await resp.aread()
+                        raise GeminiProviderError(
+                            f"Gemini HTTP {resp.status_code}: "
+                            f"{body_bytes.decode('utf-8','replace')[:300]}"
                         )
                     resp.raise_for_status()
                     async for line in resp.aiter_lines():

@@ -183,6 +183,20 @@ class OpenAIProvider:
                         raise OpenAIProviderError(
                             "OpenAI recusou a chave (HTTP 401). Atualize a credencial."
                         )
+                    if resp.status_code == 429:
+                        body_bytes = await resp.aread()
+                        raise OpenAIProviderError(
+                            "OpenAI HTTP 429 — limite de requisições atingido. "
+                            "Aguarde alguns minutos ou aumente o tier da sua conta em "
+                            "https://platform.openai.com/account/limits. "
+                            f"Upstream: {body_bytes.decode('utf-8','replace')[:200]}"
+                        )
+                    if resp.status_code >= 400:
+                        body_bytes = await resp.aread()
+                        raise OpenAIProviderError(
+                            f"OpenAI HTTP {resp.status_code}: "
+                            f"{body_bytes.decode('utf-8','replace')[:300]}"
+                        )
                     resp.raise_for_status()
                     async for line in resp.aiter_lines():
                         if not line or not line.startswith("data:"):

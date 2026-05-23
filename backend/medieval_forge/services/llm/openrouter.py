@@ -277,84 +277,165 @@ class OpenRouterProvider:
         timeout = httpx.Timeout(connect=15.0, read=60.0, write=60.0, pool=15.0)
         content_parts: list[str] = []
         finished = False
+        # UAT 2026-05-23 — OpenRouter routes /chat/completions to upstream
+        # providers (Google AI Studio, Anthropic, OpenAI, …). When the
+        # upstream hiccups it surfaces here as 502 / 503 / 504 with the
+        # upstream's payload in the `metadata.raw` field. These are
+        # transient — retry once with a small backoff before giving up.
+        TRANSIENT = {502, 503, 504}
+        MAX_ATTEMPTS = 2
+        BACKOFF_S = 2.0
         try:
             async with httpx.AsyncClient(timeout=timeout) as client:
-                async with client.stream(
-                    "POST",
-                    f"{OPENROUTER_BASE}/chat/completions",
-                    json=body,
-                    headers=self._headers(key),
-                ) as resp:
-                    if resp.status_code == 401:
-                        raise OpenRouterProviderError(
-                            "OpenRouter recusou a chave (HTTP 401). Atualize a credencial."
-                        )
-                    if resp.status_code == 404:
-                        # UAT 2026-05-23 — user picked a free model from the
-                        # /models list that doesn't actually accept
-                        # /chat/completions requests (some entries on
-                        # OpenRouter are completions-only or were deprecated
-                        # between the model listing and our request). Read
-                        # the response body so the user sees WHICH model
-                        # was rejected and can pick another.
-                        body_bytes = await resp.aread()
-                        detail = ""
-                        try:
-                            detail = json.loads(body_bytes.decode("utf-8", "replace")).get(
-                                "error", {}
-                            ).get("message", "")
-                        except (ValueError, AttributeError):
-                            detail = body_bytes.decode("utf-8", "replace")[:300]
-                        raise OpenRouterProviderError(
-                            f"OpenRouter não encontrou o modelo {model!r} (HTTP 404)."
-                            + (f" Detalhe: {detail}." if detail else "")
-                            + " Esse modelo pode ter sido descontinuado ou só aceitar"
-                            " /completions (não /chat/completions). Escolha outro modelo"
-                            " no dropdown — prefira os com badge 'free' que suportam chat,"
-                            " p.ex. google/gemini-2.0-flash-exp:free."
-                        )
-                    if resp.status_code >= 400:
-                        body_bytes = await resp.aread()
-                        raise OpenRouterProviderError(
-                            f"OpenRouter HTTP {resp.status_code}: "
-                            f"{body_bytes.decode('utf-8', 'replace')[:300]}"
-                        )
-                    resp.raise_for_status()
-                    async for line in resp.aiter_lines():
-                        if not line or not line.startswith("data:"):
-                            continue
-                        payload = line[5:].strip()
-                        if not payload:
-                            continue
-                        if payload == "[DONE]":
-                            finished = True
-                            break
-                        try:
-                            obj = json.loads(payload)
-                        except json.JSONDecodeError as exc:
+                last_attempt_body: bytes = b""
+                last_status: int = 0
+                for attempt in range(1, MAX_ATTEMPTS + 1):
+                    async with client.stream(
+                        "POST",
+                        f"{OPENROUTER_BASE}/chat/completions",
+                        json=body,
+                        headers=self._headers(key),
+                    ) as resp:
+                        if resp.status_code == 401:
                             raise OpenRouterProviderError(
-                                f"OpenRouter retornou linha SSE malformada: {payload!r}"
-                            ) from exc
-                        choices = obj.get("choices") or []
-                        if not choices:
-                            continue
-                        first = choices[0] or {}
-                        delta = (first.get("delta") or {}).get("content", "") or ""
-                        if delta:
-                            if not first_token_arrived:
-                                first_token_arrived = True
-                            content_parts.append(delta)
-                            if queue is not None:
-                                await queue.put(
-                                    "data: "
-                                    + json.dumps(
-                                        {"event_type": "token", "text": delta}
+                                "OpenRouter recusou a chave (HTTP 401). Atualize a credencial."
+                            )
+                        if resp.status_code == 402:
+                            # UAT 2026-05-23 — OpenRouter returns 402 with
+                            # "Insufficient USD or Diem balance" even on
+                            # `:free` models when the account has no top-up
+                            # or the free quota was burned. Surface the
+                            # actionable hint pointing at the credits page.
+                            body_bytes = await resp.aread()
+                            detail = body_bytes.decode("utf-8", "replace")[:200]
+                            raise OpenRouterProviderError(
+                                "OpenRouter HTTP 402 — saldo insuficiente. "
+                                "Adicione créditos em https://openrouter.ai/credits "
+                                "(modelos `:free` também exigem saldo mínimo para "
+                                "evitar abuso de quota)."
+                                + (f" Upstream: {detail}" if detail else "")
+                            )
+                        if resp.status_code == 429:
+                            body_bytes = await resp.aread()
+                            detail = body_bytes.decode("utf-8", "replace")[:200]
+                            raise OpenRouterProviderError(
+                                "OpenRouter HTTP 429 — limite de requisições atingido. "
+                                "Aguarde 30-60s e tente novamente, ou troque para "
+                                "outro modelo / provider."
+                                + (f" Upstream: {detail}" if detail else "")
+                            )
+                        if resp.status_code == 404:
+                            body_bytes = await resp.aread()
+                            detail = ""
+                            try:
+                                detail = json.loads(body_bytes.decode("utf-8", "replace")).get(
+                                    "error", {}
+                                ).get("message", "")
+                            except (ValueError, AttributeError):
+                                detail = body_bytes.decode("utf-8", "replace")[:300]
+                            raise OpenRouterProviderError(
+                                f"OpenRouter não encontrou o modelo {model!r} (HTTP 404)."
+                                + (f" Detalhe: {detail}." if detail else "")
+                                + " Esse modelo pode ter sido descontinuado ou só aceitar"
+                                " /completions (não /chat/completions). Escolha outro modelo"
+                                " no dropdown."
+                            )
+                        if resp.status_code in TRANSIENT:
+                            last_status = resp.status_code
+                            last_attempt_body = await resp.aread()
+                            if attempt < MAX_ATTEMPTS:
+                                # Surface the retry to the UI before sleeping.
+                                if queue is not None:
+                                    await queue.put(
+                                        "data: "
+                                        + json.dumps(
+                                            {
+                                                "event_type": "progress",
+                                                "message": (
+                                                    f"Upstream falhou (HTTP {last_status})."
+                                                    f" Tentando novamente em {BACKOFF_S:.0f}s…"
+                                                ),
+                                            }
+                                        )
+                                        + "\n\n"
                                     )
-                                    + "\n\n"
+                                await asyncio.sleep(BACKOFF_S)
+                                continue
+                            # Last attempt: parse upstream payload + raise
+                            # actionable PT-BR message that distinguishes
+                            # transient upstream failure from a misconfig.
+                            upstream_detail = ""
+                            upstream_provider = ""
+                            try:
+                                err = json.loads(
+                                    last_attempt_body.decode("utf-8", "replace")
+                                ).get("error", {})
+                                meta = err.get("metadata", {}) or {}
+                                upstream_provider = meta.get("provider_name", "")
+                                raw = meta.get("raw", "")
+                                upstream_detail = (
+                                    raw[:200] if isinstance(raw, str) else ""
                                 )
-                        if first.get("finish_reason"):
-                            finished = True
-                            break
+                            except (ValueError, AttributeError):
+                                upstream_detail = last_attempt_body.decode(
+                                    "utf-8", "replace"
+                                )[:200]
+                            raise OpenRouterProviderError(
+                                f"OpenRouter HTTP {last_status} — upstream"
+                                + (f" {upstream_provider!r}" if upstream_provider else "")
+                                + " indisponível depois de"
+                                f" {MAX_ATTEMPTS} tentativas."
+                                + (f" Detalhe: {upstream_detail!r}." if upstream_detail else "")
+                                + " Esse erro é transitório — tente novamente em"
+                                " 1-2 minutos, OU escolha um modelo de outro provider"
+                                " (e.g. troque um modelo Google por um Meta/Qwen)."
+                            )
+                        if resp.status_code >= 400:
+                            body_bytes = await resp.aread()
+                            raise OpenRouterProviderError(
+                                f"OpenRouter HTTP {resp.status_code}: "
+                                f"{body_bytes.decode('utf-8', 'replace')[:300]}"
+                            )
+                        resp.raise_for_status()
+                        # Successful — consume SSE in this same block while
+                        # `resp` is still in scope.
+                        async for line in resp.aiter_lines():
+                            if not line or not line.startswith("data:"):
+                                continue
+                            payload = line[5:].strip()
+                            if not payload:
+                                continue
+                            if payload == "[DONE]":
+                                finished = True
+                                break
+                            try:
+                                obj = json.loads(payload)
+                            except json.JSONDecodeError as exc:
+                                raise OpenRouterProviderError(
+                                    f"OpenRouter retornou linha SSE malformada: {payload!r}"
+                                ) from exc
+                            choices = obj.get("choices") or []
+                            if not choices:
+                                continue
+                            first = choices[0] or {}
+                            delta = (first.get("delta") or {}).get("content", "") or ""
+                            if delta:
+                                if not first_token_arrived:
+                                    first_token_arrived = True
+                                content_parts.append(delta)
+                                if queue is not None:
+                                    await queue.put(
+                                        "data: "
+                                        + json.dumps(
+                                            {"event_type": "token", "text": delta}
+                                        )
+                                        + "\n\n"
+                                    )
+                            if first.get("finish_reason"):
+                                finished = True
+                                break
+                        # Done with this stream — exit retry loop.
+                        break
         finally:
             first_token_arrived = True
             if hb_task is not None:

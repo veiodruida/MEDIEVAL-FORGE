@@ -219,6 +219,19 @@ class OllamaProvider:
                     pass
 
         content = "".join(content_parts)
+        # UAT 2026-05-23 — tiny models (qwen2.5:0.5b, llama3.2:1b) under our
+        # schema-constrained `format=json_schema` prompt sometimes complete
+        # without producing any text. parse_research_json then blows up
+        # with the opaque "EOF while parsing a value at line 1 column 0".
+        # Catch the empty case upstream and surface an actionable hint.
+        if not content.strip():
+            raise RuntimeError(
+                f"Ollama (modelo {model!r}) terminou sem produzir conteúdo. "
+                "Modelos muito pequenos (<3B parâmetros) frequentemente "
+                "falham em satisfazer o schema JSON exigido. Tente um "
+                "modelo maior, p.ex. `ollama pull qwen2.5:7b` ou "
+                "`ollama pull llama3.2:3b`."
+            )
         # Lenient parser (literal-port schemas.parse_research_json) handles
         # small-model tendency to add extra top-level keys.
         from .schemas import ResearchResult, parse_research_json
