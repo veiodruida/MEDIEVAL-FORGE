@@ -236,6 +236,36 @@ class OpenRouterProvider:
                         raise OpenRouterProviderError(
                             "OpenRouter recusou a chave (HTTP 401). Atualize a credencial."
                         )
+                    if resp.status_code == 404:
+                        # UAT 2026-05-23 — user picked a free model from the
+                        # /models list that doesn't actually accept
+                        # /chat/completions requests (some entries on
+                        # OpenRouter are completions-only or were deprecated
+                        # between the model listing and our request). Read
+                        # the response body so the user sees WHICH model
+                        # was rejected and can pick another.
+                        body_bytes = await resp.aread()
+                        detail = ""
+                        try:
+                            detail = json.loads(body_bytes.decode("utf-8", "replace")).get(
+                                "error", {}
+                            ).get("message", "")
+                        except (ValueError, AttributeError):
+                            detail = body_bytes.decode("utf-8", "replace")[:300]
+                        raise OpenRouterProviderError(
+                            f"OpenRouter não encontrou o modelo {model!r} (HTTP 404)."
+                            + (f" Detalhe: {detail}." if detail else "")
+                            + " Esse modelo pode ter sido descontinuado ou só aceitar"
+                            " /completions (não /chat/completions). Escolha outro modelo"
+                            " no dropdown — prefira os com badge 'free' que suportam chat,"
+                            " p.ex. google/gemini-2.0-flash-exp:free."
+                        )
+                    if resp.status_code >= 400:
+                        body_bytes = await resp.aread()
+                        raise OpenRouterProviderError(
+                            f"OpenRouter HTTP {resp.status_code}: "
+                            f"{body_bytes.decode('utf-8', 'replace')[:300]}"
+                        )
                     resp.raise_for_status()
                     async for line in resp.aiter_lines():
                         if not line or not line.startswith("data:"):
