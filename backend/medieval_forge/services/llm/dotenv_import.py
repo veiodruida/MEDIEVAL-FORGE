@@ -10,8 +10,13 @@ both GOOGLE_API_KEY and GEMINI_API_KEY mapping to `gemini`, for example).
 """
 from __future__ import annotations
 
+import logging
+import os
 import re
+from pathlib import Path
 from typing import Iterable
+
+logger = logging.getLogger(__name__)
 
 # Well-known env var names that ship API keys. Keep this dict the single
 # source of truth — UI copy ("paste your .env containing X") reads from
@@ -88,8 +93,72 @@ def filter_supported(env_vars: Iterable[str]) -> list[str]:
     return [v for v in env_vars if v.upper() in ENV_VAR_TO_PROVIDER]
 
 
+# Override at test time via env var so we don't touch the real home dir.
+_AUTO_DISCOVER_ENV_OVERRIDE = "MEDIEVAL_FORGE_DOTENV_AUTO_PATHS"
+
+
+def auto_discover_paths() -> list[Path]:
+    """Well-known `.env` locations checked at startup + on manual rescan.
+
+    Order matters — when the same key appears in multiple files, the LATER
+    file wins (matches the `python-dotenv` precedence "most-specific
+    overrides most-generic"). Defaults:
+
+        1. `~/.env`                            — generic dev convenience
+        2. `~/.medieval-forge/.env`            — app-specific (preferred)
+        3. `./.env` (current working dir)      — repo-local override
+
+    Override via `MEDIEVAL_FORGE_DOTENV_AUTO_PATHS=path1;path2;...`
+    (semicolon-separated on Windows, colon-separated on POSIX). Set to
+    the empty string to disable auto-discovery entirely.
+    """
+    override = os.environ.get(_AUTO_DISCOVER_ENV_OVERRIDE)
+    if override is not None:
+        if not override.strip():
+            return []
+        sep = ";" if os.name == "nt" else ":"
+        return [Path(p.strip()) for p in override.split(sep) if p.strip()]
+    home = Path.home()
+    return [
+        home / ".env",
+        home / ".medieval-forge" / ".env",
+        Path.cwd() / ".env",
+    ]
+
+
+def discover_dotenv_keys() -> tuple[dict[str, str], list[Path]]:
+    """Walk `auto_discover_paths()` and merge any keys found into a dict.
+
+    Returns `(merged_keys, files_read)`. Files that don't exist or can't
+    be read are silently skipped (we never crash startup on a missing
+    optional file). Logged at INFO so the user can grep their backend
+    log for "auto-loaded .env" when they wonder where a key came from.
+    """
+    merged: dict[str, str] = {}
+    files_read: list[Path] = []
+    for path in auto_discover_paths():
+        try:
+            if not path.is_file():
+                continue
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError as exc:
+            logger.warning("dotenv auto-discover: cannot read %s: %s", path, exc)
+            continue
+        parsed = parse_dotenv(text)
+        if not parsed:
+            continue
+        merged.update(parsed)
+        files_read.append(path)
+        logger.info(
+            "dotenv auto-discover: loaded %d key(s) from %s", len(parsed), path
+        )
+    return merged, files_read
+
+
 __all__ = [
     "ENV_VAR_TO_PROVIDER",
+    "auto_discover_paths",
+    "discover_dotenv_keys",
     "filter_supported",
     "known_env_vars",
     "parse_dotenv",

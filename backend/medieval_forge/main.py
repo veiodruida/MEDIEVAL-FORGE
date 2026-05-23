@@ -29,6 +29,48 @@ async def lifespan(app: FastAPI):
     from .models import Base  # noqa: F401
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+    # UAT 2026-05-23 — auto-discover `.env` files under the user's home
+    # directory so a fresh install picks up keys without forcing the
+    # user to open the CredentialsManager. We NEVER overwrite a key the
+    # user previously set via the UI — DB rows win over auto-imported
+    # ones. Safe on first run because the DB has no rows yet.
+    try:
+        from .database import AsyncSessionLocal
+        from .services.credential_store import (
+            get_credentials,
+            store_credentials,
+        )
+        from .services.llm.dotenv_import import discover_dotenv_keys
+        from .services.llm.registry import PROVIDERS
+
+        discovered, files_read = await asyncio.to_thread(discover_dotenv_keys)
+        if discovered and files_read:
+            async with AsyncSessionLocal() as session:
+                imported: list[str] = []
+                for provider_id, key in discovered.items():
+                    if provider_id not in PROVIDERS:
+                        continue
+                    existing = await get_credentials(session, provider_id)
+                    if existing and isinstance(existing, dict) and existing.get("key"):
+                        # User-set DB row wins; don't clobber.
+                        continue
+                    await store_credentials(
+                        session,
+                        provider_id,
+                        {"type": "api_key", "key": key.strip()},
+                    )
+                    imported.append(provider_id)
+            if imported:
+                logger.info(
+                    "auto-imported %d credential(s) from %s: %s",
+                    len(imported),
+                    [str(p) for p in files_read],
+                    sorted(imported),
+                )
+    except Exception:  # noqa: BLE001 — never break startup on auto-import
+        logger.warning("dotenv auto-discover failed", exc_info=True)
+
     yield
     # D-08b: llama.cpp lifecycle shutdown (Phase 07.1)
     # review-fix #4: shutdown() is sync and returns bool; wrap with asyncio.to_thread

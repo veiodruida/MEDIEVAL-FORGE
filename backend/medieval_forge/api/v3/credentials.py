@@ -32,6 +32,8 @@ from ...services.credential_store import (
 )
 from ...services.llm.dotenv_import import (
     ENV_VAR_TO_PROVIDER,
+    auto_discover_paths,
+    discover_dotenv_keys,
     known_env_vars,
     parse_dotenv,
 )
@@ -254,6 +256,56 @@ async def import_dotenv(payload: dict[str, Any] = Body(...)) -> ImportResult:
         imported=sorted(imported),
         skipped=sorted(set(skipped)),
         known_env_vars=known_env_vars(),
+    )
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v3/credentials/discover  — manual rescan of well-known .env files
+# ---------------------------------------------------------------------------
+class DiscoverResult(BaseModel):
+    imported: list[str]
+    paths_checked: list[str]
+    paths_with_keys: list[str]
+
+
+@router.get("/discover")
+async def discover_credentials() -> DiscoverResult:
+    """Re-scan the well-known `.env` paths and import any keys we find.
+
+    UAT 2026-05-23 — the same routine runs once on backend startup
+    (see `main.py:lifespan`). This endpoint lets the user re-trigger it
+    after dropping a fresh `.env` into ~/.env or ~/.medieval-forge/.env
+    without restarting the backend. Keys the user previously set via
+    the UI WIN: we never overwrite a DB row that already carries a key.
+
+    GET (not POST) so it doesn't collide with the legacy
+    `POST /{provider}` wildcard route that would otherwise treat
+    `discover` as a provider id.
+    """
+    discovered, files_read = discover_dotenv_keys()
+    paths_checked = [str(p) for p in auto_discover_paths()]
+    paths_with_keys = [str(p) for p in files_read]
+
+    imported: list[str] = []
+    if discovered:
+        async with AsyncSessionLocal() as session:
+            for provider_id, key in discovered.items():
+                if provider_id not in PROVIDERS:
+                    continue
+                existing = await get_credentials(session, provider_id)
+                if existing and isinstance(existing, dict) and existing.get("key"):
+                    continue  # user-set DB row wins
+                await store_credentials(
+                    session,
+                    provider_id,
+                    {"type": "api_key", "key": key.strip()},
+                )
+                imported.append(provider_id)
+
+    return DiscoverResult(
+        imported=sorted(imported),
+        paths_checked=paths_checked,
+        paths_with_keys=paths_with_keys,
     )
 
 

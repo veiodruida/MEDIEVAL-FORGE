@@ -31,8 +31,10 @@ import {
 import {
   useCredentials,
   useDeleteCredential,
+  useDiscoverDotenv,
   useImportDotenv,
   useSetCredential,
+  type DiscoverResult,
   type ImportResult,
 } from '../../api/useCredentials'
 
@@ -52,10 +54,12 @@ export function CredentialsManager({ open, onOpenChange }: CredentialsManagerPro
   const setCred = useSetCredential()
   const delCred = useDeleteCredential()
   const importEnv = useImportDotenv()
+  const discoverEnv = useDiscoverDotenv()
 
   const [draftKeys, setDraftKeys] = useState<Record<string, string>>({})
   const [envText, setEnvText] = useState('')
   const [importResult, setImportResult] = useState<ImportResult | null>(null)
+  const [discoverResult, setDiscoverResult] = useState<DiscoverResult | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
   const rows = useMemo(
@@ -98,7 +102,68 @@ export function CredentialsManager({ open, onOpenChange }: CredentialsManagerPro
         </Dialog.Description>
 
         <Box mt="4">
-          <Text size="2" weight="medium">Importar .env</Text>
+          <Text size="2" weight="medium">Buscar .env automaticamente</Text>
+          <Flex direction="column" gap="2" mt="1">
+            <Text size="1" color="gray">
+              Procura por <code>~/.env</code>, <code>~/.medieval-forge/.env</code>
+              {' '}e <code>./.env</code>. As chaves encontradas são importadas
+              SEM sobrescrever valores que você já salvou via UI.
+            </Text>
+            <Flex gap="2" align="center">
+              <Button
+                type="button"
+                onClick={() =>
+                  discoverEnv.mutate(undefined, {
+                    onSuccess: (res) => setDiscoverResult(res),
+                  })
+                }
+                disabled={discoverEnv.isPending}
+                data-testid="credentials-discover-button"
+              >
+                {discoverEnv.isPending ? 'Buscando…' : 'Buscar .env do sistema'}
+              </Button>
+              {discoverEnv.isError && (
+                <Text size="2" color="red">
+                  {discoverEnv.error?.message ?? 'Falha ao buscar.'}
+                </Text>
+              )}
+            </Flex>
+            {discoverResult && (
+              <Callout.Root
+                color={discoverResult.imported.length > 0 ? 'green' : 'gray'}
+                mt="2"
+              >
+                <Callout.Icon>
+                  <CheckCircledIcon />
+                </Callout.Icon>
+                <Callout.Text>
+                  {discoverResult.imported.length > 0 ? (
+                    <>
+                      Importadas {discoverResult.imported.length} chave
+                      {discoverResult.imported.length === 1 ? '' : 's'}:{' '}
+                      {discoverResult.imported.join(', ')}.
+                      {discoverResult.paths_with_keys.length > 0 && (
+                        <>
+                          {' '}Origem: {discoverResult.paths_with_keys.join(', ')}.
+                        </>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      Nenhuma chave nova encontrada. Caminhos verificados:{' '}
+                      {discoverResult.paths_checked.join(', ')}.
+                    </>
+                  )}
+                </Callout.Text>
+              </Callout.Root>
+            )}
+          </Flex>
+        </Box>
+
+        <Separator size="4" my="4" />
+
+        <Box>
+          <Text size="2" weight="medium">Importar .env manualmente</Text>
           <Flex direction="column" gap="2" mt="1">
             <Flex gap="2" align="center">
               <input

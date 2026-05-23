@@ -33,6 +33,12 @@ export interface ImportResult {
   known_env_vars: string[]
 }
 
+export interface DiscoverResult {
+  imported: string[]
+  paths_checked: string[]
+  paths_with_keys: string[]
+}
+
 const QUERY_KEY = ['v3', 'credentials'] as const
 
 export function useCredentials(enabled = true) {
@@ -113,6 +119,32 @@ export function useImportDotenv() {
       if (!r.ok) {
         const body = await r.text()
         throw new Error(body || `.env import failed: ${r.status}`)
+      }
+      return r.json()
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: QUERY_KEY })
+      qc.invalidateQueries({ queryKey: ['v3', 'research', 'providers'] })
+    },
+  })
+}
+
+/**
+ * Manual rescan of well-known `.env` locations (~/.env,
+ * ~/.medieval-forge/.env, ./.env). The same routine runs once on
+ * backend startup; this hook lets the user trigger it again after
+ * dropping a fresh file without restarting the backend.
+ */
+export function useDiscoverDotenv() {
+  const qc = useQueryClient()
+  return useMutation<DiscoverResult, Error, void>({
+    mutationFn: async () => {
+      // GET (not POST) — see backend note: avoids the `POST /{provider}`
+      // wildcard intercepting "discover" as a provider id.
+      const r = await fetch('/api/v3/credentials/discover')
+      if (!r.ok) {
+        const body = await r.text()
+        throw new Error(body || `.env discover failed: ${r.status}`)
       }
       return r.json()
     },
