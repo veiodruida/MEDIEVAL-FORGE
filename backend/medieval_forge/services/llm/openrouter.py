@@ -107,15 +107,15 @@ class OpenRouterProvider:
             "X-Title": "Medieval Forge",
         }
 
-    async def health(self) -> dict:
+    async def health(self, credentials: dict | None = None) -> dict:
         """Probe /models with the resolved key — returns Ollama-shape dict.
 
-        When no key is configured we return ok=False but STILL populate
-        `available_models` with our shortlist so the UI dropdown stays
-        usable; the user then sees the unhealthy badge + actionable
-        message ("Configure uma chave OPENROUTER_API_KEY").
+        UAT 2026-05-23 — `credentials` is forwarded by `/providers` after
+        loading the DB-resident credential row for this provider. Without
+        this, a key the user pasted into CredentialsManager (or imported
+        from .env) is invisible to health() until the process restarts.
         """
-        key = self._resolve_key(credentials=None)
+        key = self._resolve_key(credentials)
         if not key:
             return {
                 "ok": False,
@@ -156,31 +156,45 @@ class OpenRouterProvider:
                 "message": "OpenRouter retornou body não-JSON",
                 "available_models": list(RECOMMENDED_FREE_MODELS),
             }
-        all_models: list[str] = []
+        # UAT 2026-05-23 — filter the live /models response using each
+        # entry's `supported_parameters` array. OpenRouter populates this
+        # ONLY when at least one provider is currently serving the model;
+        # entries with no live endpoints come back with an empty list (or
+        # the field missing). Combined with the text-output modality
+        # check, this drops:
+        #   - completions-only entries (no `max_tokens` in supported_parameters),
+        #   - models whose only provider went offline ("No endpoints found"),
+        #   - vision / audio / embedding models we can't use here.
+        # Static whitelists drift fast (model ids change every few weeks
+        # on OpenRouter) so the live filter beats curating by hand.
+        all_count = 0
+        live_models: list[str] = []
         for m in data.get("data", []) or []:
             mid = m.get("id")
-            if isinstance(mid, str):
-                all_models.append(mid)
-        # UAT 2026-05-23 — OpenRouter /models returns hundreds of entries
-        # including completions-only / deprecated / preview models that
-        # 404 on /chat/completions. Intersect with our curated
-        # KNOWN_GOOD_MODELS whitelist so the dropdown only shows entries
-        # the user can actually call. If the intersection is empty
-        # (OpenRouter dropped them all), fall back to the curated list
-        # alone — the user can still try and gets the actionable 404
-        # message we ship in `research()`.
-        intersected = [m for m in all_models if m in KNOWN_GOOD_MODELS]
-        if not intersected:
-            intersected = list(KNOWN_GOOD_MODELS)
-        # Free first, then alphabetical inside each group.
-        intersected.sort(key=lambda m: (":free" not in m, m))
+            if not isinstance(mid, str):
+                continue
+            all_count += 1
+            params = m.get("supported_parameters") or []
+            if not params:
+                continue
+            arch = m.get("architecture") or {}
+            out_modalities = arch.get("output_modalities") or []
+            if "text" not in out_modalities:
+                continue
+            # `max_tokens` is the OpenAI chat-completions param OpenRouter
+            # advertises whenever a chat endpoint is alive. Models that
+            # only expose /completions don't list it.
+            if "max_tokens" not in params:
+                continue
+            live_models.append(mid)
+        live_models.sort(key=lambda m: (":free" not in m, m))
         return {
             "ok": True,
             "message": (
-                f"Conectado a OpenRouter ({len(intersected)} modelos verificados, "
-                f"{len(all_models)} no catálogo)"
+                f"Conectado a OpenRouter ({len(live_models)} modelos ativos, "
+                f"{all_count} no catálogo)"
             ),
-            "available_models": intersected,
+            "available_models": live_models,
         }
 
     async def health_check(self, credentials: dict | None) -> HealthStatus:

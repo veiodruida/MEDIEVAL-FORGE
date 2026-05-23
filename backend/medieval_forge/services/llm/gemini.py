@@ -71,8 +71,8 @@ class GeminiProvider:
             "Content-Type": "application/json",
         }
 
-    async def health(self) -> dict:
-        key = self._resolve_key(credentials=None)
+    async def health(self, credentials: dict | None = None) -> dict:
+        key = self._resolve_key(credentials)
         if not key:
             return {
                 "ok": False,

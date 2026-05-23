@@ -218,6 +218,19 @@ def _is_configured(provider: Any) -> bool:
     return True
 
 
+async def _load_db_credentials(provider_id: str) -> dict | None:
+    """Load DB-resident credentials for one provider, returning None when absent.
+
+    Used by `/providers` so cloud-provider health() probes see keys the
+    user set via the CredentialsManager (or the startup `.env`
+    auto-import), not just the process env var.
+    """
+    from ...services.credential_store import get_credentials
+
+    async with AsyncSessionLocal() as session:
+        return await get_credentials(session, provider_id)
+
+
 @router.get("/providers")
 async def get_providers() -> list[dict]:
     """Return provider list with health + Ollama available_models.
@@ -238,8 +251,20 @@ async def get_providers() -> list[dict]:
         # in without surgery here.
         health_fn = getattr(provider, "health", None)
         if callable(health_fn):
+            # Load DB creds for cloud providers so their health() can see
+            # the key the user set via CredentialsManager / .env auto-import.
+            db_creds = await _load_db_credentials(pid)
             try:
-                h = await health_fn()
+                # Providers that accept the new `credentials` kwarg
+                # (openrouter / openai / gemini) get it; ollama / llamacpp
+                # take no kwargs and we fall back to the bare call.
+                import inspect
+
+                sig = inspect.signature(health_fn)
+                if "credentials" in sig.parameters:
+                    h = await health_fn(credentials=db_creds)
+                else:
+                    h = await health_fn()
             except Exception as exc:  # noqa: BLE001 — surface to UI
                 h = {"ok": False, "message": str(exc), "available_models": []}
             healthy = bool(h.get("ok", False))
