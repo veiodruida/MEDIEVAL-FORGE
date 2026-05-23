@@ -36,6 +36,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Optional
 
+from ..credential_store import get_credentials
 from ..llm.prompt import build_research_prompt
 from ..llm.registry import PROVIDERS
 from ..llm.schemas import ResearchResult
@@ -213,7 +214,19 @@ async def _research_producer(
                     bbox=None,
                 )
 
-                credentials = {"model": model} if model else None
+                # UAT 2026-05-23 — merge DB-resident credentials (API key set
+                # via /api/v3/credentials or imported from a .env) with the
+                # per-request `model` selection. Without this, cloud providers
+                # like OpenRouter/OpenAI/Gemini would never see the key the
+                # user pasted into the Credentials manager.
+                db_payload = await get_credentials(session, provider_id) or {}
+                credentials: dict | None = None
+                if db_payload or model:
+                    credentials = {}
+                    if isinstance(db_payload, dict):
+                        credentials.update(db_payload)
+                    if model:
+                        credentials["model"] = model
                 result = await provider.research(prompt, schema=ResearchResult, credentials=credentials, queue=queue)
                 # Provider may return a Pydantic model OR a dict — normalize.
                 if hasattr(result, "model_dump"):

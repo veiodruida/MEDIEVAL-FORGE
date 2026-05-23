@@ -39,6 +39,7 @@ import { ResearchProgress } from './ResearchProgress'
 import { LogPanel } from './LogPanel'
 import { ModelOutputPanel } from './ModelOutputPanel'
 import { ResearchResultPanel } from './ResearchResultPanel'
+import { CredentialsManager } from './CredentialsManager'
 
 export interface ResearchDialogProps {
   open: boolean
@@ -84,6 +85,7 @@ export function ResearchDialog({
   const [apiKey, setApiKey] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
+  const [credentialsOpen, setCredentialsOpen] = useState(false)
 
   const stream = useResearchStream()
   const streamPhase = stream.state.phase
@@ -239,7 +241,18 @@ export function ResearchDialog({
         data-testid="research-dialog"
         style={{ maxWidth: 560 }}
       >
-        <Dialog.Title>Pesquisar metadados históricos</Dialog.Title>
+        <Flex align="center" justify="between" gap="2">
+          <Dialog.Title>Pesquisar metadados históricos</Dialog.Title>
+          <Button
+            type="button"
+            size="1"
+            variant="soft"
+            onClick={() => setCredentialsOpen(true)}
+            data-testid="open-credentials-manager"
+          >
+            Chaves de API
+          </Button>
+        </Flex>
         <Dialog.Description>
           <Text size="2" color="gray">
             Use um modelo de linguagem para preencher nomes históricos e notas
@@ -462,6 +475,10 @@ export function ResearchDialog({
         </form>
       </Dialog.Content>
     </Dialog.Root>
+    <CredentialsManager
+      open={credentialsOpen}
+      onOpenChange={setCredentialsOpen}
+    />
     </>
   )
 }
