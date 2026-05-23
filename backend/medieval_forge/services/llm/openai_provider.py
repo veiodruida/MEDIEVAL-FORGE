@@ -132,7 +132,7 @@ class OpenAIProvider:
             ],
             "response_format": {"type": "json_object"},
             "stream": True,
-            "max_tokens": 8192,
+            "max_tokens": 16384,
         }
 
         if queue is not None:

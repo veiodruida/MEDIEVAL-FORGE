@@ -173,7 +173,9 @@ class OllamaProvider:
                 format=schema.model_json_schema(),
                 stream=True,
                 options={
-                    "num_predict": 8192,
+                    # UAT 2026-05-23 (round 2) — Iberia hierarchy needs
+                    # 15-25k output tokens; 8192 truncated mid-baronies.
+                    "num_predict": 24576,
                     "num_ctx": 32768,
                     "num_gpu": 999,
                 },

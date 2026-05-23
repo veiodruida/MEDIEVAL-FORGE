@@ -197,13 +197,14 @@ class LlamaCppProvider:
             # server stops emitting frames mid-response.
             "stream": True,
             "model": model,
-            # UAT 2026-05-23 — research JSON for Iberia (~15 kingdoms, ~80
-            # condados, ~300 baronies) exceeds llama-server's default
-            # n_predict cap, truncating the stream mid-string and yielding
-            # `EOF while parsing a string` from parse_research_json. 8192
-            # tokens leaves headroom for the largest realistic map without
-            # forcing the user to retune the server.
-            "max_tokens": 8192,
+            # UAT 2026-05-23 (round 2) — 8192 was still too tight: a full
+            # Iberia hierarchy (~15 kingdoms, ~30 duchies, ~80 condados,
+            # ~300 baronies) takes 15-25k output tokens. Bumped to 24576;
+            # the launcher pairs this with --ctx-size 32768 so prompt +
+            # output fit. If the model truncates anyway we now surface
+            # the `finish_reason: "length"` case as an actionable error
+            # instead of letting it leak as "EOF while parsing".
+            "max_tokens": 24576,
         }
 
         if queue is not None:
@@ -221,6 +222,10 @@ class LlamaCppProvider:
         timeout = httpx.Timeout(connect=15.0, read=60.0, write=60.0, pool=15.0)
         content_parts: list[str] = []
         finished = False
+        # UAT 2026-05-23 — track terminal `finish_reason` so we can surface
+        # a truncation-due-to-length error with a friendlier message than
+        # pydantic's `EOF while parsing` blow-up.
+        final_finish_reason: str | None = None
 
         # UAT 2026-05-23 — user complained that "(aguardando primeiro token…)"
         # gives no signal during prefill. Emit periodic `progress` envelopes
@@ -293,7 +298,9 @@ class LlamaCppProvider:
                                     )
                                     + "\n\n"
                                 )
-                        if first.get("finish_reason"):
+                        fr = first.get("finish_reason")
+                        if fr:
+                            final_finish_reason = fr
                             finished = True
                             break
         finally:
@@ -310,6 +317,19 @@ class LlamaCppProvider:
             raise LlamaCppProviderError(
                 "llama-server stream produced no content"
                 + (" (no finish_reason)" if not finished else "")
+            )
+        # UAT 2026-05-23 — when llama-server truncates the response because
+        # we hit `max_tokens`, the JSON is incomplete and parse_research_json
+        # blows up with an opaque `EOF while parsing a string` from pydantic.
+        # Catch the truncation upstream and raise an actionable message so
+        # the user knows to either bump --ctx-size + max_tokens OR pick a
+        # smaller territory scope.
+        if final_finish_reason == "length":
+            raise LlamaCppProviderError(
+                f"llama-server cortou a saída no limite de tokens "
+                f"({len(content)} caracteres gerados). Aumente "
+                f"MEDIEVAL_FORGE_LLAMACPP_CTX_SIZE (atualmente 32768) e "
+                f"max_tokens, ou use um modelo com janela maior."
             )
 
         if schema is ResearchResult:

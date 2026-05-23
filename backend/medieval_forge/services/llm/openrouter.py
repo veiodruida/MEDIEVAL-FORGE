@@ -180,7 +180,7 @@ class OpenRouterProvider:
             ],
             "response_format": {"type": "json_object"},
             "stream": True,
-            "max_tokens": 8192,
+            "max_tokens": 24576,
         }
 
         if queue is not None:
