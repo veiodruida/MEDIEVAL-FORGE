@@ -45,6 +45,25 @@ export function ModelOutputPanel({ text, active, progressMessage }: ModelOutputP
   const [open, setOpen] = useState(true)
   const preRef = useRef<HTMLPreElement>(null)
 
+  // UAT 2026-05-23 — client-side elapsed counter so the user has a live
+  // signal even if the backend heartbeat is delayed (slow first probe on
+  // a cold local model, or a transient SSE buffering hiccup somewhere
+  // along the proxy chain). Resets every time the panel transitions from
+  // inactive to active.
+  const [elapsedMs, setElapsedMs] = useState(0)
+  useEffect(() => {
+    if (!active || text) {
+      setElapsedMs(0)
+      return
+    }
+    const start = Date.now()
+    setElapsedMs(0)
+    const id = window.setInterval(() => {
+      setElapsedMs(Date.now() - start)
+    }, 250)
+    return () => window.clearInterval(id)
+  }, [active, text])
+
   useEffect(() => {
     if (!open) return
     const el = preRef.current
@@ -55,6 +74,16 @@ export function ModelOutputPanel({ text, active, progressMessage }: ModelOutputP
   if (!active && !text) {
     return null
   }
+
+  const placeholder = (() => {
+    if (text) return text
+    const seconds = Math.floor(elapsedMs / 1000)
+    const tail = `Aguardando primeiro token… (${seconds}s)`
+    if (progressMessage) {
+      return `${progressMessage}\n${tail}`
+    }
+    return tail
+  })()
 
   return (
     <Box data-testid="model-output-panel">
@@ -69,13 +98,15 @@ export function ModelOutputPanel({ text, active, progressMessage }: ModelOutputP
           {open ? '▾' : '▸'} Saída do modelo
         </Text>
         <Text size="1" color="gray">
-          ({text.length} caractere{text.length === 1 ? '' : 's'})
+          {text
+            ? `(${text.length} caractere${text.length === 1 ? '' : 's'})`
+            : `(aguardando · ${Math.floor(elapsedMs / 1000)}s)`}
         </Text>
       </Flex>
       {open && (
         <Box mt="2">
           <pre ref={preRef} style={OUTPUT_BOX_STYLE} data-testid="model-output-text">
-            {text || progressMessage || '(aguardando primeiro token…)'}
+            {placeholder}
           </pre>
         </Box>
       )}

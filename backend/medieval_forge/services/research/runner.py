@@ -166,6 +166,14 @@ async def _research_producer(
     """
     try:
         _emit(queue, "started", None, f"Iniciando pesquisa para projeto {project_id}", 0.0)
+        # UAT 2026-05-23 — fire an immediate progress event so the dialog
+        # shows "Resolvendo cache + provider…" within the first frame,
+        # instead of sitting on a static placeholder for ~2s until the
+        # provider's own heartbeat kicks in. The provider replaces this
+        # text once its first heartbeat fires.
+        queue.put_nowait(
+            f"data: {json.dumps({'event_type': 'progress', 'message': 'Resolvendo provider e cache…'})}\n\n"
+        )
 
         # Compute applied_at ONCE at the top — used by SSE events + meta sidecar.
         applied_at = datetime.now(timezone.utc)

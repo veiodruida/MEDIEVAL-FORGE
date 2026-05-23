@@ -16,7 +16,7 @@
  * For llamacpp the dropdown shows absolute .gguf paths (label = basename) — the
  * user picks one and clicks "Levantar servidor" inline; no separate dialog.
  */
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   Badge,
   Box,
@@ -96,6 +96,18 @@ export function ProviderSelector({
   const isOllama = value === 'ollama'
   const isClaude = value === 'claude'
 
+  // UAT 2026-05-23 — OpenRouter exposes hundreds of models, so the user
+  // needs a search filter to find one. We always render the filter
+  // textbox when the list has > 8 entries (threshold tuned so the
+  // ollama/llamacpp short list isn't cluttered by an unneeded input).
+  const [modelFilter, setModelFilter] = useState('')
+  const filteredModels = useMemo(() => {
+    if (!modelFilter.trim()) return availableModels
+    const needle = modelFilter.trim().toLowerCase()
+    return availableModels.filter((m) => m.toLowerCase().includes(needle))
+  }, [availableModels, modelFilter])
+  const showFilter = availableModels.length > 8 && !isClaude
+
   // Llamacpp launcher state — only enabled when llamacpp is the active provider.
   const status = useLlamacppStatus(isLlamacpp)
   const launch = useLlamacppLaunch()
@@ -154,6 +166,7 @@ export function ProviderSelector({
   // meaningless under a new provider, e.g. ollama tag vs gguf path).
   useEffect(() => {
     onModelChange('')
+    setModelFilter('')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value])
 
@@ -231,37 +244,68 @@ export function ProviderSelector({
               placeholder={modelPlaceholder}
             />
           ) : (
-            <Select.Root
-              value={modelValue || undefined}
-              onValueChange={onModelChange}
-              disabled={availableModels.length === 0}
-            >
-              <Select.Trigger
-                id="research-model-input"
-                data-testid="research-model-select"
-                placeholder={
-                  availableModels.length === 0
-                    ? isLlamacpp
-                      ? 'Nenhum .gguf encontrado'
-                      : 'Nenhum modelo Ollama instalado'
-                    : modelPlaceholder
-                }
-              />
-              <Select.Content>
-                {availableModels.map((m) => {
-                  const label = isLlamacpp ? basename(m) : m
-                  return (
-                    <Select.Item
-                      key={m}
-                      value={m}
-                      data-testid={`model-option-${label}`}
-                    >
-                      {label}
-                    </Select.Item>
-                  )
-                })}
-              </Select.Content>
-            </Select.Root>
+            <Flex direction="column" gap="2">
+              {showFilter && (
+                <TextField.Root
+                  value={modelFilter}
+                  onChange={(e) => setModelFilter(e.target.value)}
+                  placeholder={`Filtrar ${availableModels.length} modelos…`}
+                  data-testid="research-model-filter"
+                />
+              )}
+              <Select.Root
+                value={modelValue || undefined}
+                onValueChange={onModelChange}
+                disabled={availableModels.length === 0}
+              >
+                <Select.Trigger
+                  id="research-model-input"
+                  data-testid="research-model-select"
+                  placeholder={
+                    availableModels.length === 0
+                      ? isLlamacpp
+                        ? 'Nenhum .gguf encontrado'
+                        : 'Nenhum modelo Ollama instalado'
+                      : modelPlaceholder
+                  }
+                />
+                <Select.Content>
+                  {filteredModels.length === 0 ? (
+                    <Box p="2">
+                      <Text size="1" color="gray">
+                        Nenhum modelo corresponde a "{modelFilter}".
+                      </Text>
+                    </Box>
+                  ) : (
+                    filteredModels.map((m) => {
+                      const label = isLlamacpp ? basename(m) : m
+                      const isFree = m.includes(':free')
+                      return (
+                        <Select.Item
+                          key={m}
+                          value={m}
+                          data-testid={`model-option-${label}`}
+                        >
+                          <Flex align="center" gap="2">
+                            <Text size="2">{label}</Text>
+                            {isFree && (
+                              <Badge color="green" variant="soft" size="1">
+                                free
+                              </Badge>
+                            )}
+                          </Flex>
+                        </Select.Item>
+                      )
+                    })
+                  )}
+                </Select.Content>
+              </Select.Root>
+              {showFilter && modelFilter && (
+                <Text size="1" color="gray">
+                  {filteredModels.length} de {availableModels.length} modelos
+                </Text>
+              )}
+            </Flex>
           )}
         </Box>
         {isOllama && ollamaPick.hint && (modelValue === '' || modelValue === ollamaPick.model) && (
