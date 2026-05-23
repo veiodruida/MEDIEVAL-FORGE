@@ -197,6 +197,13 @@ class LlamaCppProvider:
             # server stops emitting frames mid-response.
             "stream": True,
             "model": model,
+            # UAT 2026-05-23 — research JSON for Iberia (~15 kingdoms, ~80
+            # condados, ~300 baronies) exceeds llama-server's default
+            # n_predict cap, truncating the stream mid-string and yielding
+            # `EOF while parsing a string` from parse_research_json. 8192
+            # tokens leaves headroom for the largest realistic map without
+            # forcing the user to retune the server.
+            "max_tokens": 8192,
         }
 
         if queue is not None:

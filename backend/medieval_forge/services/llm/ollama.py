@@ -134,11 +134,17 @@ class OllamaProvider:
             )
 
         content_parts: list[str] = []
+        # UAT 2026-05-23 — research JSON for Iberia exceeds Ollama's default
+        # num_predict (-1 falls back to model defaults, often ~2048-4096) and
+        # truncates the stream mid-JSON, raising `EOF while parsing a string`
+        # in parse_research_json. 8192 tokens covers the largest realistic
+        # map without retuning per-model config.
         async for chunk in await client.chat(
             model=model,
             messages=[{"role": "user", "content": prompt}],
             format=schema.model_json_schema(),
             stream=True,
+            options={"num_predict": 8192},
         ):
             msg = chunk.get("message") if isinstance(chunk, dict) else None
             delta = ""
