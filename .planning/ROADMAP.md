@@ -221,6 +221,29 @@ Plans:
 | V3-EXPORT-GATE | Phase 06 | 12-file validation gate |
 | V3-LLM-OPT-IN | Phase 07 | Sidecar metadata |
 
+### Phase 8: border-vertex-editor — manual SVG-style vertex editing of territory polygons with project branching
+
+**Goal:** Deliver a manual SVG-style vertex editor for territory (barony-tier) polygons with named-branch + auto-snapshot project model, integrated with the Phase 04 DAG via a new `manual_edit` stage. Preserves all CLAUDE.md non-negotiables (NEAREST upscale, per-country KD-tree, `original_idx` invariant) and Phase 04 cache contracts. First use of zundo `temporal` (D-V3-04 deferred-undo lifted, editor-scope only).
+**Requirements**: EDIT-VERTEX-01..05, EDIT-POLYGON-01..03, LANDMASK-01..02, BRANCH-01..05, DAG-01..05, TOPO-01..04, PERF-01, UX-01..02, UNDO-01, PERSIST-01..02, TELEM-01 (30 IDs; see .planning/REQUIREMENTS.md)
+**Depends on:** Phase 7
+**Plans:** 14 plans
+
+Plans:
+- [ ] 08-00-PLAN.md — Wave 0 test scaffolds (28 skip-marked files: 15 backend + 10 vitest + 3 Playwright)
+- [ ] 08-01-PLAN.md — Wave 1 backend: manual_edit DAG stage + RegionConfig.manual_edit_log_hash + STAGE_TOKEN_OVERRIDES (D-17/D-18)
+- [ ] 08-02-PLAN.md — Wave 2 backend: cache key extension to (project_id, branch_id, stage) — 9 atomic callsites (D-23)
+- [ ] 08-03a-PLAN.md — Wave 1 backend: Branch ORM + service + CRUD endpoints + main-protection (D-10/D-11/D-15)
+- [ ] 08-03b-PLAN.md — Wave 2 backend: Snapshot + EditEvent ORM + gzip serializer + auto-snapshot trigger (D-10/D-12/D-35/D-37)
+- [ ] 08-04-PLAN.md — Wave 3 frontend: useEditorStore with zundo temporal + branches/snapshots TanStack hooks (D-25/D-37)
+- [ ] 08-05-PLAN.md — Wave 4 frontend: VertexEditLayer + CoordTooltip + DesktopRequiredBanner + keyboard shortcuts (D-32/D-33/D-34/D-36)
+- [ ] 08-06a-PLAN.md — Wave 5 vertex ops: move/add/delete/simplify + VertexCapBadge + POST /editor/validate (D-01/D-03/D-06/D-29)
+- [ ] 08-06b-PLAN.md — Wave 6 topology + snap: scale-aware snap + shared-vertex coupling + invalid-drag visuals (D-26/D-27/D-28/D-30/D-31)
+- [ ] 08-07-PLAN.md — Wave 6 polygon ops: split/merge/translate + Shapely backend + original_idx high-water (D-02/D-07/D-08/D-09/D-22)
+- [ ] 08-08-PLAN.md — Wave 6 landmask: 2-mode toggle + cascade trigger (D-04/D-05/D-20/D-24)
+- [ ] 08-09-PLAN.md — Wave 7 branching UX: BranchPicker + 5 dialogs + SliderConflictDialog + SnapshotTimeline (D-13/D-14/D-19)
+- [ ] 08-10-PLAN.md — Wave 7 export: MANIFEST_SCHEMA_VERSION 2→3 + branch metadata (D-16)
+- [ ] 08-11-PLAN.md — Wave 8 verification: UAT specs + empty-log parity + manual sign-off checkpoint
+
 ---
 
 ## Backlog (v3.1 — deferred, not discarded)
