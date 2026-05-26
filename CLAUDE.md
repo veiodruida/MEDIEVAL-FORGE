@@ -14,7 +14,7 @@ Medieval Forge is a local web tool for Game Designers that automates the creatio
 - **Styling**: Tailwind CSS v4 (`@tailwindcss/vite`) + Radix UI Themes 3.x
 - **Packaging**: pip-installable Python package; `medieval-forge start` CLI
 - **Geometry**: scipy Voronoi + Shapely for boolean ops; GeoJSON storage
-- **LLM**: opt-in only — pipeline runs end-to-end with zero LLM calls
+- **LLM**: opt-in only — pipeline runs end-to-end with zero LLM calls. Six providers registered (Phase 07.2): `claude` (Anthropic), `openai`, `openrouter` (free + paid aggregator), `gemini` (Google AI Studio), `ollama` (local), `llamacpp` (local). API keys live in `~/.medieval-forge/medieval_forge.db`; backend auto-discovers `~/.env`, `~/.medieval-forge/.env`, `./.env` on startup and on demand via `GET /api/v3/credentials/discover`.
 
 > Full historical stack research (versions, gotchas, peer-dep analysis) is preserved in
 > `.planning/v1-archive/STACK_RESEARCH.md` and is **not** required for daily v3 work.
