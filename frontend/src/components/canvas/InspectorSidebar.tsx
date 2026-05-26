@@ -170,6 +170,36 @@ export function InspectorSidebar({
   )
 
   /**
+   * UAT 2026-05-23 — persistent "Pesquisar metadados históricos" trigger
+   * shown at the TOP of every Inspector mode so the user can always
+   * re-open the research dialog. Previously the button only existed in
+   * the placeholder (no-selection) mode and as a faint "Atualizar
+   * pesquisa" link on condados already covered by an overlay — once the
+   * dialog auto-closed there was no obvious way back.
+   */
+  const isReadyForResearch = project.status === 'generated'
+  const overlayExists = overlayData?.exists ?? false
+  const persistentResearchTrigger = (
+    <Flex align="center" justify="between" gap="2" data-testid="research-trigger-row">
+      <Button
+        variant={overlayExists ? 'soft' : 'solid'}
+        size="2"
+        disabled={!isReadyForResearch}
+        onClick={() => openResearchDialog(false)}
+        data-testid="research-trigger-persistent"
+      >
+        <MagnifyingGlassIcon />
+        {overlayExists ? 'Reabrir pesquisa' : 'Pesquisar metadados'}
+      </Button>
+      {overlayExists && (
+        <Badge color="green" variant="soft">
+          {overlayData?.covered_condado_ids.length ?? 0} condados aplicados
+        </Badge>
+      )}
+    </Flex>
+  )
+
+  /**
    * Helper — render the "Pesquisa aplicada" + "Atualizar pesquisa" pair
    * for a given condado id. Used by both condado-mode (selected id) and
    * barony-mode (parent condado id).
@@ -226,6 +256,7 @@ export function InspectorSidebar({
     const parentCondadoId = parent?.id
     return (
       <Flex direction="column" gap="3" data-testid="inspector-barony">
+        {persistentResearchTrigger}
         <Heading size="3">{barony.name}</Heading>
         <Flex gap="2" wrap="wrap">
           <Badge color="amber" variant="soft">Kingdom: {kingdomName}</Badge>
@@ -311,9 +342,9 @@ export function InspectorSidebar({
     // trigger plus the REVIEWS fix #2 dual-timestamp microcopy line. The
     // Phase 03 D-16 PT-BR placeholder text above (PLACEHOLDER_PT) is
     // UNCHANGED per the COPY-block lock.
-    const isReadyForResearch = project.status === 'generated'
     return (
       <Flex direction="column" gap="3" data-testid="inspector-placeholder">
+        {persistentResearchTrigger}
         <Text size="2" color="gray" as="p">{PLACEHOLDER_PT}</Text>
         <Tooltip
           content="Gere o mapa antes de pesquisar metadados."
@@ -342,9 +373,11 @@ export function InspectorSidebar({
 
   if (selectedIds.length >= 2) {
     return (
-      <Box data-testid="inspector-multi">
+      <Flex direction="column" gap="3" data-testid="inspector-multi">
+        {persistentResearchTrigger}
+        {dialogMount}
         <MultiSelectInspector selectedIds={selectedIds} metadata={metadata} />
-      </Box>
+      </Flex>
     )
   }
 
@@ -355,6 +388,8 @@ export function InspectorSidebar({
   if (!condado) {
     return (
       <Flex direction="column" gap="3">
+        {persistentResearchTrigger}
+        {dialogMount}
         <Heading size="3">{COPY.PROJECT_OVERVIEW}</Heading>
         <Box>
           <Text size="2" weight="bold" as="p">
@@ -405,6 +440,7 @@ export function InspectorSidebar({
 
   return (
     <Flex direction="column" gap="3" data-testid="inspector-single">
+      {persistentResearchTrigger}
       <Heading size="3">{condado.name}</Heading>
 
       {/* Group 1: Hierarchy badges — amber / blue / grass / gray */}
