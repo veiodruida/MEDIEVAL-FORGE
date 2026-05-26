@@ -3,11 +3,11 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: + bootstrap v3 infrastructure
 status: verifying
-stopped_at: Completed 07.1-10-PLAN.md
-last_updated: "2026-05-19T08:24:42.290Z"
+stopped_at: Phase 8 context gathered
+last_updated: "2026-05-26T12:03:00.379Z"
 last_activity: 2026-05-19
 progress:
-  total_phases: 11
+  total_phases: 12
   completed_phases: 8
   total_plans: 70
   completed_plans: 69
@@ -39,6 +39,8 @@ Progress: [█████████░] 93% (25 of 27 plans complete)
 ### Roadmap Evolution
 
 - Phase 07.1 inserted after Phase 07: Period numeric inputs + Llama.cpp re-add with auto-launch and local model list (URGENT)
+- Phase 07.2 added: cloud LLM providers (OpenRouter / OpenAI / Gemini) + .env auto-discover + live token streaming + CredentialsManager dialog
+- Phase 08 added: border-vertex-editor — manual SVG-style vertex editing of territory polygons with project branching
 
 ### Decisions
 
@@ -141,6 +143,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-19T07:56:50.751Z
-Stopped at: Completed 07.1-10-PLAN.md
-Resume file: None
+Last session: 2026-05-26T12:03:00.376Z
+Stopped at: Phase 8 context gathered
+Resume file: .planning/phases/08-border-vertex-editor-manual-svg-style-vertex-editing-of-terr/08-CONTEXT.md
