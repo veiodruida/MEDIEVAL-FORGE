@@ -123,3 +123,15 @@ updated: 2026-05-27
 - [x] `nyquist_compliant: true` set in frontmatter
 
 **Approval:** Wave 0 complete — 2026-05-27 (08-00 execution: 17 backend + 10 vitest + 3 playwright stubs; 58 pytest + 45 vitest + 11 playwright tests, all skip cleanly; commits 8aea489 + b7a6cff)
+
+**Wave 8 sign-off — 2026-05-27 (08-11 execution):**
+- [x] 4 Playwright UAT specs filled (08-vertex-drag: 5 tests, 08-slider-conflict: 3 tests, 08-perf-drag-60fps: 3 tests, 08-branch-flow: 5 tests) — 16 total passing
+- [x] `test_phase08_edit_roundtrip.py` — 2 parity tests: 10-file identity byte-equal + golden fixture comparison (D-17 gate) — both passing (83s)
+- [x] `test_phase08_edit_visible_in_lookup.py` — pre-existing 2 parity tests (identity + mutation polarity) — passing
+- [x] ALLOW_MANUAL_OVERRIDE grep gate: 13 matches (>> 1 required by OpenCode review-4)
+- [x] Grep gate 1 (v1 restoration): 0 hits — PASS
+- [x] Grep gate 2 (global KD-tree): 0 hits — PASS
+- [x] Grep gate 3 (BICUBIC/BILINEAR): 0 code hits (1 comment-only) — PASS
+- [x] Grep gate 4 (branch_id in cache): all cache_put/cache_get calls use cfg.branch_id — PASS
+- [x] Pre-existing vitest failures (37) and pytest failures (3) confirmed pre-Phase-08-11 — out of scope per CLAUDE.md deviation boundary
+- [x] Awaiting: manual UAT checkpoint (Task 3 — 3 visual gates)
