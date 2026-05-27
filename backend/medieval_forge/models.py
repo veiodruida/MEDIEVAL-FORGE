@@ -111,6 +111,12 @@ class Branch(Base):
     edits_since_snapshot: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0
     )  # D-10 cadence counter for auto-snapshot at 25 edits
+    manual_edit_log_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0
+    )  # Phase 08 D-18 + BLOCKER-1: total ops persisted via /editor/apply (bumped atomically)
+    manual_edit_log_hash: Mapped[str] = mapped_column(
+        String(16), nullable=False, default=""
+    )  # Phase 08 D-18: sha256(edit_op_log_json)[:16]; "" = no edits yet
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=_utcnow, onupdate=_utcnow, nullable=False

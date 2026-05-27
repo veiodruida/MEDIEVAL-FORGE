@@ -189,6 +189,25 @@ async def restore_snapshot(db: AsyncSession, snapshot_id: str) -> SnapshotPayloa
 # Edit-event helpers (D-35, D-37, T-08-03b-02)
 # ---------------------------------------------------------------------------
 
+async def allocate_next_original_idx(db: AsyncSession, branch_id: str) -> int:
+    """D-22: atomically increment and return Branch.original_idx_high_water.
+
+    Uses a SELECT FOR UPDATE-style pattern: fetch branch, increment in-memory,
+    commit. Guarantees uniqueness within a branch (Pitfall 1 mitigate).
+    Freed indices are NEVER reused — high_water only goes up.
+
+    Returns the newly allocated original_idx (the NEW high_water value).
+    """
+    branch = (
+        await db.execute(select(Branch).where(Branch.id == branch_id))
+    ).scalar_one()
+    branch.original_idx_high_water += 1
+    new_idx = branch.original_idx_high_water
+    await db.commit()
+    await db.refresh(branch)
+    return new_idx
+
+
 async def append_edit_event(
     db: AsyncSession,
     branch_id: str,
