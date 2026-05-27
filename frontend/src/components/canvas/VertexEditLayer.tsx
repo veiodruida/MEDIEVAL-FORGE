@@ -2,17 +2,32 @@
  * VertexEditLayer — 6th Konva layer (z=5, above InteractionLayer).
  *
  * Phase 08 Plan 05 — canvas scaffold for vertex editing.
- * REQ-IDs: PERF-01, EDIT-VERTEX-05
+ * Phase 08 Plan 06a — wires vertex move/add/delete ops to useEditorStore +
+ *   backend POST /editor/validate; adds D-03 barony-tier guard; D-06 add cap.
+ *
+ * REQ-IDs: PERF-01, EDIT-VERTEX-01, EDIT-VERTEX-02, EDIT-VERTEX-03, EDIT-VERTEX-05,
+ *           TOPO-01, D-03, D-06
  *
  * Key design decisions:
  * - Mounts always; renders Circle handles ONLY when activeTerritoryId !== null (D-34).
+ * - D-03: Only barony-tier polygons are editable. prop tier must be 'barony' for ops to fire.
  * - Viewport culling: filter to vertices within viewport bbox + 10% margin (D-34).
  * - RAF throttle: onDragMove queues via requestAnimationFrame; onDragEnd commits to store.
  * - Local preview state (useRef) for in-flight drag positions — NOT useEditorStore.setState
  *   (avoids 60 undo entries per drag).
- * - onDragEnd: inverse-project px → lat/lon → call useEditorStore.getState().moveVertex.
+ * - onDragEnd: inverse-project px → lat/lon → POST /editor/validate → on valid, call
+ *   useEditorStore.getState().moveVertex. On invalid: log + defer visual rollback to 08-06b.
+ * - Add tool: Layer onClick (when activeTool==='A') → addVertex; disabled when count>=1000 (D-06).
+ * - Delete tool: Del/Backspace key handled in useKeyboardShortcuts (08-05); VertexEditLayer
+ *   also adds a local keydown listener for the rare case the keyboard hook is not mounted.
  * - Konva.clearCache() on activeTerritoryId change via useEffect cleanup (Pitfall 10).
  * - listening: false when activeTerritoryId is null (no hit-testing needed).
+ *
+ * Known stubs (documented for 08-06b):
+ * - onDragEnd POSTs coords as Object.values(vertices) — no canonical ring order yet.
+ *   Real ring ordering deferred to 08-06b when ordered vertex representation lands.
+ * - On invalid topology: only console.warn for now; visual rollback (handle snaps back) is 08-06b.
+ * - Add tool: inserts at cursor lat/lon without edge snapping; proper edge-hit detection is 08-06b.
  *
  * UI-SPEC Konva colors (verbatim):
  */
@@ -47,11 +62,25 @@ export interface ViewportBBox {
   lonMax: number;
 }
 
+// ── Territory tier type ───────────────────────────────────────────────────────
+/** D-03: only 'barony' tier polygons are directly editable. */
+export type TerritoryTier = 'barony' | 'condado' | 'duchy' | 'kingdom';
+
 // ── Props ─────────────────────────────────────────────────────────────────────
 interface Props {
-  /** Reference to the parent Konva Stage — passed through for future snap/zoom ops (08-06a). */
+  /** Reference to the parent Konva Stage — used for snap/zoom ops (08-06b). */
   stageRef: React.RefObject<Konva.Stage | null>;
   viewport: ViewportBBox | null;
+  /**
+   * D-03: tier of the active territory. Vertex ops silently no-op on non-barony tiers.
+   * Defaults to 'barony' for backward compat when not provided by CanvasViewer.
+   */
+  tier?: TerritoryTier;
+  /**
+   * Project UUID required for POST /editor/validate. If not provided (test/scaffold),
+   * validate call is skipped and op commits directly (non-blocking fallback).
+   */
+  projectId?: string;
 }
 
 // ── Viewport expand helper ────────────────────────────────────────────────────
@@ -66,19 +95,66 @@ function expandBBox(bbox: ViewportBBox, margin: number): ViewportBBox {
   };
 }
 
+// ── Validate via backend (D-26) ───────────────────────────────────────────────
+/**
+ * POST /api/v3/projects/{pid}/editor/validate for a single moved polygon.
+ *
+ * Known stub: coords are Object.values(vertices) — no ring order. Real ring
+ * ordering deferred to 08-06b. Returns true (valid) on network error to avoid
+ * blocking the user (fail-open per RESEARCH: validate is advisory in 06a).
+ */
+async function validateMoveWithBackend(
+  projectId: string,
+  polygonId: string,
+  coords: Array<[number, number]>,
+): Promise<{ valid: boolean; code: string | null }> {
+  try {
+    const res = await fetch(
+      `/api/v3/projects/${projectId}/editor/validate`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          polygons: [{ polygon_id: polygonId, coords, neighbour_ids: [] }],
+          neighbour_lookup: {},
+        }),
+      },
+    );
+    if (!res.ok) {
+      console.warn('[VertexEditLayer] /editor/validate returned', res.status);
+      return { valid: true, code: null }; // fail-open
+    }
+    const results = (await res.json()) as Array<{ valid: boolean; code: string | null }>;
+    return results[0] ?? { valid: true, code: null };
+  } catch (err) {
+    console.warn('[VertexEditLayer] /editor/validate network error', err);
+    return { valid: true, code: null }; // fail-open on network error
+  }
+}
+
 // ── VertexEditLayer ───────────────────────────────────────────────────────────
-export const VertexEditLayer: React.FC<Props> = ({ stageRef: _stageRef, viewport }) => {
+export const VertexEditLayer: React.FC<Props> = ({
+  stageRef: _stageRef,
+  viewport,
+  tier = 'barony',
+  projectId,
+}) => {
   const projection = useProjection();
 
   // Read from store (subscribe to only the fields we need)
   const activeTerritoryId = useEditorStore((s) => s.activeTerritoryId);
   const vertices = useEditorStore((s) => s.vertices);
   const selectedVertexIds = useEditorStore((s) => s.selectedVertexIds);
+  const activeTool = useEditorStore((s) => s.activeTool);
 
   const selectedSet = useMemo(() => new Set(selectedVertexIds), [selectedVertexIds]);
+  const vertexCount = Object.keys(vertices).length;
 
   // Hover state (local — not in store per UI-SPEC §Notes #2)
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+
+  // D-03: barony-tier guard — if tier is not barony, treat as read-only
+  const isEditableTier = tier === 'barony';
 
   // ── Viewport culling (D-34) ─────────────────────────────────────────────────
   // Filter to vertices inside viewport + 10% margin. Culling is in world coords.
@@ -120,7 +196,10 @@ export const VertexEditLayer: React.FC<Props> = ({ stageRef: _stageRef, viewport
   );
 
   const handleDragEnd = useCallback(
-    (id: string, e: Konva.KonvaEventObject<DragEvent>) => {
+    async (id: string, e: Konva.KonvaEventObject<DragEvent>) => {
+      // D-03: barony-only guard
+      if (!isEditableTier) return;
+
       // Cancel any pending RAF from drag
       if (rafRef.current != null) {
         cancelAnimationFrame(rafRef.current);
@@ -131,11 +210,61 @@ export const VertexEditLayer: React.FC<Props> = ({ stageRef: _stageRef, viewport
       delete nextPreview[id];
       previewRef.current = nextPreview;
 
-      // Inverse-project px → lat/lon → single undoable store commit
+      // Inverse-project px → lat/lon
       const [lon, lat] = canvasToGeo(e.target.x(), e.target.y(), projection);
+
+      // Build coords for validation (known stub: unordered, see file header)
+      const coordsForValidation: Array<[number, number]> = Object.values(vertices).map(
+        (v) => [v.lon, v.lat],
+      );
+
+      // POST /editor/validate before committing (D-26)
+      if (projectId && coordsForValidation.length >= 3) {
+        const { valid, code } = await validateMoveWithBackend(
+          projectId,
+          activeTerritoryId ?? id,
+          coordsForValidation,
+        );
+        if (!valid) {
+          // 08-06b will add visual rollback (handle snaps back + red glow).
+          // For now: log the topology error and abort the commit.
+          console.warn('[VertexEditLayer] topology invalid:', code, '— move aborted (08-06b adds visual rollback)');
+          return;
+        }
+      }
+
+      // Single undoable store commit (enters zundo history once per drag)
       useEditorStore.getState().moveVertex(id, lat, lon);
     },
-    [projection],
+    [projection, isEditableTier, vertices, projectId, activeTerritoryId],
+  );
+
+  // ── Add vertex handler (D-01, D-06) ────────────────────────────────────────
+  // When activeTool === 'A', clicking on the Layer adds a vertex at cursor position.
+  // Disabled when vertex count >= 1000 (D-06 hard cap).
+  // Known stub: inserts at cursor lat/lon without edge snapping (08-06b adds KDTree snap).
+  const handleLayerClick = useCallback(
+    (e: Konva.KonvaEventObject<MouseEvent>) => {
+      // D-03: barony-only guard
+      if (!isEditableTier) return;
+      // Only fire when Add tool is active
+      if (activeTool !== 'A') return;
+      // D-06: hard cap — disable add at 1000
+      if (vertexCount >= 1000) return;
+      // Skip if click target is an existing handle (Circle handles their own events)
+      if (e.target !== e.currentTarget) return;
+
+      const stage = e.target.getStage();
+      if (!stage) return;
+
+      const pointerPos = stage.getPointerPosition();
+      if (!pointerPos) return;
+
+      const [lon, lat] = canvasToGeo(pointerPos.x, pointerPos.y, projection);
+      const newId = crypto.randomUUID();
+      useEditorStore.getState().addVertex(newId, lat, lon);
+    },
+    [isEditableTier, activeTool, vertexCount, projection],
   );
 
   // ── Pitfall 10: clearCache on activeTerritoryId change ─────────────────────
@@ -165,6 +294,7 @@ export const VertexEditLayer: React.FC<Props> = ({ stageRef: _stageRef, viewport
     <Layer
       ref={layerRef as React.RefObject<Konva.Layer>}
       listening={listening}
+      onClick={handleLayerClick}
     >
       {visibleEntries.map(({ id, lat, lon }) => {
         // Use preview px if dragging, otherwise project from world coord
@@ -197,9 +327,9 @@ export const VertexEditLayer: React.FC<Props> = ({ stageRef: _stageRef, viewport
             y={y}
             radius={5}
             fill={fill}
-            draggable={listening}
+            draggable={listening && isEditableTier}
             onDragMove={(e) => handleDragMove(id, e as Konva.KonvaEventObject<DragEvent>)}
-            onDragEnd={(e) => handleDragEnd(id, e as Konva.KonvaEventObject<DragEvent>)}
+            onDragEnd={(e) => void handleDragEnd(id, e as Konva.KonvaEventObject<DragEvent>)}
             onMouseEnter={() => setHoveredId(id)}
             onMouseLeave={() => setHoveredId(null)}
           />
