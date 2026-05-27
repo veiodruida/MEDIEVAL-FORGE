@@ -4,7 +4,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import JSON, DateTime, Float, String
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, JSON, String, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -88,3 +88,34 @@ class ResearchCache(Base):
     # applied_at  == when the runner wrote this overlay to a project (lives in
     #                meta sidecar, NOT in DB).
     generated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, nullable=False)
+
+
+class Branch(Base):
+    """Phase 08 D-10/D-11/D-15/D-22: Named branch for a project.
+
+    main branch is delete-protected (D-15); rename allowed.
+    original_idx_high_water tracks the highest original_idx allocated on this
+    branch so splits always get a unique index (D-22).
+    """
+    __tablename__ = "branches"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_new_uuid)
+    project_id: Mapped[str] = mapped_column(
+        ForeignKey("projects.id"), nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    is_main: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    original_idx_high_water: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0
+    )  # D-22: monotonically increasing per branch; freed idx never reused
+    edits_since_snapshot: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0
+    )  # D-10 cadence counter for auto-snapshot at 25 edits
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=_utcnow, onupdate=_utcnow, nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint("project_id", "name", name="uq_branch_project_name"),
+    )
