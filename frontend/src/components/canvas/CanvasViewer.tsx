@@ -556,6 +556,32 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
     setHover((h) => (h.name === null ? h : { name: null, x: h.x, y: h.y }))
   }, [])
 
+  // Phase 08 Plan 05: compute viewport bbox in world (lat/lon) coords for VertexEditLayer culling.
+  // MUST be declared before the early returns below (Rules of Hooks — error #310 otherwise).
+  const vertexViewport = useMemo((): ViewportBBox | null => {
+    if (!projection) return null
+    const stage = stageRef.current
+    const scale = stage?.scaleX() ?? currentScale
+    const pos = stage?.position() ?? { x: 0, y: 0 }
+    const mapX0 = -pos.x / scale
+    const mapY0 = -pos.y / scale
+    const mapX1 = mapX0 + viewportW / scale
+    const mapY1 = mapY0 + viewportH / scale
+    const cx0 = Math.max(0, mapX0)
+    const cy0 = Math.max(0, mapY0)
+    const cx1 = Math.min(projection.mapW, mapX1)
+    const cy1 = Math.min(projection.mapH, mapY1)
+    const span = (projection.lonMax - projection.lonMin) * projection.lonScale
+    const lonAt = (x: number) => (x / projection.mapW) * span / projection.lonScale + projection.lonMin
+    const latAt = (y: number) => projection.latMax - (y / projection.mapH) * (projection.latMax - projection.latMin)
+    return {
+      lonMin: lonAt(cx0),
+      lonMax: lonAt(cx1),
+      latMin: latAt(cy1),
+      latMax: latAt(cy0),
+    }
+  }, [projection, currentScale, viewportW, viewportH])
+
   // ------------------------------------------------------------------------
   // EARLY RETURNS — safe because every hook above has been called. Every
   // branch must carry `ref={setContainerRef}` so the observer migrates.
@@ -608,35 +634,6 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
   // raw colorized raster in BackgroundLayer; overlaying vector data would
   // be misleading).
   const isStageOverlay = stageView !== 'render-final'
-
-  // Phase 08 Plan 05: compute viewport bbox in world (lat/lon) coords for VertexEditLayer culling.
-  // Derived from projection + current stage scale/position. Recomputes on scale change.
-  const vertexViewport = useMemo((): ViewportBBox | null => {
-    if (!projection) return null
-    const stage = stageRef.current
-    const scale = stage?.scaleX() ?? currentScale
-    const pos = stage?.position() ?? { x: 0, y: 0 }
-    // Stage pixels visible: convert stage-origin corner + extent to map coords
-    const mapX0 = -pos.x / scale
-    const mapY0 = -pos.y / scale
-    const mapX1 = mapX0 + viewportW / scale
-    const mapY1 = mapY0 + viewportH / scale
-    // Clamp to map bounds
-    const cx0 = Math.max(0, mapX0)
-    const cy0 = Math.max(0, mapY0)
-    const cx1 = Math.min(projection.mapW, mapX1)
-    const cy1 = Math.min(projection.mapH, mapY1)
-    // canvasToGeo: lon = (x/mapW)*span/lonScale + lonMin; lat = latMax - (y/mapH)*(latMax-latMin)
-    const span = (projection.lonMax - projection.lonMin) * projection.lonScale
-    const lonAt = (x: number) => (x / projection.mapW) * span / projection.lonScale + projection.lonMin
-    const latAt = (y: number) => projection.latMax - (y / projection.mapH) * (projection.latMax - projection.latMin)
-    return {
-      lonMin: lonAt(cx0),
-      lonMax: lonAt(cx1),
-      latMin: latAt(cy1), // cy1 is bottom of screen = smaller lat
-      latMax: latAt(cy0), // cy0 is top of screen = larger lat
-    }
-  }, [projection, currentScale, viewportW, viewportH])
 
   const canvasPane = (
     <div
