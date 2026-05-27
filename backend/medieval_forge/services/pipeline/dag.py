@@ -4,12 +4,16 @@ A stage's token = sha256(stage_name + sorted (field, cfg[field]) pairs for its d
 reads + sorted upstream tokens) truncated to 16 hex chars. Sorting + json.dumps with
 sort_keys=True guarantees determinism across Python runs (Pitfall 2: dict iteration
 order). RegionConfig is @dataclass — use getattr(cfg, name), not .model_dump().
+
+Phase 08: STAGE_TOKEN_OVERRIDES map added for stages whose token cannot derive from
+cfg fields alone (manual_edit uses edit-op log stored out-of-band in snapshots table).
+Walker checks this map FIRST; falls back to compute_version_token if absent.
 """
 from __future__ import annotations
 
 import hashlib
 import json
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable
 
 from .contracts import RegionConfig
 
@@ -49,47 +53,64 @@ def compute_version_token(stage_name: str, reads: frozenset[str],
 # D-02 reads declarations — single source of truth for which cfg fields each
 # stage consumes. Phase 04 sliders touch only median, fragment, smooth, merge.
 STAGE_READS: dict[str, frozenset[str]] = {
-    "landmask":  frozenset({"map_w", "map_h", "lon_min", "lon_max",
-                            "lat_min", "lat_max", "upscale"}),
-    "border":    frozenset({"border_polygon", "pt_duchies"}),
-    "voronoi":   frozenset({"condados", "rng_seed"}),
-    "median":    frozenset({"median_passes"}),
-    "fragment":  frozenset({"fragment_min_px"}),
-    "smooth":    frozenset({"smooth_sigma"}),
-    "merge":     frozenset({"blob_merge_px"}),
-    "hierarchy": frozenset(),  # reads upstream array only
-    "render":    frozenset({"kingdom_colors", "ocean_near", "ocean_far",
-                            "draw_names", "coast_inner_width",
-                            "coast_inner_color", "ocean_gradient_dist"}),
-    "lookup":    frozenset(),
-    "metadata":  frozenset({"condados", "duchies", "kingdoms"}),
-    "export":    frozenset({"output_dir"}),
+    "landmask":    frozenset({"map_w", "map_h", "lon_min", "lon_max",
+                              "lat_min", "lat_max", "upscale"}),
+    "border":      frozenset({"border_polygon", "pt_duchies"}),
+    "voronoi":     frozenset({"condados", "rng_seed"}),
+    "median":      frozenset({"median_passes"}),
+    "fragment":    frozenset({"fragment_min_px"}),
+    "smooth":      frozenset({"smooth_sigma"}),
+    "merge":       frozenset({"blob_merge_px"}),
+    # Phase 08 D-17/D-18: manual_edit reads NOTHING from cfg directly — its
+    # inputs are out-of-band (snapshot blob in DB). Token derived via override.
+    "manual_edit": frozenset(),
+    "hierarchy":   frozenset(),  # reads upstream array only
+    "render":      frozenset({"kingdom_colors", "ocean_near", "ocean_far",
+                              "draw_names", "coast_inner_width",
+                              "coast_inner_color", "ocean_gradient_dist"}),
+    "lookup":      frozenset(),
+    "metadata":    frozenset({"condados", "duchies", "kingdoms"}),
+    "export":      frozenset({"output_dir"}),
 }
 
-# D-01: 12-stage canonical DAG order. Phase 03's 11-entry list expands here:
-# 'cleanup' is replaced by 'median' + 'fragment'; 'smooth' + 'merge' stay.
+# D-01: 13-stage canonical DAG order (Phase 08 inserts manual_edit).
+# Phase 03's 11-entry list expanded by Phase 04 ('cleanup' → 'median'+'fragment').
+# Phase 08 inserts 'manual_edit' between 'merge' and 'hierarchy' per D-17.
 DAG_ORDER: tuple[str, ...] = (
     "landmask", "border", "voronoi", "median", "fragment",
-    "smooth", "merge", "hierarchy", "render", "lookup", "metadata", "export",
+    "smooth", "merge", "manual_edit", "hierarchy",
+    "render", "lookup", "metadata", "export",
 )
 
 
 # Upstream-edge map: which stage(s) feed each stage's `upstream_tokens` list.
 # A stage's input array is the previous stage's output array, but lookup +
-# metadata + export depend on render's output array. Hierarchy depends on merge.
+# metadata + export depend on render's output array. Hierarchy depends on
+# manual_edit (Phase 08 D-17: manual_edit slotted between merge and hierarchy).
 DAG_PARENTS: dict[str, tuple[str, ...]] = {
-    "landmask":  (),
-    "border":    ("landmask",),
-    "voronoi":   ("border",),
-    "median":    ("voronoi",),
-    "fragment":  ("median",),
-    "smooth":    ("fragment",),
-    "merge":     ("smooth",),
-    "hierarchy": ("merge",),
-    "render":    ("hierarchy",),
-    "lookup":    ("render",),
-    "metadata":  ("hierarchy",),
-    "export":    ("render", "lookup", "metadata"),
+    "landmask":    (),
+    "border":      ("landmask",),
+    "voronoi":     ("border",),
+    "median":      ("voronoi",),
+    "fragment":    ("median",),
+    "smooth":      ("fragment",),
+    "merge":       ("smooth",),
+    "manual_edit": ("merge",),          # Phase 08 D-17: new stage
+    "hierarchy":   ("manual_edit",),    # Phase 08: was ("merge",)
+    "render":      ("hierarchy",),
+    "lookup":      ("render",),
+    "metadata":    ("hierarchy",),
+    "export":      ("render", "lookup", "metadata"),
+}
+
+
+# Phase 08: override map for stages whose token cannot derive from cfg fields alone.
+# Walker checks this map FIRST; falls back to compute_version_token if absent.
+# Pattern reserved for any future out-of-band input stage (e.g. research-overlay sidecar).
+from . import manual_edit as _manual_edit_module  # noqa: E402
+
+STAGE_TOKEN_OVERRIDES: dict[str, Callable[[RegionConfig, Iterable[str]], str]] = {
+    "manual_edit": _manual_edit_module.manual_edit_token,
 }
 
 
@@ -98,4 +119,5 @@ __all__ = [
     "STAGE_READS",
     "DAG_ORDER",
     "DAG_PARENTS",
+    "STAGE_TOKEN_OVERRIDES",
 ]

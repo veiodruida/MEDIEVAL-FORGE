@@ -130,6 +130,15 @@ class RegionConfig:
     # in Phase 01-03 paths preserves byte-equal parity (no .is_set() call when None).
     stop_event: Optional[threading.Event] = field(default=None)
 
+    # Phase 08 D-18 + RESEARCH Open Q1: hash of edit-op log for manual_edit stage token.
+    # Full log lives in snapshots table; cfg carries only the 16-hex hash so cache lookups
+    # stay cheap. Empty string ("") = identity pass-through (D-17 carry-forward).
+    manual_edit_log_hash: str = ""
+    # Phase 08 D-18 (BLOCKER-2 fix): count of edit ops; together with loghash forms the
+    # manual_edit token (sha256("manual_edit" + count + loghash + upstream_tokens)).
+    # Required by D-18 verbatim — token cannot be derived from hash alone.
+    manual_edit_log_count: int = 0
+
     def __post_init__(self):
         if self.lon_scale is None:
             center_lat = (self.lat_min + self.lat_max) / 2
