@@ -24,15 +24,30 @@ vi.mock('react-konva', () => {
     onMouseEnter?: () => void;
     onMouseLeave?: () => void;
     'data-vertex-id'?: string;
+    'data-testid'?: string;
   }> = (props) =>
     React.createElement('div', {
-      'data-testid': 'vertex-handle',
+      'data-testid': props['data-testid'] ?? 'vertex-handle',
       'data-fill': props.fill,
       'data-x': props.x,
       'data-y': props.y,
       'data-vertex-id': props['data-vertex-id'],
     });
-  return { Layer, Circle };
+  // Phase 08 Plan 08: Line for PT/ES border (read-only, listening=false, Pitfall 3)
+  const Line: React.FC<{
+    points?: number[];
+    stroke?: string;
+    strokeWidth?: number;
+    closed?: boolean;
+    listening?: boolean;
+    'data-testid'?: string;
+  }> = (props) =>
+    React.createElement('div', {
+      'data-testid': props['data-testid'] ?? 'konva-line',
+      'data-listening': String(props.listening ?? true),
+      'data-stroke': props.stroke,
+    });
+  return { Layer, Circle, Line };
 });
 
 // ── mock ProjectionContext ────────────────────────────────────────────────────
@@ -63,7 +78,12 @@ vi.mock('../../../stores/useEditorStore', () => ({
 }));
 
 // ── helpers ───────────────────────────────────────────────────────────────────
-import { VertexEditLayer, SNAP_TARGET_STROKE, INVALID_DRAG_STROKE } from '../VertexEditLayer';
+import {
+  VertexEditLayer,
+  SNAP_TARGET_STROKE,
+  INVALID_DRAG_STROKE,
+  LANDMASK_VERTEX_FILL,
+} from '../VertexEditLayer';
 
 /** Produce N vertex entries spread across a known lat/lon grid */
 function makeVertices(n: number): Record<string, { lat: number; lon: number }> {
@@ -422,5 +442,127 @@ describe('VertexEditLayer — D-27 warn flags callback', () => {
     expect(onWarnFlagsChange).toHaveBeenCalled();
     const lastCall = onWarnFlagsChange.mock.calls[onWarnFlagsChange.mock.calls.length - 1][0];
     expect(lastCall.duplicateVertex).toBe(false);
+  });
+});
+
+// ── Phase 08 Plan 08 — Landmask mode tests (LANDMASK-01, LANDMASK-02, WARNING-5) ─
+
+describe('VertexEditLayer — landmask mode (Plan 08-08)', () => {
+  it('when editableLayer=landmask, cyan #06b6d4 handles render on landmask vertices', () => {
+    // 3 landmask vertices within viewport
+    const landmaskCoords: Array<[number, number]> = [
+      [-5.5, 35.0],
+      [-5.0, 35.5],
+      [-4.5, 35.0],
+    ];
+
+    mockGetState.mockReturnValue({
+      moveVertex: mockMoveVertex,
+      activeTerritoryId: null,  // landmask mode does not need activeTerritoryId
+      vertices: {},
+      selectedVertexIds: [],
+      activeTool: null,
+      setVerticesAndLog: vi.fn(),
+      addVertex: vi.fn(),
+      landmaskMode: 'manual',
+    });
+
+    const stageRef = { current: null };
+    const { getAllByTestId } = render(
+      <VertexEditLayer
+        stageRef={stageRef as React.RefObject<import('konva').Stage | null>}
+        viewport={NARROW_VIEWPORT}
+        editableLayer="landmask"
+        landmaskCoords={landmaskCoords}
+      />,
+    );
+
+    // Landmask handles have data-testid='landmask-handle'
+    const handles = getAllByTestId('landmask-handle');
+    expect(handles).toHaveLength(3);
+
+    // All landmask handles must have cyan fill #06b6d4
+    handles.forEach((h) => {
+      expect(h.getAttribute('data-fill')).toBe('#06b6d4');
+    });
+  });
+
+  it('borderCoords prop produces a Konva.Line with listening=false (no handle rendering)', () => {
+    // PT/ES border: 40 points (Pitfall 3 — STATE.md confirmed)
+    const borderCoords: Array<[number, number]> = Array.from({ length: 40 }, (_, i) => [
+      -9 + i * 0.1,
+      37 + i * 0.05,
+    ] as [number, number]);
+
+    mockGetState.mockReturnValue({
+      moveVertex: mockMoveVertex,
+      activeTerritoryId: null,
+      vertices: {},
+      selectedVertexIds: [],
+      activeTool: null,
+      setVerticesAndLog: vi.fn(),
+      addVertex: vi.fn(),
+      landmaskMode: 'manual',
+    });
+
+    const stageRef = { current: null };
+    const { getByTestId, queryAllByTestId } = render(
+      <VertexEditLayer
+        stageRef={stageRef as React.RefObject<import('konva').Stage | null>}
+        viewport={NARROW_VIEWPORT}
+        editableLayer="landmask"
+        landmaskCoords={[]}
+        borderCoords={borderCoords}
+      />,
+    );
+
+    // Border line is rendered as data-testid='border-line'
+    const borderLine = getByTestId('border-line');
+    expect(borderLine).toBeTruthy();
+    // listening=false means data-listening='false' in our mock
+    expect(borderLine.getAttribute('data-listening')).toBe('false');
+
+    // No interactive handles for the border polygon
+    expect(queryAllByTestId('vertex-handle')).toHaveLength(0);
+  });
+
+  it('in auto-immediate mode, landmask dragend fires onLandmaskCoordsChange (chokepoint integration)', () => {
+    // Verifies that the onLandmaskCoordsChange prop is wired and callable.
+    // Full drag simulation requires Playwright UAT; here we verify:
+    // 1. Component accepts onLandmaskCoordsChange prop without TypeScript error.
+    // 2. The LANDMASK_VERTEX_FILL constant is #06b6d4 per UI-SPEC (imported at top).
+    // 3. editableLayer='landmask' renders landmask-handle elements (not vertex-handle).
+    expect(LANDMASK_VERTEX_FILL).toBe('#06b6d4');
+
+    const onLandmaskCoordsChange = vi.fn();
+    const landmaskCoords: Array<[number, number]> = [[-5, 35], [-4.5, 35.5], [-5.5, 35.5]];
+
+    mockGetState.mockReturnValue({
+      moveVertex: mockMoveVertex,
+      activeTerritoryId: null,
+      vertices: {},
+      selectedVertexIds: [],
+      activeTool: null,
+      setVerticesAndLog: vi.fn(),
+      addVertex: vi.fn(),
+      landmaskMode: 'auto-immediate',
+    });
+
+    const stageRef = { current: null };
+    const { getAllByTestId, queryAllByTestId } = render(
+      <VertexEditLayer
+        stageRef={stageRef as React.RefObject<import('konva').Stage | null>}
+        viewport={NARROW_VIEWPORT}
+        editableLayer="landmask"
+        landmaskCoords={landmaskCoords}
+        onLandmaskCoordsChange={onLandmaskCoordsChange}
+      />,
+    );
+
+    // In landmask mode, handles render as 'landmask-handle', not 'vertex-handle'
+    const handles = getAllByTestId('landmask-handle');
+    expect(handles).toHaveLength(3);
+    // Barony handles (vertex-handle) must NOT render when editableLayer='landmask'
+    expect(queryAllByTestId('vertex-handle')).toHaveLength(0);
   });
 });

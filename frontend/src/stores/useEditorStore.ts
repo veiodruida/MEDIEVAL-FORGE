@@ -26,7 +26,11 @@ export type EditTool = 'V' | 'A' | 'D' | 'S' | 'M' | null;
 export type LandmaskMode = 'manual' | 'auto-immediate';
 
 export interface EditOp {
-  op: 'move' | 'add' | 'delete' | 'split' | 'merge' | 'translate' | 'simplify' | 'multi_delete';
+  op:
+    | 'move' | 'add' | 'delete' | 'split' | 'merge' | 'translate'
+    | 'simplify' | 'multi_delete'
+    // Phase 08 Plan 08 — landmask ops (WARNING-6 chokepoint, D-35)
+    | 'landmask_vertex_move' | 'landmask_vertex_add' | 'landmask_vertex_delete';
   ts: number;
   vertexIds?: string[];
   lat?: number;

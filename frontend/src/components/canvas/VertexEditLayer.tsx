@@ -12,10 +12,17 @@
  *   M tool: 2-click select → client adjacency check → mergePolygons; red Callout on NOT_ADJACENT.
  *   V tool drag on polygon interior → translatePolygon (commit on dragend).
  *   Optimistic Konva preview via turf.js; canonical raster converges on /render (BLOCKER-1 / D-17).
+ * Phase 08 Plan 08 — Landmask mode (LANDMASK-01, LANDMASK-02, WARNING-5 fix):
+ *   editableLayer='landmask' → renders cyan handles (#06b6d4) on landmaskCoords.
+ *   PT/ES border (borderCoords, 40 pts) rendered as a separate Konva.Line with listening=false
+ *   (Pitfall 3 — pointer events never hit the border polygon).
+ *   Auto-immediate mode: dragend fires POST /editor/apply op_type='landmask_replace'.
+ *   Manual mode: drags buffered locally; Apply button flushes via onApplyLandmask callback.
+ *   All landmask handle ops funnel through setVerticesAndLog (WARNING-6 chokepoint) with
+ *   op.type in {'landmask_vertex_move', 'landmask_vertex_add', 'landmask_vertex_delete'}.
  *
- * REQ-IDs: PERF-01, EDIT-VERTEX-01, EDIT-VERTEX-02, EDIT-VERTEX-03,
- *           EDIT-VERTEX-05, EDIT-POLYGON-01, EDIT-POLYGON-02, EDIT-POLYGON-03,
- *           TOPO-01, TOPO-02, TOPO-03, TOPO-04, D-03, D-06
+ * REQ-IDs: PERF-01, EDIT-VERTEX-01..05, EDIT-POLYGON-01..03,
+ *           LANDMASK-01, LANDMASK-02, TOPO-01..04, D-03, D-06, DAG-04
  *
  * Key design decisions:
  * - Mounts always; renders Circle handles ONLY when activeTerritoryId !== null (D-34).
@@ -40,7 +47,7 @@
  * UI-SPEC Konva colors (verbatim):
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Layer, Circle } from 'react-konva';
+import { Layer, Circle, Line } from 'react-konva';
 import type Konva from 'konva';
 import { useEditorStore } from '../../stores/useEditorStore';
 import type { VertexCoord } from '../../stores/useEditorStore';
@@ -57,6 +64,10 @@ const VERTEX_FILL_SELECTED = '#f0c040';
 const VERTEX_FILL_HOVER = '#ffffff';
 const SNAP_TARGET_STROKE = '#eab308';
 const INVALID_DRAG_STROKE = '#ef4444';
+// Phase 08 Plan 08: landmask handle color (cyan, distinct from blue barony handles)
+const LANDMASK_VERTEX_FILL = '#06b6d4';
+// PT/ES border line color (read-only, separate Konva node — Pitfall 3)
+const BORDER_LINE_STROKE = '#94a3b8';
 
 // Expose for tests and sibling components that need the constants.
 export {
@@ -65,7 +76,13 @@ export {
   VERTEX_FILL_HOVER,
   SNAP_TARGET_STROKE,
   INVALID_DRAG_STROKE,
+  LANDMASK_VERTEX_FILL,
+  BORDER_LINE_STROKE,
 };
+
+// ── Editable layer type (Phase 08 Plan 08) ────────────────────────────────────
+/** Which polygon layer is currently being edited. D-03/D-04 distinction. */
+export type EditableLayer = 'baronies' | 'landmask';
 
 // ── Viewport bbox type ────────────────────────────────────────────────────────
 export interface ViewportBBox {
@@ -119,6 +136,38 @@ interface Props {
    * Required for split/merge/translate to persist to the correct branch.
    */
   branchId?: string;
+
+  // ── Phase 08 Plan 08: Landmask mode props (LANDMASK-01, LANDMASK-02) ────────
+
+  /**
+   * Which layer is currently being edited.
+   * 'baronies' (default): existing barony vertex editing.
+   * 'landmask': renders cyan handles on landmaskCoords; no barony handles.
+   * WARNING-5 fix: driven by useEditorStore.landmaskMode via LayerTogglePanel.
+   */
+  editableLayer?: EditableLayer;
+
+  /**
+   * Landmask polygon coordinates [[lon, lat], ...] for landmask mode handles.
+   * Only interactive when editableLayer='landmask'.
+   * When editableLayer='baronies' (default), this prop is unused.
+   */
+  landmaskCoords?: Array<[number, number]>;
+
+  /**
+   * PT/ES border polygon coordinates [[lon, lat], ...].
+   * ALWAYS rendered as a read-only Konva.Line with listening=false (Pitfall 3).
+   * Expected length: 40 points (STATE.md confirmed — CLAUDE.md mis-counted 38).
+   * Never produces interactive handles regardless of editableLayer.
+   */
+  borderCoords?: Array<[number, number]>;
+
+  /**
+   * Called in auto-immediate mode after a landmask handle dragend.
+   * Parent POSTs /editor/apply op_type='landmask_replace' with new coords.
+   * In manual mode, drags are buffered; Apply button (LandmaskEditorHeader) calls this.
+   */
+  onLandmaskCoordsChange?: (newCoords: Array<[number, number]>) => void;
 }
 
 // ── Viewport expand helper ────────────────────────────────────────────────────
@@ -213,6 +262,10 @@ export const VertexEditLayer: React.FC<Props> = ({
   onWarnFlagsChange,
   onNotAdjacent,
   branchId,
+  editableLayer = 'baronies',
+  landmaskCoords,
+  borderCoords,
+  onLandmaskCoordsChange,
 }) => {
   const projection = useProjection();
 
@@ -221,15 +274,44 @@ export const VertexEditLayer: React.FC<Props> = ({
   const vertices = useEditorStore((s) => s.vertices);
   const selectedVertexIds = useEditorStore((s) => s.selectedVertexIds);
   const activeTool = useEditorStore((s) => s.activeTool);
+  // Phase 08 Plan 08: landmask mode (D-05 — manual vs auto-immediate)
+  const landmaskMode = useEditorStore((s) => s.landmaskMode);
 
   const selectedSet = useMemo(() => new Set(selectedVertexIds), [selectedVertexIds]);
   const vertexCount = Object.keys(vertices).length;
+
+  // Phase 08 Plan 08: landmask local coord state for buffered manual-mode drags.
+  // In auto-immediate mode, each dragend directly calls onLandmaskCoordsChange.
+  // In manual mode, drags mutate this local state; Apply button flushes it.
+  const [localLandmaskCoords, setLocalLandmaskCoords] = useState<Array<[number, number]>>(
+    landmaskCoords ?? [],
+  );
+
+  // Sync local state when prop changes (e.g. after Apply re-renders parent)
+  useEffect(() => {
+    if (landmaskCoords) setLocalLandmaskCoords(landmaskCoords);
+  }, [landmaskCoords]);
+
+  // Pitfall 3 assertion (DEV only): borderCoords should have exactly 40 points.
+  // STATE.md confirmed 40; CLAUDE.md mis-counted as 38 — planner resolved to 40.
+  useEffect(() => {
+    if (import.meta.env.DEV && borderCoords && borderCoords.length !== 40) {
+      console.assert(
+        borderCoords.length === 40,
+        `[VertexEditLayer] PT/ES border expected 40 pts per STATE.md, got ${borderCoords.length}`,
+      );
+    }
+  }, [borderCoords]);
 
   // Hover state (local — not in store per UI-SPEC §Notes #2)
   const [hoveredId, setHoveredId] = useState<string | null>(null);
 
   // D-03: barony-tier guard — if tier is not barony, treat as read-only
   const isEditableTier = tier === 'barony';
+
+  // Phase 08 Plan 08: in landmask mode, barony tier guard is bypassed.
+  // Landmask has its own editable surface regardless of barony tier.
+  const isLandmaskMode = editableLayer === 'landmask';
 
   // ── Plan 08-07: Split tool state ─────────────────────────────────────────────
   // S tool: track 2 canvas clicks to form a cut line.
@@ -632,7 +714,7 @@ export const VertexEditLayer: React.FC<Props> = ({
   }, []);
 
   // ── Render ──────────────────────────────────────────────────────────────────
-  const listening = activeTerritoryId !== null;
+  const listening = activeTerritoryId !== null || isLandmaskMode;
 
   // ── Split preview: canvas coords for first click point ──────────────────────
   const splitPreviewPx = useMemo<{ x: number; y: number } | null>(() => {
@@ -642,6 +724,57 @@ export const VertexEditLayer: React.FC<Props> = ({
     return { x, y };
   }, [activeTool, splitClickPts, projection]);
 
+  // ── Phase 08 Plan 08: PT/ES border canvas points (read-only line, Pitfall 3) ─
+  // Computed as a flat [x, y, x, y, ...] array for Konva.Line points prop.
+  const borderLinePts = useMemo<number[]>(() => {
+    if (!borderCoords || borderCoords.length === 0) return [];
+    return borderCoords.flatMap(([lon, lat]) => {
+      const [x, y] = geoToCanvas(lon, lat, projection);
+      return [x, y];
+    });
+  }, [borderCoords, projection]);
+
+  // ── Phase 08 Plan 08: landmask handle dragend ──────────────────────────────
+  // Index-keyed (string) so each landmask vertex has a stable id for preview ref.
+  const handleLandmaskDragEnd = useCallback(
+    (idx: number, e: Konva.KonvaEventObject<DragEvent>) => {
+      if (rafRef.current != null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+
+      const px = { x: e.target.x(), y: e.target.y() };
+      const [lon, lat] = canvasToGeo(px.x, px.y, projection);
+
+      // Build new coords array with updated vertex at idx
+      const newCoords: Array<[number, number]> = localLandmaskCoords.map(
+        (pt, i) => (i === idx ? [lon, lat] : pt),
+      );
+      setLocalLandmaskCoords(newCoords);
+
+      // WARNING-6 chokepoint: log the op via setVerticesAndLog (D-35)
+      // Converts landmask coord array into the vertices map format for the store.
+      const nextVertices: Record<string, import('../../stores/useEditorStore').VertexCoord> = {};
+      newCoords.forEach(([vLon, vLat], i) => {
+        nextVertices[`lm_${i}`] = { lat: vLat, lon: vLon };
+      });
+      useEditorStore.getState().setVerticesAndLog(nextVertices, {
+        op: 'landmask_vertex_move',
+        ts: Date.now(),
+        vertexIds: [`lm_${idx}`],
+        lat,
+        lon,
+      });
+
+      // Auto-immediate mode: notify parent immediately (D-05)
+      if (landmaskMode === 'auto-immediate') {
+        onLandmaskCoordsChange?.(newCoords);
+      }
+      // Manual mode: coords are buffered in localLandmaskCoords until Apply is clicked.
+    },
+    [localLandmaskCoords, projection, landmaskMode, onLandmaskCoordsChange],
+  );
+
   return (
     <Layer
       ref={layerRef as React.RefObject<Konva.Layer>}
@@ -650,7 +783,8 @@ export const VertexEditLayer: React.FC<Props> = ({
       onDragStart={handleLayerDragStart}
       onDragEnd={handleLayerDragEnd}
     >
-      {visibleEntries.map(({ id, lat, lon }) => {
+      {/* ── Barony vertex handles (only when editableLayer='baronies') ─────────── */}
+      {!isLandmaskMode && visibleEntries.map(({ id, lat, lon }) => {
         const preview = previewRef.current[id];
         let x: number;
         let y: number;
@@ -693,6 +827,61 @@ export const VertexEditLayer: React.FC<Props> = ({
           />
         );
       })}
+
+      {/* ── Phase 08 Plan 08: Landmask handles (cyan, only when editableLayer='landmask') ── */}
+      {isLandmaskMode && localLandmaskCoords.map(([lon, lat], idx) => {
+        const lmId = `lm_${idx}`;
+        const preview = previewRef.current[lmId];
+        let x: number;
+        let y: number;
+        if (preview) {
+          x = preview.x;
+          y = preview.y;
+        } else {
+          const [cx, cy] = geoToCanvas(lon, lat, projection);
+          x = cx;
+          y = cy;
+        }
+
+        return (
+          <Circle
+            key={lmId}
+            {...({
+              'data-testid': 'landmask-handle',
+              'data-vertex-id': lmId,
+            } as Record<string, string>)}
+            x={x}
+            y={y}
+            radius={5}
+            fill={LANDMASK_VERTEX_FILL}
+            draggable
+            onDragMove={(e) => {
+              // RAF throttle: update local preview only (no store writes during drag)
+              if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
+              rafRef.current = requestAnimationFrame(() => {
+                previewRef.current = {
+                  ...previewRef.current,
+                  [lmId]: { x: e.target.x(), y: e.target.y() },
+                };
+                rafRef.current = null;
+              });
+            }}
+            onDragEnd={(e) => void handleLandmaskDragEnd(idx, e as Konva.KonvaEventObject<DragEvent>)}
+          />
+        );
+      })}
+
+      {/* ── Phase 08 Plan 08 Pitfall 3: PT/ES border — read-only Konva.Line, listening=false ── */}
+      {borderLinePts.length > 0 && (
+        <Line
+          points={borderLinePts}
+          stroke={BORDER_LINE_STROKE}
+          strokeWidth={1.5}
+          closed
+          listening={false}
+          {...({ 'data-testid': 'border-line' } as Record<string, string>)}
+        />
+      )}
 
       {/* TOPO-03 D-28: Snap target indicator — yellow circle #eab308 radius=8 stroke=2 */}
       {snapTargetPx && (
