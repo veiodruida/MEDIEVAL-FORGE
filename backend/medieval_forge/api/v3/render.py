@@ -33,10 +33,11 @@ from PIL import Image
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...database import AsyncSessionLocal, get_db
-from ...models import Project
+from ...models import EditEvent, Project
 from ...services.paths import is_valid_uuid, project_dir
 from ...services.pipeline import run_pipeline_incremental
 from ...services.pipeline.cache import cache_get
@@ -143,6 +144,27 @@ async def _render_producer(
         for k, v in overrides.items():
             if v is not None:
                 setattr(cfg, k, v)
+
+        # Phase 08 Plan 08 (DAG-04 cascade wiring): populate cfg.landmask_override
+        # from the latest landmask_replace edit_event for this branch. Without this,
+        # build_land_mask always ignores the override and re-runs from municipality data.
+        # Uses the branch_id scoped to this render call (D-23).
+        async with AsyncSessionLocal() as _db:
+            latest_lm = (
+                await _db.execute(
+                    select(EditEvent)
+                    .where(
+                        EditEvent.branch_id == branch_id,
+                        EditEvent.op_type == "landmask_replace",
+                    )
+                    .order_by(EditEvent.id.desc())
+                    .limit(1)
+                )
+            ).scalar_one_or_none()
+        if latest_lm is not None:
+            coords = latest_lm.payload.get("new_landmask_coords")
+            if isinstance(coords, list) and len(coords) >= 3:
+                cfg.landmask_override = [tuple(pt) for pt in coords]
 
         loop = asyncio.get_running_loop()
 

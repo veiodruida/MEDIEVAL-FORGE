@@ -40,6 +40,7 @@ from ...database import get_db
 from ...models import Branch
 from ...services.branches.service import allocate_next_original_idx, append_edit_event
 from ...services.paths import is_valid_uuid
+from ...services.pipeline.cache import cache_clear_branch
 from ...services.pipeline.manual_edit import replay_merge, replay_split
 from ...services.pipeline.topology import validate_edit
 
@@ -271,6 +272,10 @@ async def apply_op(
                 status_code=422,
                 detail="INVALID_PAYLOAD: new_landmask_coords exceeds max_length=50000 (T-08-08-02)",
             )
+        # Phase 08 Plan 08 Step 1 (cascade wiring): clear branch cache so the next
+        # /render call recomputes from cfg.landmask_override (set by _render_producer
+        # from this edit_event). Belt-and-suspenders alongside the DAG token change.
+        cache_clear_branch(project_id, body.branch_id)
 
     # --- Persist edit event ---
 
