@@ -7,9 +7,15 @@
  * Phase 08 Plan 06b — snap (TOPO-03) + shared-vertex coupling (TOPO-04) +
  *   topology-block visuals (TOPO-01: red fill/stroke on invalid drag) +
  *   D-27 warn-badge flags; Alt-disable for snap (D-28).
+ * Phase 08 Plan 07 — Split/Merge/Translate tool handlers (EDIT-POLYGON-01..03):
+ *   S tool: 2-click line cut → splitPolygon; Esc cancels.
+ *   M tool: 2-click select → client adjacency check → mergePolygons; red Callout on NOT_ADJACENT.
+ *   V tool drag on polygon interior → translatePolygon (commit on dragend).
+ *   Optimistic Konva preview via turf.js; canonical raster converges on /render (BLOCKER-1 / D-17).
  *
  * REQ-IDs: PERF-01, EDIT-VERTEX-01, EDIT-VERTEX-02, EDIT-VERTEX-03,
- *           EDIT-VERTEX-05, TOPO-01, TOPO-02, TOPO-03, TOPO-04, D-03, D-06
+ *           EDIT-VERTEX-05, EDIT-POLYGON-01, EDIT-POLYGON-02, EDIT-POLYGON-03,
+ *           TOPO-01, TOPO-02, TOPO-03, TOPO-04, D-03, D-06
  *
  * Key design decisions:
  * - Mounts always; renders Circle handles ONLY when activeTerritoryId !== null (D-34).
@@ -79,6 +85,9 @@ export interface VertexWarnFlags {
   sliverPolygon: boolean;    // area < 0.001° (approx)
 }
 
+// ── NOT_ADJACENT error callout auto-dismiss duration ─────────────────────────
+const NOT_ADJACENT_DISMISS_MS = 2000;
+
 // ── Props ─────────────────────────────────────────────────────────────────────
 interface Props {
   /** Reference to the parent Konva Stage — used for snap scale (Pitfall 7). */
@@ -90,8 +99,8 @@ interface Props {
    */
   tier?: TerritoryTier;
   /**
-   * Project UUID required for POST /editor/validate. If not provided (test/scaffold),
-   * validate call is skipped and op commits directly (non-blocking fallback).
+   * Project UUID required for POST /editor/validate and /editor/apply.
+   * If not provided (test/scaffold), calls are skipped.
    */
   projectId?: string;
   /**
@@ -99,6 +108,17 @@ interface Props {
    * Inspector uses this to show amber badges.
    */
   onWarnFlagsChange?: (flags: VertexWarnFlags) => void;
+  /**
+   * Plan 08-07: callback when a NOT_ADJACENT error occurs (client or server).
+   * Parent renders a Radix Callout color="red" "Territórios não são adjacentes".
+   * Auto-dismiss 2s is handled here via onNotAdjacent(true) → onNotAdjacent(false).
+   */
+  onNotAdjacent?: (show: boolean) => void;
+  /**
+   * Plan 08-07: branch ID for polygon ops (/editor/apply).
+   * Required for split/merge/translate to persist to the correct branch.
+   */
+  branchId?: string;
 }
 
 // ── Viewport expand helper ────────────────────────────────────────────────────
@@ -191,6 +211,8 @@ export const VertexEditLayer: React.FC<Props> = ({
   tier = 'barony',
   projectId,
   onWarnFlagsChange,
+  onNotAdjacent,
+  branchId,
 }) => {
   const projection = useProjection();
 
@@ -208,6 +230,44 @@ export const VertexEditLayer: React.FC<Props> = ({
 
   // D-03: barony-tier guard — if tier is not barony, treat as read-only
   const isEditableTier = tier === 'barony';
+
+  // ── Plan 08-07: Split tool state ─────────────────────────────────────────────
+  // S tool: track 2 canvas clicks to form a cut line.
+  // splitClickPts: geo coords [lon,lat] of points clicked so far (0 or 1).
+  const [splitClickPts, setSplitClickPts] = useState<Array<[number, number]>>([]);
+
+  // ── Plan 08-07: Merge tool state ─────────────────────────────────────────────
+  // M tool: first click selects firstId; second click triggers merge.
+  const [mergeFirstId, setMergeFirstId] = useState<string | null>(null);
+  const [mergeFirstCoords, setMergeFirstCoords] = useState<Array<[number, number]> | null>(null);
+
+  // ── Plan 08-07: Esc handler — cancel in-flight split/merge ───────────────────
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setSplitClickPts([]);
+        setMergeFirstId(null);
+        setMergeFirstCoords(null);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
+
+  // Reset split/merge state when tool changes away from S or M
+  useEffect(() => {
+    if (activeTool !== 'S') setSplitClickPts([]);
+    if (activeTool !== 'M') {
+      setMergeFirstId(null);
+      setMergeFirstCoords(null);
+    }
+  }, [activeTool]);
+
+  // ── Plan 08-07: NOT_ADJACENT auto-dismiss ─────────────────────────────────────
+  const showNotAdjacent = useCallback(() => {
+    onNotAdjacent?.(true);
+    setTimeout(() => onNotAdjacent?.(false), NOT_ADJACENT_DISMISS_MS);
+  }, [onNotAdjacent]);
 
   // ── Alt-key state (D-28: Alt held → disable snap for current drag) ──────────
   const [altHeld, setAltHeld] = useState(false);
@@ -402,25 +462,156 @@ export const VertexEditLayer: React.FC<Props> = ({
     [projection, isEditableTier, vertices, projectId, activeTerritoryId, stageRef, altHeld, rebuildSharedIndex],
   );
 
-  // ── Add vertex handler (D-01, D-06) ────────────────────────────────────────
+  // ── Add vertex handler (D-01, D-06) + Split + Merge click dispatch ──────────
   const handleLayerClick = useCallback(
     (e: Konva.KonvaEventObject<MouseEvent>) => {
       if (!isEditableTier) return;
-      if (activeTool !== 'A') return;
-      if (vertexCount >= 1000) return;
-      if (e.target !== e.currentTarget) return;
+      if (e.target !== e.currentTarget && activeTool !== 'S' && activeTool !== 'M') return;
 
       const stage = e.target.getStage();
       if (!stage) return;
-
       const pointerPos = stage.getPointerPosition();
       if (!pointerPos) return;
 
       const [lon, lat] = canvasToGeo(pointerPos.x, pointerPos.y, projection);
-      const newId = crypto.randomUUID();
-      useEditorStore.getState().addVertex(newId, lat, lon);
+
+      // ── Add tool (D-01, D-06) ──────────────────────────────────────────────
+      if (activeTool === 'A') {
+        if (e.target !== e.currentTarget) return;
+        if (vertexCount >= 1000) return;
+        const newId = crypto.randomUUID();
+        useEditorStore.getState().addVertex(newId, lat, lon);
+        return;
+      }
+
+      // ── Split tool (EDIT-POLYGON-01, D-07) ────────────────────────────────
+      if (activeTool === 'S') {
+        const newPts: Array<[number, number]> = [...splitClickPts, [lon, lat] as [number, number]];
+        if (newPts.length === 1) {
+          // First click — record first point, wait for second
+          setSplitClickPts(newPts);
+          return;
+        }
+        // Second click — we have the full cut line
+        setSplitClickPts([]);
+        if (!activeTerritoryId || !projectId || !branchId) return;
+
+        // Build parent coords from current vertices (ordered insertion sequence)
+        const parentCoords: Array<[number, number]> = Object.values(vertices).map(
+          (v) => [v.lon, v.lat] as [number, number],
+        );
+
+        void useEditorStore.getState().splitPolygon(
+          activeTerritoryId,
+          parentCoords,
+          newPts,
+          branchId,
+          projectId,
+        );
+        return;
+      }
+
+      // ── Merge tool (EDIT-POLYGON-02, D-08, D-09) ─────────────────────────
+      if (activeTool === 'M') {
+        // Clicks must land on polygon handles (circles); get vertex id from event target
+        const targetId = (e.target as Konva.Node & { attrs?: { 'data-vertex-id'?: string } })
+          ?.attrs?.['data-vertex-id'];
+
+        if (!mergeFirstId) {
+          // First selection — record polygon id + coords
+          if (!activeTerritoryId) return;
+          const firstCoords: Array<[number, number]> = Object.values(vertices).map(
+            (v) => [v.lon, v.lat] as [number, number],
+          );
+          setMergeFirstId(activeTerritoryId);
+          setMergeFirstCoords(firstCoords);
+          return;
+        }
+
+        // Second selection — attempt merge
+        if (!activeTerritoryId || !projectId || !branchId) return;
+        const secondId = activeTerritoryId;
+        if (secondId === mergeFirstId) {
+          // Same polygon selected twice — reset
+          setMergeFirstId(null);
+          setMergeFirstCoords(null);
+          return;
+        }
+        const secondCoords: Array<[number, number]> = Object.values(vertices).map(
+          (v) => [v.lon, v.lat] as [number, number],
+        );
+        const capturedFirstCoords = mergeFirstCoords ?? [];
+        const capturedFirstId = mergeFirstId;
+        setMergeFirstId(null);
+        setMergeFirstCoords(null);
+
+        void (async () => {
+          const result = await useEditorStore.getState().mergePolygons(
+            capturedFirstId,
+            capturedFirstCoords,
+            secondId,
+            secondCoords,
+            branchId,
+            projectId,
+          );
+          if (result && 'error' in result && result.error === 'NOT_ADJACENT') {
+            showNotAdjacent();
+          }
+        })();
+
+        // Suppress unused variable warning for targetId
+        void targetId;
+        return;
+      }
     },
-    [isEditableTier, activeTool, vertexCount, projection],
+    [
+      isEditableTier, activeTool, vertexCount, projection,
+      splitClickPts, mergeFirstId, mergeFirstCoords,
+      activeTerritoryId, vertices, projectId, branchId,
+      showNotAdjacent,
+    ],
+  );
+
+  // ── Translate handler (EDIT-POLYGON-03, D-02) — drag on polygon interior ────
+  // V tool: when activeTool==='V' (translate mode) and user drags the layer
+  // background (not a vertex handle), translatePolygon is called on dragend.
+  // Delta = (finalGeo - startGeo).
+  const translateDragStartRef = useRef<{ lat: number; lon: number } | null>(null);
+
+  const handleLayerDragStart = useCallback(
+    (e: Konva.KonvaEventObject<DragEvent>) => {
+      if (!isEditableTier || activeTool !== 'V') return;
+      if (e.target !== e.currentTarget) return; // only interior drags
+      const stage = e.target.getStage();
+      if (!stage) return;
+      const pos = stage.getPointerPosition();
+      if (!pos) return;
+      const [lon, lat] = canvasToGeo(pos.x, pos.y, projection);
+      translateDragStartRef.current = { lat, lon };
+    },
+    [isEditableTier, activeTool, projection],
+  );
+
+  const handleLayerDragEnd = useCallback(
+    (e: Konva.KonvaEventObject<DragEvent>) => {
+      if (!isEditableTier || activeTool !== 'V') return;
+      if (e.target !== e.currentTarget) return;
+      if (!translateDragStartRef.current) return;
+      const stage = e.target.getStage();
+      if (!stage) return;
+      const pos = stage.getPointerPosition();
+      if (!pos) return;
+      const [finalLon, finalLat] = canvasToGeo(pos.x, pos.y, projection);
+      const dLat = finalLat - translateDragStartRef.current.lat;
+      const dLon = finalLon - translateDragStartRef.current.lon;
+      translateDragStartRef.current = null;
+
+      if (!activeTerritoryId || !projectId || !branchId) return;
+      void useEditorStore.getState().translatePolygon(
+        activeTerritoryId, dLat, dLon, branchId, projectId,
+      );
+    },
+    [isEditableTier, activeTool, projection, activeTerritoryId, projectId, branchId],
   );
 
   // ── Pitfall 10: clearCache on activeTerritoryId change ─────────────────────
@@ -443,11 +634,21 @@ export const VertexEditLayer: React.FC<Props> = ({
   // ── Render ──────────────────────────────────────────────────────────────────
   const listening = activeTerritoryId !== null;
 
+  // ── Split preview: canvas coords for first click point ──────────────────────
+  const splitPreviewPx = useMemo<{ x: number; y: number } | null>(() => {
+    if (activeTool !== 'S' || splitClickPts.length !== 1) return null;
+    const [lon, lat] = splitClickPts[0];
+    const [x, y] = geoToCanvas(lon, lat, projection);
+    return { x, y };
+  }, [activeTool, splitClickPts, projection]);
+
   return (
     <Layer
       ref={layerRef as React.RefObject<Konva.Layer>}
       listening={listening}
       onClick={handleLayerClick}
+      onDragStart={handleLayerDragStart}
+      onDragEnd={handleLayerDragEnd}
     >
       {visibleEntries.map(({ id, lat, lon }) => {
         const preview = previewRef.current[id];
@@ -504,6 +705,20 @@ export const VertexEditLayer: React.FC<Props> = ({
           fill="transparent"
           listening={false}
           {...({ 'data-testid': 'snap-target-indicator' } as Record<string, string>)}
+        />
+      )}
+
+      {/* Plan 08-07 S tool: Split line preview — first click point indicator */}
+      {splitPreviewPx && (
+        <Circle
+          x={splitPreviewPx.x}
+          y={splitPreviewPx.y}
+          radius={6}
+          fill="#f97316"
+          stroke="#fff"
+          strokeWidth={1.5}
+          listening={false}
+          {...({ 'data-testid': 'split-first-click-indicator' } as Record<string, string>)}
         />
       )}
     </Layer>

@@ -74,6 +74,18 @@ interface EditorState {
 // Actions shape
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Polygon op result types (plan 08-07 — optimistic preview + /editor/apply)
+// ---------------------------------------------------------------------------
+
+export interface ApplyOpResult {
+  snapshot_id: string;
+  edits_since_snapshot: number;
+  new_hash: string;
+  new_count: number;
+  allocated_original_idx: number | null;
+}
+
 interface EditorActions {
   // Non-undoable
   selectTool: (t: EditTool) => void;
@@ -86,6 +98,35 @@ interface EditorActions {
   moveVertex: (id: string, lat: number, lon: number) => void;
   addVertex: (id: string, lat: number, lon: number) => void;
   deleteVertices: (ids: string[]) => void;  // one undoable op per D-29 marquee
+
+  // Plan 08-07: Polygon ops (EDIT-POLYGON-01..03)
+  // Each action: (1) builds optimistic local geometry via turf.js, (2) calls
+  // setVerticesAndLog for undo history, (3) POSTs to /editor/apply for
+  // branch-level hash bump. Backend returns NO geometry (BLOCKER-1 contract).
+  splitPolygon: (
+    parentId: string,
+    parentCoords: Array<[number, number]>,
+    cutCoords: Array<[number, number]>,
+    branchId: string,
+    projectId: string,
+  ) => Promise<ApplyOpResult | null>;
+
+  mergePolygons: (
+    firstId: string,
+    firstCoords: Array<[number, number]>,
+    secondId: string,
+    secondCoords: Array<[number, number]>,
+    branchId: string,
+    projectId: string,
+  ) => Promise<ApplyOpResult | { error: 'NOT_ADJACENT' } | null>;
+
+  translatePolygon: (
+    polygonId: string,
+    dLat: number,
+    dLon: number,
+    branchId: string,
+    projectId: string,
+  ) => Promise<ApplyOpResult | null>;
 
   // CHOKEPOINT: all undoable ops land here. Fires sink (TELEM-01) and includes
   // snapshot_payload_if_due on every 25th commit (D-37 auto-snapshot).
@@ -157,6 +198,198 @@ export const useEditorStore = create<EditorState & EditorActions>()(
         const next = { ...get().vertices };
         ids.forEach((i) => delete next[i]);
         get().setVerticesAndLog(next, { op: 'multi_delete', ts: Date.now(), vertexIds: ids });
+      },
+
+      // ── Plan 08-07: Polygon ops ────────────────────────────────────────────
+
+      splitPolygon: async (parentId, parentCoords, cutCoords, branchId, projectId) => {
+        // Step 1: Optimistic preview via turf.js lineSplit
+        // Import turf lazily to keep initial bundle lean
+        const turfLineSplit = await import('@turf/line-split').then((m) => m.default ?? m.lineSplit ?? m);
+        const turfHelpers = await import('@turf/helpers');
+
+        const parentPoly = turfHelpers.polygon([[...parentCoords, parentCoords[0]]]);
+        const cutLine = turfHelpers.lineString(cutCoords);
+
+        try {
+          // Optimistic preview via turf — result not used for store state directly;
+          // canonical vertex reconciliation happens when /render is invoked (BLOCKER-1 / D-17).
+          turfLineSplit(cutLine, parentPoly);
+        } catch {
+          // Optimistic preview fails gracefully — backend still validates
+        }
+
+        // Step 2: Build optimistic next-vertices from pieces (simplified: keep existing vertices unchanged)
+        const currentVertices = get().vertices;
+        // setVerticesAndLog with the op for undo history (no geometry change to vertices map here —
+        // full vertex reconciliation happens when /render is invoked in 08-07c)
+        get().setVerticesAndLog(currentVertices, {
+          op: 'split',
+          ts: Date.now(),
+          parentId,
+          parentCoords,
+          cutCoords,
+        });
+
+        // Step 3: POST /editor/apply for branch-level hash bump + original_idx allocation
+        try {
+          const resp = await fetch(`/api/v3/projects/${projectId}/editor/apply`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              op_type: 'split',
+              payload: {
+                parent_id: parentId,
+                parent_coords: parentCoords,
+                cut_coords: cutCoords,
+                child_name: `${parentId} (2)`,
+              },
+              branch_id: branchId,
+            }),
+          });
+          if (!resp.ok) {
+            console.warn('[useEditorStore] /editor/apply split failed:', resp.status);
+            return null;
+          }
+          const result = (await resp.json()) as ApplyOpResult;
+          // Step 4: server allocated original_idx — log it for downstream use
+          if (result.allocated_original_idx != null) {
+            // Patch local state with allocated idx for reference (not in undo history)
+            useEditorStore.setState({
+              editLog: [
+                ...get().editLog.slice(0, -1),
+                {
+                  ...get().editLog[get().editLog.length - 1],
+                  allocated_original_idx: result.allocated_original_idx,
+                },
+              ],
+            });
+          }
+          return result;
+        } catch (err) {
+          console.warn('[useEditorStore] /editor/apply split network error', err);
+          return null;
+        }
+      },
+
+      mergePolygons: async (firstId, firstCoords, secondId, secondCoords, branchId, projectId) => {
+        // Step 1: Client-side adjacency check via turf.js booleanTouches
+        const booleanTouches = await import('@turf/boolean-touches').then((m) => m.default ?? m.booleanTouches ?? m);
+        const turfHelpers = await import('@turf/helpers');
+
+        const polyA = turfHelpers.polygon([[...firstCoords, firstCoords[0]]]);
+        const polyB = turfHelpers.polygon([[...secondCoords, secondCoords[0]]]);
+
+        let clientAdjacent = false;
+        try {
+          clientAdjacent = booleanTouches(polyA, polyB);
+        } catch {
+          // Turf error → let backend decide
+          clientAdjacent = true;
+        }
+
+        if (!clientAdjacent) {
+          // Fast client-side rejection — no API call, no edit event
+          return { error: 'NOT_ADJACENT' as const };
+        }
+
+        // Step 2: Compute optimistic union via turf.js union
+        const turfUnion = await import('@turf/union').then((m) => m.default ?? m.union ?? m);
+        let mergedCoords: Array<[number, number]> = [];
+        try {
+          const unionResult = turfUnion(turfHelpers.featureCollection([polyA, polyB]));
+          if (unionResult?.geometry?.type === 'Polygon') {
+            mergedCoords = unionResult.geometry.coordinates[0] as Array<[number, number]>;
+          }
+        } catch {
+          // Optimistic union fails gracefully
+        }
+
+        // Step 3: Optimistic local update (no vertices map change — canonical in 08-07c)
+        const currentVertices = get().vertices;
+        get().setVerticesAndLog(currentVertices, {
+          op: 'merge',
+          ts: Date.now(),
+          firstId,
+          firstCoords,
+          secondId,
+          secondCoords,
+          mergedCoords,
+        });
+
+        // Step 4: POST /editor/apply; server re-validates adjacency
+        try {
+          const resp = await fetch(`/api/v3/projects/${projectId}/editor/apply`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              op_type: 'merge',
+              payload: {
+                first_id: firstId,
+                first_coords: firstCoords,
+                second_id: secondId,
+                second_coords: secondCoords,
+              },
+              branch_id: branchId,
+            }),
+          });
+          if (resp.status === 400) {
+            const body = (await resp.json()) as { detail?: string };
+            if (body.detail?.includes('NOT_ADJACENT')) {
+              // Server disagrees — rollback via zundo undo
+              useEditorStore.temporal.getState().undo();
+              return { error: 'NOT_ADJACENT' as const };
+            }
+          }
+          if (!resp.ok) {
+            console.warn('[useEditorStore] /editor/apply merge failed:', resp.status);
+            useEditorStore.temporal.getState().undo();
+            return null;
+          }
+          return (await resp.json()) as ApplyOpResult;
+        } catch (err) {
+          console.warn('[useEditorStore] /editor/apply merge network error', err);
+          useEditorStore.temporal.getState().undo();
+          return null;
+        }
+      },
+
+      translatePolygon: async (polygonId, dLat, dLon, branchId, projectId) => {
+        // Step 1: Optimistic local update — apply delta to all vertices of the polygon
+        // (vertices map holds individual vertex coords; polygon boundary = all vertices)
+        const currentVertices = get().vertices;
+        const nextVertices: Record<string, VertexCoord> = {};
+        for (const [id, v] of Object.entries(currentVertices)) {
+          nextVertices[id] = { lat: v.lat + dLat, lon: v.lon + dLon };
+        }
+        get().setVerticesAndLog(nextVertices, {
+          op: 'translate',
+          ts: Date.now(),
+          polygonId,
+          dLat,
+          dLon,
+        });
+
+        // Step 2: POST /editor/apply for branch hash bump
+        try {
+          const resp = await fetch(`/api/v3/projects/${projectId}/editor/apply`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              op_type: 'translate',
+              payload: { polygon_id: polygonId, d_lat: dLat, d_lon: dLon },
+              branch_id: branchId,
+            }),
+          });
+          if (!resp.ok) {
+            console.warn('[useEditorStore] /editor/apply translate failed:', resp.status);
+            return null;
+          }
+          return (await resp.json()) as ApplyOpResult;
+        } catch (err) {
+          console.warn('[useEditorStore] /editor/apply translate network error', err);
+          return null;
+        }
       },
 
       // CHOKEPOINT — every undoable commit lands here.
