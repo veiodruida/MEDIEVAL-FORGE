@@ -144,6 +144,15 @@ class RegionConfig:
     # Branch switch = cache HIT if that branch was previously generated.
     branch_id: str = "main"
 
+    # Phase 08 Plan 08 (LANDMASK-01, DAG-04 / WARNING-4 fix):
+    # When set, build_land_mask uses these coords directly instead of
+    # rasterizing from PT/ES municipality inputs. None = default pipeline
+    # behavior (D-17 parity carry-forward — Iberia tests stay byte-equal).
+    # Listed in STAGE_READS["landmask"] so version_token invalidates on edit.
+    # T-08-08-01: does NOT touch border_polygon — PT/ES border is separate.
+    # T-08-08-02: max_length enforced at API layer (Pydantic Field cap 50000).
+    landmask_override: Optional[List[Tuple[float, float]]] = field(default=None)
+
     def __post_init__(self):
         if self.lon_scale is None:
             center_lat = (self.lat_min + self.lat_max) / 2

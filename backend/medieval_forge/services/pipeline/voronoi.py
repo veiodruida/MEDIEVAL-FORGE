@@ -160,8 +160,47 @@ def build_hierarchy_maps(result: np.ndarray, bc, bd, bk, nb):
     return pc, pd, pk
 
 
+def build_per_country_trees(
+    condados: list[dict],
+) -> dict[str, object]:
+    """Build one KD-tree per distinct country in condados list.
+
+    Phase 08 Plan 08 (LANDMASK-01, CLAUDE.md Rule #3 invariant test helper).
+    Exposed so integration tests can assert the per-country tree count = number
+    of distinct countries, verifying Rule #3 is preserved after a landmask edit.
+
+    Args:
+        condados: list of dicts with at least {'country': str, 'lon': float,
+                  'lat': float}. These are NOT the internal condados tuples from
+                  cfg.condados — this function accepts the simplified test format
+                  used in LANDMASK-02 assertions.
+
+    Returns:
+        dict[country_key, cKDTree]: one entry per distinct country key.
+
+    CLAUDE.md Rule #3 invariant: len(result) == number of distinct country keys.
+    Never a single global tree across PT/ES boundary.
+    """
+    from collections import defaultdict
+
+    country_points: dict[str, list[tuple[float, float]]] = defaultdict(list)
+    for c in condados:
+        country = c.get("country", "unknown")
+        lon = c.get("lon", 0.0)
+        lat = c.get("lat", 0.0)
+        country_points[country].append((lon, lat))
+
+    trees: dict[str, object] = {}
+    for country, pts in country_points.items():
+        arr = np.array(pts, dtype=np.float32)
+        trees[country] = cKDTree(arr)
+
+    return trees
+
+
 __all__ = [
     "setup_baronies",
     "rasterize_baronies",
     "build_hierarchy_maps",
+    "build_per_country_trees",
 ]

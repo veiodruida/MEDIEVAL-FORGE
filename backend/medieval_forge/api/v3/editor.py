@@ -130,11 +130,15 @@ async def validate_batch(
 class ApplyOpBody(BaseModel):
     """Request body for POST /editor/apply.
 
-    op_type: 'split' | 'merge' | 'translate'
+    op_type: 'split' | 'merge' | 'translate' | 'landmask_replace'
     payload: op-specific dict (coords, ids, delta — validated internally per op_type)
     branch_id: the branch to persist the op on
+
+    Phase 08 Plan 08: 'landmask_replace' added for LANDMASK-01.
+    payload shape: {'new_landmask_coords': [[lon, lat], ...]}
+    T-08-08-02: new_landmask_coords capped at 50000 entries via LandmaskReplacePayload.
     """
-    op_type: str = Field(..., pattern=r"^(split|merge|translate)$")
+    op_type: str = Field(..., pattern=r"^(split|merge|translate|landmask_replace)$")
     payload: dict
     branch_id: str = Field(..., min_length=1, max_length=255)
 
@@ -244,6 +248,29 @@ async def apply_op(
         # geometry validation is the frontend's responsibility (and server-side
         # replay happens in compute()), we allocate optimistically here.
         allocated_original_idx = await allocate_next_original_idx(db, body.branch_id)
+
+    elif body.op_type == "landmask_replace":
+        # Phase 08 Plan 08 (LANDMASK-01, T-08-08-01, T-08-08-02):
+        # Validate new_landmask_coords is present and within DoS cap.
+        # T-08-08-01: we do NOT touch border_polygon — it lives on cfg, not payload.
+        # T-08-08-02: cap at 50000 entries (Pydantic cannot validate nested list
+        #   length on an untyped dict field, so we validate here imperatively).
+        new_coords = body.payload.get("new_landmask_coords")
+        if new_coords is None:
+            raise HTTPException(
+                status_code=400,
+                detail="INVALID_PAYLOAD: landmask_replace requires new_landmask_coords",
+            )
+        if not isinstance(new_coords, list):
+            raise HTTPException(
+                status_code=400,
+                detail="INVALID_PAYLOAD: new_landmask_coords must be a list",
+            )
+        if len(new_coords) > 50000:
+            raise HTTPException(
+                status_code=422,
+                detail="INVALID_PAYLOAD: new_landmask_coords exceeds max_length=50000 (T-08-08-02)",
+            )
 
     # --- Persist edit event ---
 

@@ -53,8 +53,11 @@ def compute_version_token(stage_name: str, reads: frozenset[str],
 # D-02 reads declarations — single source of truth for which cfg fields each
 # stage consumes. Phase 04 sliders touch only median, fragment, smooth, merge.
 STAGE_READS: dict[str, frozenset[str]] = {
+    # Phase 08 Plan 08 (DAG-04 / WARNING-4 fix): landmask_override added so
+    # version_token changes when user replaces the landmask polygon via editor.
     "landmask":    frozenset({"map_w", "map_h", "lon_min", "lon_max",
-                              "lat_min", "lat_max", "upscale"}),
+                              "lat_min", "lat_max", "upscale",
+                              "landmask_override"}),
     "border":      frozenset({"border_polygon", "pt_duchies"}),
     "voronoi":     frozenset({"condados", "rng_seed"}),
     "median":      frozenset({"median_passes"}),

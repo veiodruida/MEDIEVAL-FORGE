@@ -190,6 +190,15 @@ def build_land_mask(pt_data, es_municipalities, cfg: RegionConfig,
     Critical (P-11 + CLAUDE.md rule #6): the island filter scales with
     resolution via `cfg.island_min_px * (w / cfg.map_w)` so the 2x mask is
     an INDEPENDENT render with 4× the island threshold (not an upscale).
+
+    Phase 08 Plan 08 (LANDMASK-01, DAG-04): when cfg.landmask_override is set,
+    rasterize directly from the override polygon instead of PT/ES municipality
+    inputs. This is the editor replace path — pt_data and es_municipalities are
+    ignored. When override is None (default), behavior is unchanged from pre-
+    Phase-08 (D-17 parity carry-forward).
+
+    T-08-08-01: landmask_override does NOT touch cfg.border_polygon. The PT/ES
+    border stays a separate read-only surface (Pitfall 3 / CLAUDE.md Rule #3).
     """
     w = target_w or cfg.map_w
     h = target_h or cfg.map_h
@@ -197,6 +206,27 @@ def build_land_mask(pt_data, es_municipalities, cfg: RegionConfig,
     land_img = Image.new("L", (w, h), 0)
     draw = ImageDraw.Draw(land_img)
 
+    # Phase 08 Plan 08: landmask_override fast-path — skip municipality data.
+    if cfg.landmask_override is not None:
+        pts = [geo_to_pixel(lo, la, cfg, w, h) for lo, la in cfg.landmask_override
+               if cfg.lon_min - 1 <= lo <= cfg.lon_max + 1 and
+               cfg.lat_min - 1 <= la <= cfg.lat_max + 1]
+        if len(pts) >= 3:
+            draw.polygon(pts, fill=255)
+        land = np.array(land_img) > 0
+        # Apply island filter (same as default path — CLAUDE.md rule #6 preserved)
+        labeled, n = nd_label(land)
+        if n > 0:
+            sizes = np.bincount(labeled.ravel())
+            if len(sizes) > 1:
+                main_lbl = np.argmax(sizes[1:]) + 1
+                threshold = cfg.island_min_px * (w / cfg.map_w)
+                for lbl in range(1, n + 1):
+                    if lbl != main_lbl and sizes[lbl] < threshold:
+                        land[labeled == lbl] = False
+        return land
+
+    # Default path: rasterize from PT/ES municipality data (D-01 verbatim port).
     # Draw PT concelhos
     if pt_data:
         for feat in pt_data.get('features', []):
@@ -224,12 +254,16 @@ def build_land_mask(pt_data, es_municipalities, cfg: RegionConfig,
     land = np.array(land_img) > 0
 
     # Remove tiny disconnected islands (P-11: scales with target_w / cfg.map_w)
+    # Rule 1 bug-fix: n==0 means all-ocean result; skip island removal entirely
+    # to avoid np.argmax on empty array (ValueError).
     labeled, n = nd_label(land)
-    sizes = np.bincount(labeled.ravel())
-    main_lbl = np.argmax(sizes[1:]) + 1
-    for lbl in range(1, n + 1):
-        if lbl != main_lbl and sizes[lbl] < cfg.island_min_px * (w / cfg.map_w):
-            land[labeled == lbl] = False
+    if n > 0:
+        sizes = np.bincount(labeled.ravel())
+        if len(sizes) > 1:
+            main_lbl = np.argmax(sizes[1:]) + 1
+            for lbl in range(1, n + 1):
+                if lbl != main_lbl and sizes[lbl] < cfg.island_min_px * (w / cfg.map_w):
+                    land[labeled == lbl] = False
 
     return land
 
