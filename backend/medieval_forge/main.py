@@ -114,6 +114,8 @@ from .api.v3 import llamacpp as llamacpp_v3  # noqa: E402
 from .api.v3 import ollama as ollama_v3  # noqa: E402
 # Phase 08 plan 03a — Branch CRUD (D-10/D-11/D-13/D-15/D-22).
 from .api.v3 import branches as branches_v3  # noqa: E402
+# Phase 08 plan 06a — Editor validate endpoint (POST /editor/validate batch).
+from .api.v3.editor import router as editor_router  # noqa: E402
 
 app.include_router(projects_router, prefix="/api")
 # v1 export_router mount REMOVED (D-04) -- replaced by v3_export_router below.
@@ -138,6 +140,8 @@ app.include_router(llamacpp_v3.router, prefix="/api")
 app.include_router(ollama_v3.router, prefix="/api")
 # Phase 08 plan 03a — Branch CRUD router (/v3/projects/{id}/branches).
 app.include_router(branches_v3.router, prefix="/api")
+# Phase 08 plan 06a — Editor validate router (/v3/projects/{id}/editor/validate).
+app.include_router(editor_router, prefix="/api")
 
 # /assets/* — JS/CSS bundles. Only mount if directory exists (frontend may
 # not be built yet during early development).
