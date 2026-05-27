@@ -21,6 +21,16 @@ vi.mock('../../../api/render', () => ({
   getStageRasterUrl: vi.fn(),
 }))
 
+// Mock BranchPicker so WorkspaceToolbar tests don't need QueryClientProvider
+// (BranchPicker uses useBranches which requires TanStack context)
+vi.mock('../../../components/editor/BranchPicker', () => ({
+  BranchPicker: () => null,
+}))
+// Mock EditorSyncBridge (null-render; no network calls needed here)
+vi.mock('../../../components/editor/EditorSyncBridge', () => ({
+  EditorSyncBridge: () => null,
+}))
+
 import { postRenderCancel } from '../../../api/render'
 
 const PROJECT: Project = {

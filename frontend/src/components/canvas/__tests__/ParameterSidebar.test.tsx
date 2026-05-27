@@ -37,6 +37,23 @@ vi.mock('../../../hooks/useParameterStudioDispatch', () => ({
   useParameterStudioDispatch: vi.fn(() => Object.assign(vi.fn(), { flush: vi.fn() })),
 }))
 
+// Mock snapshots API so ParameterSidebar's D-19 useCreateSnapshot doesn't
+// require QueryClientProvider in these pre-existing unit tests.
+vi.mock('../../../api/snapshots', () => ({
+  useCreateSnapshot: vi.fn(() => ({
+    mutateAsync: vi.fn().mockResolvedValue({ snapshot_id: 'snap-1', seq: 1, created_at: '' }),
+    isPending: false,
+  })),
+  useBranchSnapshots: vi.fn(() => ({ data: [], isLoading: false, error: null })),
+  useRestoreSnapshot: vi.fn(() => ({ mutateAsync: vi.fn(), isPending: false })),
+  useAppendEditEvent: vi.fn(() => ({ mutateAsync: vi.fn(), isPending: false })),
+}))
+
+// Mock SliderConflictDialog so it doesn't pull in additional Radix context
+vi.mock('../../../components/editor/SliderConflictDialog', () => ({
+  SliderConflictDialog: () => null,
+}))
+
 function wrap(node: ReactNode) {
   return <Theme>{node}</Theme>
 }

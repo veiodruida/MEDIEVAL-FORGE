@@ -6,6 +6,15 @@ import type { ReactNode } from 'react'
 import { WorkspaceToolbar } from '../WorkspaceToolbar'
 import type { Project } from '../../../api/client'
 
+// Mock BranchPicker + EditorSyncBridge so WorkspaceToolbar tests don't need
+// QueryClientProvider (BranchPicker uses useBranches which requires TanStack context)
+vi.mock('../../../components/editor/BranchPicker', () => ({
+  BranchPicker: () => null,
+}))
+vi.mock('../../../components/editor/EditorSyncBridge', () => ({
+  EditorSyncBridge: () => null,
+}))
+
 const PROJECT: Project = {
   id: 'p1',
   name: 'Iberia 868',
