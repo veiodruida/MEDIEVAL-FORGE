@@ -4,7 +4,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, JSON, String, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, JSON, LargeBinary, String, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -119,3 +119,44 @@ class Branch(Base):
     __table_args__ = (
         UniqueConstraint("project_id", "name", name="uq_branch_project_name"),
     )
+
+
+class Snapshot(Base):
+    """Phase 08 D-12: per-branch snapshot blob (gzip+json of geojson+config+edit_log).
+
+    Trigger values: "auto" | "manual" | "pre_slider_change" (D-19).
+    seq is 1-based monotonic per branch (UniqueConstraint enforces no duplicate seq).
+    """
+    __tablename__ = "snapshots"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_new_uuid)
+    branch_id: Mapped[str] = mapped_column(
+        ForeignKey("branches.id"), nullable=False, index=True
+    )
+    seq: Mapped[int] = mapped_column(Integer, nullable=False)
+    blob: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    trigger: Mapped[str] = mapped_column(
+        String(16), nullable=False
+    )  # "auto" | "manual" | "pre_slider_change"
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("branch_id", "seq", name="uq_snapshot_branch_seq"),
+    )
+
+
+class EditEvent(Base):
+    """Phase 08 D-35: edit operation log for a branch.
+
+    op_type examples: "vertex_move", "vertex_add", "vertex_delete", "split", "merge".
+    payload is stored as JSON; op_type pattern guard is at the endpoint layer.
+    """
+    __tablename__ = "edit_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    branch_id: Mapped[str] = mapped_column(
+        ForeignKey("branches.id"), nullable=False, index=True
+    )
+    op_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    payload: Mapped[dict] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, nullable=False)
