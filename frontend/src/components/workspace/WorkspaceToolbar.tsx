@@ -1,4 +1,4 @@
-import { Box, Button, Flex, IconButton, Text } from '@radix-ui/themes'
+import { Box, Button, Flex, IconButton, Text, Tooltip } from '@radix-ui/themes'
 import { ChevronLeftIcon, MixerHorizontalIcon } from '@radix-ui/react-icons'
 import { Link } from 'react-router-dom'
 import { GenerateStatusBadge } from './GenerateStatusBadge'
@@ -6,6 +6,28 @@ import type { Project } from '../../api/client'
 import type { PipelineStage, RunState } from '../../stores/useRunStore'
 import { usePipelineParams } from '../../stores/usePipelineParams'
 import { postRenderCancel } from '../../api/render'
+import { useEditorStore } from '../../stores/useEditorStore'
+import { BranchPicker } from '../editor/BranchPicker'
+import { EditorSyncBridge } from '../editor/EditorSyncBridge'
+
+// ---------------------------------------------------------------------------
+// Gemini review (UX): Portuguese label map for undo/redo tooltip per EditOp.op.
+// Surfaced in toolbar via undoLabels / redoLabels from useEditorStore (08-04).
+// ---------------------------------------------------------------------------
+
+export const OP_LABEL_PT: Record<string, string> = {
+  move: 'Mover Vértice',
+  add: 'Adicionar Vértice',
+  delete: 'Remover Vértice',
+  multi_delete: 'Remover Vértices',
+  split: 'Dividir',
+  merge: 'Mesclar',
+  translate: 'Mover Polígono',
+  simplify: 'Simplificar',
+  landmask_vertex_move: 'Mover Vértice (Landmask)',
+  landmask_vertex_add: 'Adicionar Vértice (Landmask)',
+  landmask_vertex_delete: 'Remover Vértice (Landmask)',
+}
 
 export interface WorkspaceToolbarProps {
   project: Project | undefined
@@ -22,7 +44,11 @@ export interface WorkspaceToolbarProps {
  * 48px sticky toolbar per UI-SPEC §Layout Contract.
  * Left zone: ⬡ Params toggle + ← Projetos + project name.
  * Center: GenerateStatusBadge → red "Cancelar" button when state ∈ {generating, rendering}.
- * Right: Gerar Mapa / Regenerar (disabled when running) + Exportar ZIP.
+ * Right: BranchPicker (D-13) + Undo/Redo (undoLabels tooltip per Gemini review) +
+ *        Gerar Mapa / Regenerar (disabled when running) + Exportar ZIP.
+ *
+ * WARNING-6: EditorSyncBridge mounted once here so the edit-event sink is
+ * registered for the whole workspace session (plan 08-04 requirement).
  */
 export function WorkspaceToolbar({
   project,
@@ -35,6 +61,25 @@ export function WorkspaceToolbar({
 }: WorkspaceToolbarProps) {
   const sidebarOpen = usePipelineParams((s) => s.sidebarOpen)
   const setSidebarOpen = usePipelineParams((s) => s.setSidebarOpen)
+
+  // Gemini review (UX): undo/redo tooltip labels from undoLabels/redoLabels stacks.
+  const undoLabels = useEditorStore((s) => s.undoLabels)
+  const redoLabels = useEditorStore((s) => s.redoLabels)
+  const activeBranchId = useEditorStore((s) => s.activeBranchId)
+  const canUndo = useEditorStore.temporal.getState().pastStates.length > 0
+  const canRedo = useEditorStore.temporal.getState().futureStates.length > 0
+
+  const undoTopLabel = undoLabels.at(-1)
+  const redoTopLabel = redoLabels.at(-1)
+  const undoTooltip = undoTopLabel
+    ? `Desfazer ${OP_LABEL_PT[undoTopLabel] ?? undoTopLabel}`
+    : 'Desfazer'
+  const redoTooltip = redoTopLabel
+    ? `Refazer ${OP_LABEL_PT[redoTopLabel] ?? redoTopLabel}`
+    : 'Refazer'
+
+  const handleUndo = () => useEditorStore.temporal.getState().undo()
+  const handleRedo = () => useEditorStore.temporal.getState().redo()
 
   // D-16: cancel button replaces badge when runState === 'rendering'.
   // UI-SPEC §State Machine: generating shows the badge (no cancel); only rendering shows cancel.
@@ -108,6 +153,37 @@ export function WorkspaceToolbar({
         )}
 
         <Flex align="center" gap="2">
+          {/* D-13: Branch Picker zone — left of "Gerar Mapa" per UI-SPEC §Toolbar Layout */}
+          <BranchPicker projectId={project?.id} />
+
+          {/* Undo/Redo buttons with dynamic tooltip from undoLabels/redoLabels (Gemini review) */}
+          <Tooltip content={undoTooltip}>
+            <Button
+              variant="ghost"
+              size="2"
+              disabled={!canUndo}
+              onClick={handleUndo}
+              data-testid="toolbar-undo-btn"
+              aria-label={undoTooltip}
+              title={undoTooltip}
+            >
+              ↩
+            </Button>
+          </Tooltip>
+          <Tooltip content={redoTooltip}>
+            <Button
+              variant="ghost"
+              size="2"
+              disabled={!canRedo}
+              onClick={handleRedo}
+              data-testid="toolbar-redo-btn"
+              aria-label={redoTooltip}
+              title={redoTooltip}
+            >
+              ↪
+            </Button>
+          </Tooltip>
+
           <Button
             color="blue"
             variant="solid"
@@ -121,6 +197,14 @@ export function WorkspaceToolbar({
           </Button>
         </Flex>
       </Flex>
+
+      {/* WARNING-6: EditorSyncBridge registers the edit-event sink once for the
+          whole workspace session. Mount here so all plans (08-06a/b/07/08/09)
+          inherit the wiring automatically without per-component setup. */}
+      <EditorSyncBridge
+        projectId={project?.id}
+        branchId={activeBranchId}
+      />
     </Box>
   )
 }
