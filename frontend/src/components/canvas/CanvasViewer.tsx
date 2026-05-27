@@ -8,6 +8,8 @@ import { LayerTogglePanel } from './LayerTogglePanel'
 import { LegendCard } from './LegendCard'
 import { DecorationsLayer } from './DecorationsLayer'
 import { InteractionLayer } from './InteractionLayer'
+import { VertexEditLayer } from './VertexEditLayer'
+import { CoordTooltip } from './CoordTooltip'
 import { FitToViewButton } from './FitToViewButton'
 import { HoverTooltip } from './HoverTooltip'
 import { InspectorSidebar } from './InspectorSidebar'
@@ -29,6 +31,8 @@ import { useCanvasArtifacts } from '../../hooks/useCanvasArtifacts'
 import { useUIStore } from '../../stores/uiStore'
 import { usePipelineParams } from '../../stores/usePipelineParams'
 import { useRunStore } from '../../stores/useRunStore'
+import { useEditorStore } from '../../stores/useEditorStore'
+import type { ViewportBBox } from './VertexEditLayer'
 
 interface CanvasViewerProps {
   projectId: string
@@ -141,6 +145,32 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
     x: 0,
     y: 0,
   })
+
+  // CoordTooltip state for vertex drag (D-33, Phase 08 Plan 05).
+  // setCoordTooltip wired by 08-06a when drag emits lat/lon cursor position.
+  // Declared here so CoordTooltip renders as a DOM sibling from the start.
+  const [coordTooltip, setCoordTooltip] = useState<{
+    visible: boolean;
+    lat: number;
+    lon: number;
+    cursorX: number;
+    cursorY: number;
+  }>({ visible: false, lat: 0, lon: 0, cursorX: 0, cursorY: 0 })
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  void setCoordTooltip // suppress TS6133 until 08-06a wires drag callback
+
+  // Phase 08: activeTerritoryId from useEditorStore (for VertexEditLayer + clearCache)
+  const activeTerritoryId = useEditorStore((s) => s.activeTerritoryId)
+
+  // Pitfall 10: clearCache on activeTerritoryId change (Phase 08).
+  // Fires AFTER hydration completes — guard on stageRef.current.
+  useEffect(() => {
+    const stage = stageRef.current
+    if (!stage) return
+    stage.getLayers().forEach((layer) => {
+      layer.clearCache()
+    })
+  }, [activeTerritoryId])
 
   // Phase 04: stageView from usePipelineParams (UI-SPEC §StageViewToggle)
   const stageView = usePipelineParams((s) => s.stageView)
@@ -579,6 +609,35 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
   // be misleading).
   const isStageOverlay = stageView !== 'render-final'
 
+  // Phase 08 Plan 05: compute viewport bbox in world (lat/lon) coords for VertexEditLayer culling.
+  // Derived from projection + current stage scale/position. Recomputes on scale change.
+  const vertexViewport = useMemo((): ViewportBBox | null => {
+    if (!projection) return null
+    const stage = stageRef.current
+    const scale = stage?.scaleX() ?? currentScale
+    const pos = stage?.position() ?? { x: 0, y: 0 }
+    // Stage pixels visible: convert stage-origin corner + extent to map coords
+    const mapX0 = -pos.x / scale
+    const mapY0 = -pos.y / scale
+    const mapX1 = mapX0 + viewportW / scale
+    const mapY1 = mapY0 + viewportH / scale
+    // Clamp to map bounds
+    const cx0 = Math.max(0, mapX0)
+    const cy0 = Math.max(0, mapY0)
+    const cx1 = Math.min(projection.mapW, mapX1)
+    const cy1 = Math.min(projection.mapH, mapY1)
+    // canvasToGeo: lon = (x/mapW)*span/lonScale + lonMin; lat = latMax - (y/mapH)*(latMax-latMin)
+    const span = (projection.lonMax - projection.lonMin) * projection.lonScale
+    const lonAt = (x: number) => (x / projection.mapW) * span / projection.lonScale + projection.lonMin
+    const latAt = (y: number) => projection.latMax - (y / projection.mapH) * (projection.latMax - projection.latMin)
+    return {
+      lonMin: lonAt(cx0),
+      lonMax: lonAt(cx1),
+      latMin: latAt(cy1), // cy1 is bottom of screen = smaller lat
+      latMax: latAt(cy0), // cy0 is top of screen = larger lat
+    }
+  }, [projection, currentScale, viewportW, viewportH])
+
   const canvasPane = (
     <div
       ref={setContainerRef}
@@ -633,11 +692,21 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
           isEditMode={false}
         />
         <InteractionLayer territories={effectiveTerritories} />
+        {/* Phase 08 Plan 05: 6th Konva layer (z=5) — VertexEditLayer with viewport-culled handles */}
+        <VertexEditLayer stageRef={stageRef} viewport={vertexViewport} />
       </Stage>
       <LayerTogglePanel />
       <LegendCard />
       <FitToViewButton onFit={fitToView} />
       <HoverTooltip name={hover.name} x={hover.x} y={hover.y} />
+      {/* Phase 08 Plan 05: CoordTooltip DOM overlay for vertex drag (D-33) */}
+      <CoordTooltip
+        lat={coordTooltip.lat}
+        lon={coordTooltip.lon}
+        cursorX={coordTooltip.cursorX}
+        cursorY={coordTooltip.cursorY}
+        visible={coordTooltip.visible}
+      />
       {previewPrior && (
         <div
           data-testid="preview-prior-badge"
