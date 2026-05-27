@@ -285,3 +285,44 @@ def test_manifest_schema_accepts_research_overlay_applied_bool_default_false() -
     payload["research_overlay_applied"] = True
     parsed_true = ManifestSchema.model_validate(payload)
     assert parsed_true.research_overlay_applied is True
+
+
+# ---------------------------------------------------------------------------
+# Phase 08 Plan 10 (D-16 + Pitfall 4): branch_name/snapshot_id/snapshot_timestamp
+# ---------------------------------------------------------------------------
+
+
+def test_manifest_schema_accepts_null_branch_fields_for_non_branch_export() -> None:
+    """D-16 backward-compat: non-branch exports have branch_name=None (Iberia gold path).
+
+    All three fields are Optional with None default — existing Phase 06 callers that
+    omit them entirely still validate cleanly.
+    """
+    # All three absent — default None
+    parsed = ManifestSchema.model_validate(_valid_manifest_payload())
+    assert parsed.branch_name is None
+    assert parsed.snapshot_id is None
+    assert parsed.snapshot_timestamp is None
+
+
+def test_manifest_schema_accepts_populated_branch_fields_for_branch_export() -> None:
+    """D-16: branch exports carry branch_name + snapshot_id + snapshot_timestamp."""
+    from datetime import datetime, timezone
+
+    payload = _valid_manifest_payload()
+    payload["branch_name"] = "experiment"
+    payload["snapshot_id"] = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+    payload["snapshot_timestamp"] = "2026-05-27T10:30:00+00:00"
+    parsed = ManifestSchema.model_validate(payload)
+    assert parsed.branch_name == "experiment"
+    assert parsed.snapshot_id == "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+    assert isinstance(parsed.snapshot_timestamp, datetime)
+
+
+def test_manifest_schema_rejects_unknown_field_even_with_branch_fields_present() -> None:
+    """extra='forbid' still catches truly-unknown fields after Phase 08 extension."""
+    payload = _valid_manifest_payload()
+    payload["branch_name"] = "test"
+    payload["unknown_field_xyz"] = "should fail"
+    with pytest.raises(ValidationError):
+        ManifestSchema.model_validate(payload)

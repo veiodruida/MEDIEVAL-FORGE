@@ -186,6 +186,58 @@ def test_iberia_passes_export_gate(pipeline_output_yaml: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Phase 08 Plan 10 (D-16 + Pitfall 4): manifest schema_version=3 + branch fields
+# ---------------------------------------------------------------------------
+
+
+def test_iberia_manifest_schema_version_is_3_and_branch_fields_are_none(
+    pipeline_output_yaml: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """D-16 backward-compat (Pitfall 4): MANIFEST schema_version == 3; branch fields None.
+
+    Non-branch Iberia gold path must emit schema_version=3 and have
+    branch_name=None, snapshot_id=None, snapshot_timestamp=None in MANIFEST.json.
+    This asserts the Phase 08 Plan 10 additive extension doesn't break the
+    existing parity contract.
+    """
+    from medieval_forge.services import paths as paths_mod
+    from medieval_forge.services.export import build_unity_zip
+
+    project_id = "00000000-0000-0000-0000-08100p10par0"
+    monkeypatch.setattr(paths_mod, "PROJECTS_ROOT", tmp_path / "projects")
+    pdir = paths_mod.project_dir(project_id)
+    pdir.mkdir(parents=True, exist_ok=True)
+    (pdir / "output").mkdir(parents=True, exist_ok=True)
+    (pdir / "exports").mkdir(parents=True, exist_ok=True)
+    for src in pipeline_output_yaml.iterdir():
+        if src.is_file():
+            (pdir / "output" / src.name).write_bytes(src.read_bytes())
+
+    from dataclasses import replace as dc_replace
+    from medieval_forge.services.pipeline.region_loader import load_region
+    cfg = dc_replace(load_region("iberia_868"))
+    zip_path = build_unity_zip(project_id, cfg=cfg, region_key="iberia_868")
+
+    import zipfile as _zipfile
+    with _zipfile.ZipFile(zip_path) as zf:
+        manifest = json.loads(zf.read("MANIFEST.json").decode("utf-8"))
+
+    assert manifest["schema_version"] == 3, (
+        f"expected schema_version=3, got {manifest['schema_version']!r}"
+    )
+    assert manifest.get("branch_name") is None, (
+        f"expected branch_name=None for non-branch export, got {manifest.get('branch_name')!r}"
+    )
+    assert manifest.get("snapshot_id") is None, (
+        f"expected snapshot_id=None for non-branch export, got {manifest.get('snapshot_id')!r}"
+    )
+    assert manifest.get("snapshot_timestamp") is None, (
+        f"expected snapshot_timestamp=None for non-branch export, "
+        f"got {manifest.get('snapshot_timestamp')!r}"
+    )
+
+
+# ---------------------------------------------------------------------------
 # Plan 07-11 Task 1 — D-12 zero-LLM parity gate + REVIEWS fix #9 toggle parity
 # ---------------------------------------------------------------------------
 #
