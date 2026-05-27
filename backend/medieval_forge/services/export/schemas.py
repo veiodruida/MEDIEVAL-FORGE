@@ -5,10 +5,15 @@ ConfigDict(extra='forbid'), Field(...) constraints. No cross-field validators
 (D-19 deferral; v3.1 territory).
 
 MANIFEST_SCHEMA_VERSION bump from 1 → 2 per D-07.
+MANIFEST_SCHEMA_VERSION stays at 3 for Phase 08 Plan 10 (D-16 + Pitfall 4):
+  Phase 07 already bumped 2 → 3 for research_overlay_applied. Phase 08 extends
+  ManifestSchema additively with 3 Optional branch fields (None default) under
+  the same v3 boundary — no breaking change, no further version bump required.
 """
 from __future__ import annotations
 
 import re
+from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, RootModel, field_validator
 
@@ -16,6 +21,7 @@ from pydantic import BaseModel, ConfigDict, Field, RootModel, field_validator
 # bump 2 → 3 alongside CondadoEntrySchema gaining `kingdom_owner` + `historical_notes`
 # (D-03 + RESEARCH §Pitfall 8 — extend schema additively so extra='forbid' still rejects
 # truly-unknown fields while overlay merge can write the two optional fields).
+# Phase 08 Plan 10 (D-16): three branch fields added under same v3 (all Optional, None default).
 MANIFEST_SCHEMA_VERSION: int = 3
 
 _RGB_KEY_RE = re.compile(r"^(\d{1,3}),(\d{1,3}),(\d{1,3})$")
@@ -159,3 +165,9 @@ class ManifestSchema(BaseModel):
     # Phase 07 D-04: True when Plan 08's build_unity_zip merged a research overlay
     # into territory_metadata.json. False (default) for zero-LLM exports — D-12 parity.
     research_overlay_applied: bool = False
+    # Phase 08 Plan 10 D-16 (Pitfall 4): branch metadata for branch-aware exports.
+    # All three fields are Optional with None default — non-branch exports (Iberia
+    # gold path, Phase 06 parity) leave them None, preserving backward-compat.
+    branch_name: str | None = None
+    snapshot_id: str | None = None
+    snapshot_timestamp: datetime | None = None

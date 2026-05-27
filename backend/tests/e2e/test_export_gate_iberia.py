@@ -81,7 +81,7 @@ def test_iberia_manifest_branch_fields_none_for_non_branch_export(
     from medieval_forge.services import paths as paths_mod
     from medieval_forge.services.export import build_unity_zip
 
-    project_id = "00000000-0000-0000-0000-e2e0810plan0"
+    project_id = "00000000-0000-0000-0000-e2e081000000"
     monkeypatch.setattr(paths_mod, "PROJECTS_ROOT", tmp_path / "projects")
     pdir = paths_mod.project_dir(project_id)
     pdir.mkdir(parents=True, exist_ok=True)

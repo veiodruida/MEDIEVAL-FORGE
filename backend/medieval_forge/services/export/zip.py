@@ -100,6 +100,10 @@ def build_unity_zip(
     project_id: str,
     cfg: RegionConfig,
     region_key: str,
+    *,
+    branch_name: str | None = None,
+    snapshot_id: str | None = None,
+    snapshot_timestamp: "datetime | None" = None,
 ) -> Path:
     """Validate -> assemble -> write. Raises ValidationFailedError on gate failure.
 
@@ -108,6 +112,9 @@ def build_unity_zip(
         cfg: RegionConfig (validator reads cfg.ocean_far, cfg.blob_merge_px,
              cfg.map_w, cfg.map_h).
         region_key: persisted on MANIFEST.region_key for Unity consumers.
+        branch_name: D-16 — active branch name; None for non-branch exports.
+        snapshot_id: D-16 — latest snapshot UUID; None for non-branch exports.
+        snapshot_timestamp: D-16 — snapshot created_at (UTC); None for non-branch exports.
 
     Raises:
         FileNotFoundError: pipeline output dir empty (preserved v1 contract;
@@ -157,7 +164,13 @@ def build_unity_zip(
     generated_at_utc = now_utc.isoformat()
     exported_at_utc = now_utc.strftime("%Y%m%d-%H%M%S")
 
-    zip_name = f"medieval-forge-{project_id}-{exported_at_utc}.zip"
+    # D-16: append branch+snapshot suffix when branch context is provided
+    if branch_name is not None and snapshot_id is not None:
+        # Derive a compact seq label from the snapshot UUID (last 8 hex chars)
+        seq_label = snapshot_id.replace("-", "")[-8:]
+        zip_name = f"medieval-forge-{project_id}-{exported_at_utc}-{branch_name}-seq{seq_label}.zip"
+    else:
+        zip_name = f"medieval-forge-{project_id}-{exported_at_utc}.zip"
     zip_path = exports / zip_name
     tmp_path = zip_path.with_suffix(zip_path.suffix + ".tmp")
 
@@ -207,6 +220,11 @@ def build_unity_zip(
                 "sha256": sha,
             })
 
+        # D-16 (Phase 08 Plan 10): snapshot_timestamp serialized as ISO string or None.
+        snapshot_ts_str: str | None = None
+        if snapshot_timestamp is not None:
+            snapshot_ts_str = snapshot_timestamp.isoformat()
+
         manifest_payload = json.dumps(
             {
                 "schema_version": MANIFEST_SCHEMA_VERSION,
@@ -220,6 +238,11 @@ def build_unity_zip(
                 "files": files_manifest,
                 # D-04 + CONTEXT canonical_refs: MANIFEST gains research_overlay_applied.
                 "research_overlay_applied": research_overlay_applied,
+                # D-16 (Phase 08 Plan 10): branch metadata. None for non-branch exports
+                # (Pitfall 4 backward-compat: Optional fields preserve Phase 06 parity).
+                "branch_name": branch_name,
+                "snapshot_id": snapshot_id,
+                "snapshot_timestamp": snapshot_ts_str,
             },
             indent=2,
         )

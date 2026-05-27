@@ -8,17 +8,24 @@ Phase 06 frontend swap is deferred per D-19 -- the React Export button still
 calls v1 /api/projects/{id}/export until Phase 06.1 / 07. That button is
 TEMPORARILY broken between this PR merge and the UI swap. Acceptable per
 CONTEXT.md (tools-first delivery).
+
+Phase 08 Plan 10 (D-16): POST body extended with optional branch_id. When set,
+endpoint resolves active branch + latest snapshot and passes branch metadata
+into build_unity_zip. Non-branch callers (no body / branch_id=null) are
+unaffected — backward-compat preserved (Pitfall 4).
 """
 from __future__ import annotations
 
 import logging
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...database import get_db
-from ...models import Project
+from ...models import Branch, Project, Snapshot
 from ...services.export import (
     ValidationFailedError,
     build_unity_zip,
@@ -27,11 +34,21 @@ from ...services.export import (
 from ...services.export.zip import UNITY_ZIP_SPEC, resolve_generated_dir
 from ...services.paths import is_valid_uuid, project_dir
 from ...services.pipeline.region_loader import load_region
+from ...services.branches.service import list_snapshots
 
 logger = logging.getLogger(__name__)
 
 # CRITICAL: prefix is /v3/projects, NOT /api/v3/projects. main.py adds /api at mount time.
 router = APIRouter(prefix="/v3/projects", tags=["v3-export"])
+
+
+class ExportRequestBody(BaseModel):
+    """Phase 08 Plan 10 D-16: optional branch context for branch-aware export.
+
+    Omitting body or setting branch_id=null produces a non-branch export
+    (backward-compat with all existing callers).
+    """
+    branch_id: Optional[str] = None
 
 _ALLOWED_PRE_EXPORT_STATUSES: frozenset[str] = frozenset({"generated", "exported"})
 
@@ -40,19 +57,25 @@ _ALLOWED_PRE_EXPORT_STATUSES: frozenset[str] = frozenset({"generated", "exported
 async def trigger_v3_export(
     project_id: str,
     dry_run: bool = False,
+    body: ExportRequestBody = None,
     db: AsyncSession = Depends(get_db),
 ):
     """POST /api/v3/projects/{id}/export?dry_run=<bool>
+
+    Body (optional, Phase 08 D-16):
+      {"branch_id": "<uuid>"}  -- export with branch metadata in MANIFEST
+      {}  or omitted           -- non-branch export (backward-compat)
 
     Returns:
       201 + {project_id, zip_filename, size_bytes, download_url}     -- gate passed, zip written
       200 + {dry_run: true, passed: true, errors: [], warnings: []}  -- dry_run=true, gate passed
       422 + {detail: {summary, errors, warnings}}                     -- gate failed (D-08 envelope)
       422 + {dry_run: true, detail: {summary, errors, warnings}}      -- dry_run=true, gate failed
-      400 -- invalid UUID
+      400 -- invalid UUID / invalid branch_id
       404 -- project not found
       409 -- wrong status (run /generate first)
       409 -- no pipeline output (FileNotFoundError from build_unity_zip)
+      409 -- branch has no snapshots (branch_id supplied but no snapshot exists)
     """
     if not is_valid_uuid(project_id):
         raise HTTPException(status_code=400, detail="project_id must be a valid UUID")
@@ -74,6 +97,37 @@ async def trigger_v3_export(
         )
 
     cfg = load_region(project.region_key)
+
+    # Phase 08 Plan 10 D-16: resolve branch metadata when branch_id is supplied.
+    # T-08-10-01 mitigate: validate UUID format + 404 if branch missing.
+    branch_name: str | None = None
+    snapshot_id: str | None = None
+    snapshot_timestamp = None
+
+    branch_id = (body.branch_id if body is not None else None)
+    if branch_id is not None:
+        if not is_valid_uuid(branch_id):
+            raise HTTPException(status_code=400, detail="branch_id must be a valid UUID")
+        from sqlalchemy import select
+        branch = (
+            await db.execute(select(Branch).where(Branch.id == branch_id))
+        ).scalar_one_or_none()
+        if branch is None:
+            raise HTTPException(status_code=404, detail=f"branch {branch_id!r} not found")
+        # Fetch latest snapshot (list_snapshots returns reverse-chron; [0] = latest)
+        snapshots = await list_snapshots(db, branch_id)
+        if not snapshots:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"branch {branch.name!r} has no snapshots; "
+                    "create a snapshot before exporting with branch context"
+                ),
+            )
+        latest = snapshots[0]
+        branch_name = branch.name
+        snapshot_id = latest.id
+        snapshot_timestamp = latest.created_at
 
     if dry_run:
         # D-03: gate-only, no zip written. Status not flipped.
@@ -110,7 +164,14 @@ async def trigger_v3_export(
 
     # Real export: validator -> zip -> status flip
     try:
-        zip_path = build_unity_zip(project_id, cfg=cfg, region_key=project.region_key)
+        zip_path = build_unity_zip(
+            project_id,
+            cfg=cfg,
+            region_key=project.region_key,
+            branch_name=branch_name,
+            snapshot_id=snapshot_id,
+            snapshot_timestamp=snapshot_timestamp,
+        )
     except ValidationFailedError as exc:
         # D-08 structured envelope
         return JSONResponse(
