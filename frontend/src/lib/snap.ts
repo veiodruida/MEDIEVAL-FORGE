@@ -1,0 +1,65 @@
+/**
+ * Phase 08 Plan 06b — scale-aware snap utility (TOPO-03, D-28).
+ *
+ * Pitfall 7: D-28 says "snap within 5px". User zooms 10× → snap should still
+ * be 5 screen-pixels = 0.5 world-units. Hardcoding 5 world-units would make
+ * snap invisible at high zoom and over-sensitive at low zoom.
+ *
+ * Fix: snapWorldDist = SNAP_SCREEN_PX / stageScale
+ * Caller supplies stageScale = stage.scaleX() from the Konva Stage.
+ *
+ * D-28: Hold Alt → disable snap for current drag.
+ * D-28: Snap target indicator = yellow circle #eab308 radius=8 stroke=2.
+ */
+
+export interface SnapCandidate {
+  id: string;
+  lat: number;
+  lon: number;
+}
+
+export interface SnapResult {
+  id: string;
+  lat: number;
+  lon: number;
+}
+
+/** Base snap radius in screen pixels (D-28: "within 5px"). */
+const SNAP_SCREEN_PX = 5;
+
+/**
+ * Find the nearest snap candidate within the scale-aware tolerance.
+ *
+ * @param cursorWorld  Current cursor position in world coordinates (lat/lon).
+ * @param candidates   List of snap targets (e.g., vertices of visible baronies).
+ * @param stageScale   Current Konva stage zoom level (stage.scaleX()).
+ *                     Pitfall 7: converts screen-pixel tolerance to world units.
+ * @param altHeld      When true, snap is disabled for this drag (D-28).
+ * @returns The nearest candidate within tolerance, or null if none.
+ */
+export function snapToNeighbour(
+  cursorWorld: { lat: number; lon: number },
+  candidates: SnapCandidate[],
+  stageScale: number,
+  altHeld: boolean,
+): SnapResult | null {
+  // D-28: Alt held → disable snap for current drag
+  if (altHeld) return null;
+
+  // Pitfall 7: convert screen-px tolerance to world-units via current scale.
+  // At stageScale=1 → 5 world units; at stageScale=10 → 0.5 world units.
+  const worldTol = SNAP_SCREEN_PX / stageScale;
+
+  let best: { c: SnapCandidate; d: number } | null = null;
+
+  for (const c of candidates) {
+    const dLat = c.lat - cursorWorld.lat;
+    const dLon = c.lon - cursorWorld.lon;
+    const d = Math.sqrt(dLat * dLat + dLon * dLon);
+    if (d <= worldTol && (best === null || d < best.d)) {
+      best = { c, d };
+    }
+  }
+
+  return best ? { id: best.c.id, lat: best.c.lat, lon: best.c.lon } : null;
+}
