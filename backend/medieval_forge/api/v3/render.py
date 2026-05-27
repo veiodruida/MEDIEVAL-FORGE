@@ -69,6 +69,9 @@ class RenderRequest(BaseModel):
     # stage_view is client-only (Pitfall 8). Accepted but NOT used for token
     # derivation — it does not affect which stages recompute.
     stage_view: Optional[str] = None
+    # D-23 + T-08-02-01: branch_id scopes the stage cache; validated pattern
+    # prevents path-traversal or injection via branch name.
+    branch_id: str = Field(default="main", pattern=r"^[a-zA-Z0-9_-]{1,255}$")
 
     model_config = {"extra": "forbid"}  # ASVS V5: reject unknown top-level fields
 
@@ -101,6 +104,7 @@ async def _render_producer(
     overrides: dict,
     queue: asyncio.Queue,
     sf,
+    branch_id: str = "main",
 ) -> None:
     """Producer task. ALWAYS puts None sentinel before returning.
 
@@ -130,6 +134,7 @@ async def _render_producer(
             load_region(region_key),
             output_dir=str(project_dir(project_id) / "output"),
             stop_event=stop_event,
+            branch_id=branch_id,
         )
 
         # Apply validated overrides from slider.
@@ -169,7 +174,7 @@ async def _render_producer(
         # carrying prior_token in message so frontend can revert the canvas.
         cancelled_and_completed = list(dict.fromkeys(completed_stages + [exc.stage_name]))
         for stage in cancelled_and_completed:
-            entry = cache_get(project_id, stage)
+            entry = cache_get(project_id, branch_id, stage)
             prior_tok = (entry.prior_token if (entry and entry.prior_token) else "") or ""
             _emit(queue, "stage_cancel", stage, prior_tok, None, prior_tok)
         _emit(queue, "done", None, "cancelled", 1.0)
@@ -228,7 +233,8 @@ async def trigger_render(
 
     overrides = body.cfg_overrides.model_dump(exclude_none=True)
     task = asyncio.create_task(
-        _render_producer(project_id, region_key, overrides, queue, AsyncSessionLocal),
+        _render_producer(project_id, region_key, overrides, queue, AsyncSessionLocal,
+                         branch_id=body.branch_id),
     )
     _RUN_TASKS[project_id] = task
 
@@ -334,7 +340,7 @@ async def get_stage_raster(project_id: str, stage_name: str) -> Response:
         )
 
     cache_stage = _STAGE_CACHE_KEY[stage_name]
-    entry = cache_get(project_id, cache_stage)
+    entry = cache_get(project_id, "main", cache_stage)
     if entry is None:
         raise HTTPException(
             status_code=404,

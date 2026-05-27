@@ -281,8 +281,8 @@ async def test_cancel_does_not_update_cache(client, in_memory_db, monkeypatch):
 
     # Pre-seed cache with a known token for 'smooth'
     prior_token = "known-prior-token-x"
-    cache_put(pid, "smooth", prior_token, np.zeros((2, 2), dtype=np.int16))
-    assert cache_get(pid, "smooth").token == prior_token
+    cache_put(pid, "main", "smooth", prior_token, np.zeros((2, 2), dtype=np.int16))
+    assert cache_get(pid, "main", "smooth").token == prior_token
 
     proceed = threading.Event()
 
@@ -314,7 +314,7 @@ async def test_cancel_does_not_update_cache(client, in_memory_db, monkeypatch):
     assert '"event_type": "done"' in combined
 
     # The smooth cache entry must still have the original token
-    entry = cache_get(pid, "smooth")
+    entry = cache_get(pid, "main", "smooth")
     assert entry is not None
     assert entry.token == prior_token, (
         f"Cache was mutated on cancel: got {entry.token!r}, expected {prior_token!r}"

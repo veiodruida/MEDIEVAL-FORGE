@@ -214,8 +214,8 @@ async def test_generate_clears_cache(client, in_memory_db, monkeypatch):
 
     # Pre-seed the cache with a fake entry for this project.
     import numpy as np
-    cache_put(pid, "median", "stale-token", np.zeros((2, 2), dtype=np.int16))
-    assert cache_get(pid, "median") is not None
+    cache_put(pid, "main", "median", "stale-token", np.zeros((2, 2), dtype=np.int16))
+    assert cache_get(pid, "main", "median") is not None
 
     def _stub_run_pipeline(cfg):
         if cfg.on_stage:
@@ -231,7 +231,7 @@ async def test_generate_clears_cache(client, in_memory_db, monkeypatch):
     await _drain_queue(pid)
 
     # The stale cache entry should now be gone (D-03).
-    assert cache_get(pid, "median") is None
+    assert cache_get(pid, "main", "median") is None
 
 
 # ---------------------------------------------------------------------------

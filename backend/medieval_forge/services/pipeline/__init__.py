@@ -56,7 +56,7 @@ from .render import render_map, render_mountains, render_rivers
 from .lookup import generate_lookup_map
 from .export import export_metadata
 from .terrain import render_terrain_lookup, build_terrain_types_json
-from .cache import _VORONOI_CACHE, cache_get, cache_put  # noqa: F401
+from .cache import _VORONOI_CACHE, cache_get, cache_put, cache_clear_branch  # noqa: F401
 
 
 def _emit(cfg: RegionConfig, stage: str, evt: str) -> None:
@@ -321,7 +321,7 @@ def run_pipeline(cfg: RegionConfig, project_id: Optional[str] = None) -> None:
             return tok
 
         def _cache_put(stage: str, array: np.ndarray) -> None:
-            cache_put(project_id, stage, tokens[stage], array)
+            cache_put(project_id, cfg.branch_id, stage, tokens[stage], array)
     else:
         def _token(stage: str) -> str:  # type: ignore[misc]
             return ""
@@ -378,7 +378,9 @@ def run_pipeline(cfg: RegionConfig, project_id: Optional[str] = None) -> None:
 
     # Populate voronoi side-table for /render incremental reuse (D-13)
     if project_id is not None:
-        _VORONOI_CACHE[project_id] = {
+        if project_id not in _VORONOI_CACHE:
+            _VORONOI_CACHE[project_id] = {}
+        _VORONOI_CACHE[project_id][cfg.branch_id] = {
             "bars": bars, "bpx": bpx, "bc": bc, "bd": bd, "bk": bk,
             "nb": nb, "nc": nc, "land_2x": land_2x,
             "pt_data": pt_data, "es_municipalities": es_municipalities,
@@ -515,7 +517,7 @@ def run_pipeline_incremental(cfg: RegionConfig, project_id: str) -> list[str]:
 
     def _is_dirty(stage: str) -> bool:
         new_tok = _compute_token(stage)
-        cached = cache_get(project_id, stage)
+        cached = cache_get(project_id, cfg.branch_id, stage)
         return cached is None or cached.token != new_tok
 
     # ---- Stage: landmask ----
@@ -527,14 +529,14 @@ def run_pipeline_incremental(cfg: RegionConfig, project_id: str) -> list[str]:
         pt_data, es_municipalities = load_municipalities(cfg)
         land = build_land_mask(pt_data, es_municipalities, cfg)
         land_2x = build_land_mask(pt_data, es_municipalities, cfg, W2, H2)
-        cache_put(project_id, "landmask", tokens["landmask"], land)
+        cache_put(project_id, cfg.branch_id, "landmask", tokens["landmask"], land)
         _emit(cfg, "landmask", "done")
     else:
-        land = cache_get(project_id, "landmask").array
+        land = cache_get(project_id, cfg.branch_id, "landmask").array
         # Re-load municipalities (not cached — cheap re-parse, same bytes)
         pt_data, es_municipalities = load_municipalities(cfg)
         # land_2x from voronoi side-table if available, else recompute
-        vc = _VORONOI_CACHE.get(project_id)
+        vc = _VORONOI_CACHE.get(project_id, {}).get(cfg.branch_id)
         land_2x = vc["land_2x"] if vc is not None else build_land_mask(
             pt_data, es_municipalities, cfg, W2, H2)
 
@@ -544,10 +546,10 @@ def run_pipeline_incremental(cfg: RegionConfig, project_id: str) -> list[str]:
         _emit(cfg, "border", "start")
         print("[INC] border recomputing...")
         border_mask = build_border_mask(cfg)
-        cache_put(project_id, "border", tokens["border"], border_mask)
+        cache_put(project_id, cfg.branch_id, "border", tokens["border"], border_mask)
         _emit(cfg, "border", "done")
     else:
-        border_mask = cache_get(project_id, "border").array
+        border_mask = cache_get(project_id, cfg.branch_id, "border").array
 
     # ---- Stage: voronoi ----
     if _is_dirty("voronoi"):
@@ -558,17 +560,19 @@ def run_pipeline_incremental(cfg: RegionConfig, project_id: str) -> list[str]:
         nb = len(bars)
         raw = rasterize_baronies(pt_data, es_municipalities, bars,
                                  pi, ei, tp, te, land, border_mask, cfg)
-        cache_put(project_id, "voronoi", tokens["voronoi"], raw)
+        cache_put(project_id, cfg.branch_id, "voronoi", tokens["voronoi"], raw)
         # Update voronoi side-table
-        _VORONOI_CACHE[project_id] = {
+        if project_id not in _VORONOI_CACHE:
+            _VORONOI_CACHE[project_id] = {}
+        _VORONOI_CACHE[project_id][cfg.branch_id] = {
             "bars": bars, "bpx": bpx, "bc": bc, "bd": bd, "bk": bk,
             "nb": nb, "nc": nc, "land_2x": land_2x,
             "pt_data": pt_data, "es_municipalities": es_municipalities,
         }
         _emit(cfg, "voronoi", "done")
     else:
-        raw = cache_get(project_id, "voronoi").array
-        vc = _VORONOI_CACHE.get(project_id)
+        raw = cache_get(project_id, cfg.branch_id, "voronoi").array
+        vc = _VORONOI_CACHE.get(project_id, {}).get(cfg.branch_id)
         if vc is not None:
             bars = vc["bars"]; bpx = vc["bpx"]; bc = vc["bc"]
             bd = vc["bd"]; bk = vc["bk"]; nb = vc["nb"]
@@ -578,7 +582,9 @@ def run_pipeline_incremental(cfg: RegionConfig, project_id: str) -> list[str]:
             # Recompute from scratch to keep the pipeline correct.
             bars, bpx, bc, bd, bk, pi, ei, tp, te = setup_baronies(cfg)
             nb = len(bars)
-            _VORONOI_CACHE[project_id] = {
+            if project_id not in _VORONOI_CACHE:
+                _VORONOI_CACHE[project_id] = {}
+            _VORONOI_CACHE[project_id][cfg.branch_id] = {
                 "bars": bars, "bpx": bpx, "bc": bc, "bd": bd, "bk": bk,
                 "nb": nb, "nc": nc, "land_2x": land_2x,
                 "pt_data": pt_data, "es_municipalities": es_municipalities,
@@ -590,10 +596,10 @@ def run_pipeline_incremental(cfg: RegionConfig, project_id: str) -> list[str]:
         _emit(cfg, "median", "start")
         print("[INC] median recomputing...")
         med = apply_median(raw, land, nb, cfg)  # raises StageCancelled if stop_event set
-        cache_put(project_id, "median", tokens["median"], med)
+        cache_put(project_id, cfg.branch_id, "median", tokens["median"], med)
         _emit(cfg, "median", "done")
     else:
-        med = cache_get(project_id, "median").array
+        med = cache_get(project_id, cfg.branch_id, "median").array
 
     # ---- Stage: fragment ----
     if _is_dirty("fragment"):
@@ -601,10 +607,10 @@ def run_pipeline_incremental(cfg: RegionConfig, project_id: str) -> list[str]:
         _emit(cfg, "fragment", "start")
         print("[INC] fragment recomputing...")
         frag = remove_fragments(med, land, nb, cfg)
-        cache_put(project_id, "fragment", tokens["fragment"], frag)
+        cache_put(project_id, cfg.branch_id, "fragment", tokens["fragment"], frag)
         _emit(cfg, "fragment", "done")
     else:
-        frag = cache_get(project_id, "fragment").array
+        frag = cache_get(project_id, cfg.branch_id, "fragment").array
 
     # ---- Stage: smooth ----
     if _is_dirty("smooth"):
@@ -612,10 +618,10 @@ def run_pipeline_incremental(cfg: RegionConfig, project_id: str) -> list[str]:
         _emit(cfg, "smooth", "start")
         print("[INC] smooth recomputing...")
         sm = smooth_per_territory(frag, land, cfg)
-        cache_put(project_id, "smooth", tokens["smooth"], sm)
+        cache_put(project_id, cfg.branch_id, "smooth", tokens["smooth"], sm)
         _emit(cfg, "smooth", "done")
     else:
-        sm = cache_get(project_id, "smooth").array
+        sm = cache_get(project_id, cfg.branch_id, "smooth").array
 
     # ---- Stage: merge ----
     if _is_dirty("merge"):
@@ -623,10 +629,10 @@ def run_pipeline_incremental(cfg: RegionConfig, project_id: str) -> list[str]:
         _emit(cfg, "merge", "start")
         print("[INC] merge recomputing...")
         result = merge_small_blobs(sm, land, nb, cfg)
-        cache_put(project_id, "merge", tokens["merge"], result)
+        cache_put(project_id, cfg.branch_id, "merge", tokens["merge"], result)
         _emit(cfg, "merge", "done")
     else:
-        result = cache_get(project_id, "merge").array
+        result = cache_get(project_id, cfg.branch_id, "merge").array
 
     # ---- Stage: manual_edit (Phase 08 D-17) ----
     # Identity when log empty; replay in plans 08-06+/07.
@@ -636,10 +642,10 @@ def run_pipeline_incremental(cfg: RegionConfig, project_id: str) -> list[str]:
         _emit(cfg, "manual_edit", "start")
         print("[INC] manual_edit recomputing...")
         result = _manual_edit.compute(result, cfg)
-        cache_put(project_id, "manual_edit", tokens["manual_edit"], result)
+        cache_put(project_id, cfg.branch_id, "manual_edit", tokens["manual_edit"], result)
         _emit(cfg, "manual_edit", "done")
     else:
-        result = cache_get(project_id, "manual_edit").array
+        result = cache_get(project_id, cfg.branch_id, "manual_edit").array
 
     # ---- Stage: hierarchy ----
     if _is_dirty("hierarchy"):
@@ -648,10 +654,10 @@ def run_pipeline_incremental(cfg: RegionConfig, project_id: str) -> list[str]:
         print("[INC] hierarchy recomputing...")
         pc, pd, pk = build_hierarchy_maps(result, bc, bd, bk, nb)
         land = result >= 0
-        cache_put(project_id, "hierarchy", tokens["hierarchy"], pc)
+        cache_put(project_id, cfg.branch_id, "hierarchy", tokens["hierarchy"], pc)
         _emit(cfg, "hierarchy", "done")
     else:
-        pc_entry = cache_get(project_id, "hierarchy")
+        pc_entry = cache_get(project_id, cfg.branch_id, "hierarchy")
         pc = pc_entry.array
         land = result >= 0
         # pd, pk must be recomputed from pc since they aren't separately cached.
