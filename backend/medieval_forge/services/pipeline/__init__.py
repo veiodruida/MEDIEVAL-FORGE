@@ -305,12 +305,18 @@ def run_pipeline(cfg: RegionConfig, project_id: Optional[str] = None) -> None:
     # Phase 01 CLI parity — no cache machinery imported when project_id=None).
     if project_id is not None:
         from .cache import cache_put
-        from .dag import compute_version_token, STAGE_READS, DAG_PARENTS
+        from .dag import (compute_version_token, STAGE_READS, DAG_PARENTS,
+                          STAGE_TOKEN_OVERRIDES)
         tokens: dict[str, str] = {}
 
         def _token(stage: str) -> str:
             upstream = [tokens[p] for p in DAG_PARENTS[stage]]
-            tok = compute_version_token(stage, STAGE_READS[stage], cfg, upstream)
+            # Phase 08: dispatch override first (e.g. manual_edit uses out-of-band log)
+            override = STAGE_TOKEN_OVERRIDES.get(stage)
+            if override is not None:
+                tok = override(cfg, upstream)
+            else:
+                tok = compute_version_token(stage, STAGE_READS[stage], cfg, upstream)
             tokens[stage] = tok
             return tok
 
@@ -409,6 +415,16 @@ def run_pipeline(cfg: RegionConfig, project_id: Optional[str] = None) -> None:
     _cache_put("merge", result)
     _emit(cfg, "merge", "done")
 
+    # Phase 08 D-17: manual_edit stage (identity when log empty, replay otherwise).
+    # Empty cfg.manual_edit_log_hash → result is returned unchanged (byte-equal).
+    # Full replay path lands in plans 08-06+/07; this call establishes the DAG slot.
+    from . import manual_edit as _manual_edit
+    _emit(cfg, "manual_edit", "start")
+    _token("manual_edit")
+    result = _manual_edit.compute(result, cfg)
+    _cache_put("manual_edit", result)
+    _emit(cfg, "manual_edit", "done")
+
     # 8. Hierarchy
     _emit(cfg, "hierarchy", "start")
     print("[9] Building hierarchy...")
@@ -473,7 +489,8 @@ def run_pipeline_incremental(cfg: RegionConfig, project_id: str) -> list[str]:
         voronoi token matches (common case for slider-only changes).
     """
     from .cache import cache_get, cache_put
-    from .dag import DAG_ORDER, DAG_PARENTS, STAGE_READS, compute_version_token
+    from .dag import (DAG_ORDER, DAG_PARENTS, STAGE_READS, compute_version_token,
+                      STAGE_TOKEN_OVERRIDES)
 
     affected: list[str] = []
     tokens: dict[str, str] = {}
@@ -487,7 +504,12 @@ def run_pipeline_incremental(cfg: RegionConfig, project_id: str) -> list[str]:
 
     def _compute_token(stage: str) -> str:
         upstream = [tokens[p] for p in DAG_PARENTS[stage]]
-        tok = compute_version_token(stage, STAGE_READS[stage], cfg, upstream)
+        # Phase 08: dispatch override first (e.g. manual_edit uses out-of-band log)
+        override = STAGE_TOKEN_OVERRIDES.get(stage)
+        if override is not None:
+            tok = override(cfg, upstream)
+        else:
+            tok = compute_version_token(stage, STAGE_READS[stage], cfg, upstream)
         tokens[stage] = tok
         return tok
 
@@ -605,6 +627,19 @@ def run_pipeline_incremental(cfg: RegionConfig, project_id: str) -> list[str]:
         _emit(cfg, "merge", "done")
     else:
         result = cache_get(project_id, "merge").array
+
+    # ---- Stage: manual_edit (Phase 08 D-17) ----
+    # Identity when log empty; replay in plans 08-06+/07.
+    from . import manual_edit as _manual_edit
+    if _is_dirty("manual_edit"):
+        affected.append("manual_edit")
+        _emit(cfg, "manual_edit", "start")
+        print("[INC] manual_edit recomputing...")
+        result = _manual_edit.compute(result, cfg)
+        cache_put(project_id, "manual_edit", tokens["manual_edit"], result)
+        _emit(cfg, "manual_edit", "done")
+    else:
+        result = cache_get(project_id, "manual_edit").array
 
     # ---- Stage: hierarchy ----
     if _is_dirty("hierarchy"):
