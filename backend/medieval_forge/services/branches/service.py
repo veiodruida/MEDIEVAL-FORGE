@@ -13,7 +13,11 @@ class BranchProtectedError(Exception):
 
 
 class BranchNameTakenError(Exception):
-    """D-13: unique constraint on (project_id, name)."""
+    """D-13: unique constraint on (project_id, name) — duplicate name in DB."""
+
+
+class BranchNameReservedError(BranchNameTakenError):
+    """'main' is a reserved name; creation is only via ensure_main_branch."""
 
 
 async def ensure_main_branch(db: AsyncSession, project_id: str) -> Branch:
@@ -46,7 +50,7 @@ async def create_branch(
 ) -> Branch:
     """D-11: explicit create. D-22: inherits original_idx_high_water from parent."""
     if name == "main":
-        raise BranchNameTakenError("'main' is reserved; created lazily by ensure_main_branch")
+        raise BranchNameReservedError("'main' is reserved; created lazily by ensure_main_branch")
     branch = Branch(project_id=project_id, name=name, is_main=False)
     if parent_branch_id:
         parent = (
