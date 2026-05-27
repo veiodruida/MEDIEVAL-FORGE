@@ -164,7 +164,7 @@ Plans:
 1. Project without API key generates and exports successfully (zero LLM calls)
 2. With research run, territories show historical names instead of `Condado_001`
 3. `services/research_runner.py`, `services/llm/`, `services/research_cache.py`, `components/research/` are reused (moved into `v3/` namespace)
-**Plans:** 14 plans (post-revision: former Plan 07 split into 07a + 07b; former Plan 09 split into 09a + 09b — checker WARNINGs 1 + 2)
+**Plans:** 15 plans (post-revision: BLOCKER-1 closure added 08-07c — compute() replay path enforcing D-17) (post-revision: former Plan 07 split into 07a + 07b; former Plan 09 split into 09a + 09b — checker WARNINGs 1 + 2)
 Plans:
 - [ ] 07-00-PLAN.md — Wave 0 Q2 gate: read Reconquista Unity loader → verdict file flips _ZIP_BOUND_FIELDS (Tolerant vs Strict)
 - [ ] 07-01-PLAN.md — Wave 0 DB foundation: Alembic 0006 + LLMCredential + ResearchCache models + credential_store.py + pytest anthropic marker (D-06, D-11, Discretion #1/#6)
@@ -226,7 +226,7 @@ Plans:
 **Goal:** Deliver a manual SVG-style vertex editor for territory (barony-tier) polygons with named-branch + auto-snapshot project model, integrated with the Phase 04 DAG via a new `manual_edit` stage. Preserves all CLAUDE.md non-negotiables (NEAREST upscale, per-country KD-tree, `original_idx` invariant) and Phase 04 cache contracts. First use of zundo `temporal` (D-V3-04 deferred-undo lifted, editor-scope only).
 **Requirements**: EDIT-VERTEX-01..05, EDIT-POLYGON-01..03, LANDMASK-01..02, BRANCH-01..05, DAG-01..05, TOPO-01..04, PERF-01, UX-01..02, UNDO-01, PERSIST-01..02, TELEM-01 (30 IDs; see .planning/REQUIREMENTS.md)
 **Depends on:** Phase 7
-**Plans:** 14 plans
+**Plans:** 15 plans (post-revision: BLOCKER-1 closure added 08-07c — compute() replay path enforcing D-17)
 
 Plans:
 - [ ] 08-00-PLAN.md — Wave 0 test scaffolds (28 skip-marked files: 15 backend + 10 vitest + 3 Playwright)
@@ -239,6 +239,7 @@ Plans:
 - [ ] 08-06a-PLAN.md — Wave 5 vertex ops: move/add/delete/simplify + VertexCapBadge + POST /editor/validate (D-01/D-03/D-06/D-29)
 - [ ] 08-06b-PLAN.md — Wave 6 topology + snap: scale-aware snap + shared-vertex coupling + invalid-drag visuals (D-26/D-27/D-28/D-30/D-31)
 - [ ] 08-07-PLAN.md — Wave 6 polygon ops: split/merge/translate + Shapely backend + original_idx high-water (D-02/D-07/D-08/D-09/D-22)
+- [ ] 08-07c-PLAN.md — Wave 7 BLOCKER-1 closure: manual_edit.compute() replay path (vectorise → apply edit log → rasterise) + snapshot_loader injection + parity test asserting lookup_barony.png mutates after edit (D-17 enforcement, D-22)
 - [ ] 08-08-PLAN.md — Wave 6 landmask: 2-mode toggle + cascade trigger (D-04/D-05/D-20/D-24)
 - [ ] 08-09-PLAN.md — Wave 7 branching UX: BranchPicker + 5 dialogs + SliderConflictDialog + SnapshotTimeline (D-13/D-14/D-19)
 - [ ] 08-10-PLAN.md — Wave 7 export: MANIFEST_SCHEMA_VERSION 2→3 + branch metadata (D-16)
