@@ -139,6 +139,11 @@ class RegionConfig:
     # Required by D-18 verbatim — token cannot be derived from hash alone.
     manual_edit_log_count: int = 0
 
+    # Phase 08 D-23: branch_id for cache key scoping. Default "main" preserves
+    # Iberia parity and backward-compat for pre-Phase-8 projects.
+    # Branch switch = cache HIT if that branch was previously generated.
+    branch_id: str = "main"
+
     def __post_init__(self):
         if self.lon_scale is None:
             center_lat = (self.lat_min + self.lat_max) / 2
