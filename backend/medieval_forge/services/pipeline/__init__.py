@@ -417,13 +417,18 @@ def run_pipeline(cfg: RegionConfig, project_id: Optional[str] = None) -> None:
     _cache_put("merge", result)
     _emit(cfg, "merge", "done")
 
-    # Phase 08 D-17: manual_edit stage (identity when log empty, replay otherwise).
-    # Empty cfg.manual_edit_log_hash → result is returned unchanged (byte-equal).
-    # Full replay path lands in plans 08-06+/07; this call establishes the DAG slot.
+    # Phase 08 D-17 / BLOCKER-1 fix: manual_edit stage.
+    # snapshot_loader honoured if already injected by API layer or test;
+    # cleared after compute() so cfg stays serialisable for downstream code
+    # (T-08-07c-02: non-pickleable Callable must not persist on cfg).
     from . import manual_edit as _manual_edit
     _emit(cfg, "manual_edit", "start")
     _token("manual_edit")
-    result = _manual_edit.compute(result, cfg)
+    _prev_loader = cfg.snapshot_loader  # preserve caller-injected loader
+    try:
+        result = _manual_edit.compute(result, cfg)
+    finally:
+        cfg.snapshot_loader = _prev_loader  # restore (clear if was None)
     _cache_put("manual_edit", result)
     _emit(cfg, "manual_edit", "done")
 
@@ -634,14 +639,19 @@ def run_pipeline_incremental(cfg: RegionConfig, project_id: str) -> list[str]:
     else:
         result = cache_get(project_id, cfg.branch_id, "merge").array
 
-    # ---- Stage: manual_edit (Phase 08 D-17) ----
-    # Identity when log empty; replay in plans 08-06+/07.
+    # ---- Stage: manual_edit (Phase 08 D-17 / BLOCKER-1 fix) ----
+    # snapshot_loader honoured if already injected by API layer or test;
+    # cleared after compute() so cfg stays serialisable (T-08-07c-02).
     from . import manual_edit as _manual_edit
     if _is_dirty("manual_edit"):
         affected.append("manual_edit")
         _emit(cfg, "manual_edit", "start")
         print("[INC] manual_edit recomputing...")
-        result = _manual_edit.compute(result, cfg)
+        _prev_loader = cfg.snapshot_loader  # preserve caller-injected loader
+        try:
+            result = _manual_edit.compute(result, cfg)
+        finally:
+            cfg.snapshot_loader = _prev_loader  # restore (T-08-07c-02 serialisability)
         cache_put(project_id, cfg.branch_id, "manual_edit", tokens["manual_edit"], result)
         _emit(cfg, "manual_edit", "done")
     else:
