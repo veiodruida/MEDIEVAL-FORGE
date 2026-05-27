@@ -4,8 +4,9 @@ Slotted between 'merge' and 'hierarchy' in DAG_ORDER. When manual_edit_log_hash 
 (no user edits), compute() returns the input array unchanged (byte-equal) so parity
 tests stay green (Phase 01 D-09 + Phase 04 D-17 carry-forward).
 
-When non-empty, the actual edit replay happens HERE in a follow-up plan (08-06a/b/07).
-This plan establishes the contract + identity path; replay logic comes later.
+Plan 08-07c (BLOCKER-1 closure): non-empty log → vectorise raster, replay ops,
+rasterise back. snapshot_loader is injected by the DAG walker / orchestrator so
+compute() can fetch the edit log without leaking DB dependencies into cfg.
 
 D-18 token formula (BLOCKER-2 fix):
   sha256("manual_edit" + f"count={edit_op_count}" + f"loghash={log_hash}" + sorted(upstream))[:16]
@@ -25,7 +26,10 @@ import hashlib
 from typing import Iterable
 
 import numpy as np
+import rasterio.features
+from rasterio.transform import from_bounds
 from shapely.geometry import LineString, Polygon
+from shapely.geometry import shape as shapely_shape
 from shapely.ops import split as shapely_split
 from shapely.ops import unary_union
 
@@ -33,26 +37,125 @@ from .contracts import RegionConfig
 
 
 def compute(input_array: np.ndarray, cfg: RegionConfig) -> np.ndarray:
-    """D-17 identity contract: empty log_hash → input unchanged (byte-equal).
+    """D-17 closure: edits are the OUTPUT of this stage (plan 08-07c BLOCKER-1 fix).
 
-    Non-empty log replay is implemented in a follow-up plan (08-06+/07); this plan
-    ships the identity path so the DAG can be wired and parity stays green.
+    Empty log_hash → identity (D-17 carry-forward; Iberia parity stays green).
+    Non-empty log_hash → vectorise input raster via rasterio.features.shapes,
+    apply edit log in order via replay helpers, rasterise back via
+    rasterio.features.rasterize with all_touched=False (Gemini LOW: explicit
+    cell-centroid semantics; prevents sub-pixel aliasing that would break
+    Unity byOriginalIdx shader).
 
     Args:
-        input_array: The barony raster array from the 'merge' stage.
-        cfg: RegionConfig with manual_edit_log_hash and manual_edit_log_count fields.
+        input_array: int16 barony raster from the 'merge' stage (H×W).
+        cfg: RegionConfig with manual_edit_log_hash, manual_edit_log_count,
+             branch_id (for loader key), and snapshot_loader (injected by
+             orchestrator; MUST NOT be None when log_hash is non-empty).
 
     Returns:
-        The same array (identity) when log_hash is empty, otherwise the array with
-        edits replayed (identity in Wave 1; full replay in later plans).
+        Edited int16 raster (same shape as input_array).
+
+    Raises:
+        RuntimeError: if cfg.manual_edit_log_hash is non-empty but
+                      cfg.snapshot_loader is None.
     """
     if not cfg.manual_edit_log_hash:
         # Empty hash → identity pass-through. No copy; same object is returned
         # so downstream numpy views are unaffected and parity tests stay byte-equal.
         return input_array
-    # Non-empty log: replay path lands in plans 08-06+/07 (vertex/polygon op replay).
-    # Wave 1 accepts identity behaviour — the DAG contract is established here.
-    return input_array
+
+    if cfg.snapshot_loader is None:
+        raise RuntimeError(
+            "snapshot_loader required when manual_edit_log_hash is set "
+            "(BLOCKER-1 fix: DAG walker must inject cfg.snapshot_loader before "
+            "invoking manual_edit.compute())"
+        )
+
+    # Loader is keyed by branch_id (cfg.branch_id already exists per 08-01/contracts.py).
+    snapshot = cfg.snapshot_loader(cfg.branch_id)
+    edit_log = snapshot.get("edit_log", [])
+    if not edit_log:
+        return input_array
+
+    # 1) Vectorise int16 raster into per-barony polygons.
+    #    Use an affine derived from the raster dimensions — pipeline operates in
+    #    raster coordinates throughout. from_bounds(0,0,W,H,W,H) maps pixel (0,0)
+    #    to world (0,H) with y-flip; used symmetrically for shapes→rasterize roundtrip.
+    H, W = input_array.shape
+    transform = from_bounds(0, 0, W, H, W, H)
+    shapes_iter = rasterio.features.shapes(input_array.astype(np.int16), transform=transform)
+    polygons_by_id: dict[int, list[Polygon]] = {}
+    for geom_dict, value in shapes_iter:
+        value = int(value)
+        if value < 0 or value == 9999:
+            # Skip ocean (-1) and ignore (9999) sentinels per CLAUDE.md rule #5.
+            # They will be restored from input_array after rasterise.
+            continue
+        poly = shapely_shape(geom_dict)
+        if isinstance(poly, Polygon) and poly.area > 0:
+            polygons_by_id.setdefault(value, []).append(poly)
+
+    # 2) Apply edit log in order via replay helpers (defined below in this module).
+    #    /editor/apply (08-07) validates ops server-side BEFORE persisting, so any
+    #    exception here is a bug — propagate it.
+    for op in edit_log:
+        op_type = op["op"]
+        if op_type == "split":
+            parent_id = int(op["parentId"])
+            cut = LineString(op["cutLineCoords"])
+            parents = polygons_by_id.get(parent_id, [])
+            if not parents:
+                continue  # parent already merged away in a later op — skip
+            new_pieces = replay_split(parents[0], cut)
+            child_id = int(op["allocated_original_idx"])
+            polygons_by_id[parent_id] = [new_pieces[0]]
+            polygons_by_id.setdefault(child_id, []).append(new_pieces[1])
+        elif op_type == "merge":
+            a_id, b_id = int(op["firstId"]), int(op["secondId"])
+            a_polys = polygons_by_id.get(a_id, [])
+            b_polys = polygons_by_id.get(b_id, [])
+            if not a_polys or not b_polys:
+                continue
+            merged = replay_merge(a_polys[0], b_polys[0])
+            polygons_by_id[a_id] = [merged]
+            polygons_by_id[b_id] = []  # D-08: loser idx freed but NEVER reused
+        elif op_type == "translate":
+            poly_id = int(op["polygonId"])
+            dLat, dLon = float(op["dLat"]), float(op["dLon"])
+            polys = polygons_by_id.get(poly_id, [])
+            if polys:
+                polygons_by_id[poly_id] = [replay_translate(p, dLat, dLon) for p in polys]
+        # vertex-level ops (move/add/delete) handled in follow-up plans;
+        # split/merge/translate scaffold the D-17 contract here.
+
+    # 3) Rasterise back to int16.
+    #    all_touched=False: standard cell-centroid semantics (Gemini LOW review).
+    #    Prevents sub-pixel aliasing / orphan border pixels that would break
+    #    Unity byOriginalIdx shader. Default is False but made explicit so a
+    #    future rasterio API change cannot silently flip semantics.
+    #    fill=-1: ocean sentinel per CLAUDE.md rule #5.
+    shapes_to_rasterise = [
+        (poly, idx)
+        for idx, polys in polygons_by_id.items()
+        for poly in polys
+        if poly is not None and not poly.is_empty
+    ]
+    out = rasterio.features.rasterize(
+        shapes=shapes_to_rasterise,
+        out_shape=(H, W),
+        transform=transform,
+        fill=-1,  # ocean sentinel per CLAUDE.md rule #5
+        dtype=np.int16,
+        all_touched=False,  # Gemini LOW: explicit; prevents sub-pixel border leakage.
+    )
+
+    # Restore ocean (-1) and ignore (9999) sentinels from input where rasterise
+    # produced fill — preserves CLAUDE.md rule #5 contract.
+    ocean_mask = (input_array == -1)
+    ignore_mask = (input_array == 9999)
+    out[ocean_mask] = -1
+    out[ignore_mask] = 9999
+    return out
 
 
 def manual_edit_token(cfg: RegionConfig, upstream_tokens: Iterable[str]) -> str:

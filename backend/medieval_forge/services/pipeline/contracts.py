@@ -144,6 +144,15 @@ class RegionConfig:
     # Branch switch = cache HIT if that branch was previously generated.
     branch_id: str = "main"
 
+    # Phase 08 BLOCKER-1 fix (D-17 closure): snapshot loader injected by the DAG walker
+    # so manual_edit.compute() can fetch the active branch's edit log without leaking DB
+    # dependencies into cfg. CRITICAL — exclude from any pickling/serialisation path:
+    # Callable is non-pickleable. If RegionConfig is ever passed to multiprocessing or
+    # stored in a cache key, set this field to None first.
+    # dag.py STAGE_READS["manual_edit"] = frozenset() so this field is never included
+    # in any version_token computation.
+    snapshot_loader: Optional[Callable[[str], dict]] = field(default=None)
+
     # Phase 08 Plan 08 (LANDMASK-01, DAG-04 / WARNING-4 fix):
     # When set, build_land_mask uses these coords directly instead of
     # rasterizing from PT/ES municipality inputs. None = default pipeline
