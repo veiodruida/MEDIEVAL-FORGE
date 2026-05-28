@@ -490,13 +490,16 @@ export const BezierEditLayer: React.FC<BezierEditLayerProps> = ({ projection }) 
         const stage = layer.getStage()
         const rect = layer.find('Rect').find((n) => n.getAttr('data-testid') === 'bezier-anchor')
         if (stage && rect) {
-          const abs = rect.getAbsolutePosition() // top-left of the 10×10 anchor Rect
+          // getClientRect gives the anchor's SCREEN-SPACE bounding box (stage scale +
+          // pos already applied) — its center is the reliable Konva drag target. Adding
+          // a flat half-size to getAbsolutePosition would overshoot under a fit-to-view
+          // scale != 1 (the 10px square is in MAP space, shrunk on screen).
+          const box = rect.getClientRect({ relativeTo: stage })
           const containerRect = stage.container().getBoundingClientRect()
           firstAnchor = {
             idx: Number(rect.getAttr('data-anchor-idx')),
-            // +5 → the anchor CENTER (Rect is positioned at anchorPx-5; see render).
-            x: containerRect.left + abs.x + 5,
-            y: containerRect.top + abs.y + 5,
+            x: containerRect.left + box.x + box.width / 2,
+            y: containerRect.top + box.y + box.height / 2,
           }
         }
       }
@@ -508,10 +511,35 @@ export const BezierEditLayer: React.FC<BezierEditLayerProps> = ({ projection }) 
         firstAnchor, // { idx, x, y } page coords for page.mouse, or null
       }
     }
+    // Plan 04 (BEZ-UAT-01, plan-sanctioned DEV-hook drag — Task 2 <action> "or use a DEV
+    // hook to trigger a drag"): synthesize an anchor drag by invoking the SAME real
+    // handlers (handleDragMove + handleDragEnd) the Konva onDrag* props call. This flows
+    // through flattenSegment → setVerticesAndLog(op:'move') — it is NOT a direct store
+    // write (which would be useEditorStore.getState().setVerticesAndLog(...)). A real
+    // page.mouse drag on the ~3px anchor square at Iberia fit-to-view scale is too brittle
+    // to be deterministic; this hook drives the identical commit path.
+    ;(window as unknown as {
+      __forgeBezierTriggerDrag?: (idx?: number, dx?: number, dy?: number) => boolean
+    }).__forgeBezierTriggerDrag = (idx = 0, dx = 30, dy = 30) => {
+      const a = anchorsRef.current[idx]
+      if (!a) return false
+      // onDrag* read e.target.x()/y() as the Rect TOP-LEFT (anchorPx - 5); draggedCenterPx
+      // adds +5 back to recover the center, so target = (anchorPx - 5) + delta.
+      const targetX = a.anchorPx[0] - 5 + dx
+      const targetY = a.anchorPx[1] - 5 + dy
+      const stage = layerRef.current?.getStage()
+      const evt = {
+        target: { x: () => targetX, y: () => targetY, getStage: () => stage },
+      } as unknown as Konva.KonvaEventObject<DragEvent>
+      handleDragMove('anchor', idx, evt)
+      handleDragEnd('anchor', idx, evt)
+      return true
+    }
     return () => {
       delete (window as unknown as { __forgeBezierState?: unknown }).__forgeBezierState
+      delete (window as unknown as { __forgeBezierTriggerDrag?: unknown }).__forgeBezierTriggerDrag
     }
-  }, [anchors.length, activeAnchorIdx, dirtyCount])
+  }, [anchors.length, activeAnchorIdx, dirtyCount, handleDragMove, handleDragEnd])
 
   // During a drag, render the curve outline + handles from the live preview so the WHOLE
   // curve follows the drag (UI-SPEC §Anchor step 1) — not just the dragged Konva node.
