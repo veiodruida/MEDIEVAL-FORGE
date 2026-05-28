@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Phase 08.1 UI-SPEC approved
-last_updated: "2026-05-28T15:17:21.962Z"
-last_activity: 2026-05-28 -- Phase 08.1 planning complete
+stopped_at: Completed 08.1-01-PLAN.md
+last_updated: "2026-05-28T15:30:11.167Z"
+last_activity: 2026-05-28
 progress:
   total_phases: 1
   completed_phases: 0
   total_plans: 4
-  completed_plans: 0
-  percent: 0
+  completed_plans: 1
+  percent: 25
 ---
 
 # Project State (v3)
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md
 
 **Core value:** A Game Designer goes from "country + historical period" to a validated, Unity-ready map package — driven by geometry, with LLM as opt-in metadata.
-**Current focus:** Phase 08 — border-vertex-editor-manual-svg-style-vertex-editing-of-terr
+**Current focus:** Phase 08.1 — bezier-assisted-barony-contour-editing-ui-layer-bezier-contr
 
 ## Current Position
 
-Phase: 08 (border-vertex-editor-manual-svg-style-vertex-editing-of-terr) — EXECUTING
-Plan: 1 of 15
+Phase: 08.1 (bezier-assisted-barony-contour-editing-ui-layer-bezier-contr) — EXECUTING
+Plan: 2 of 4
 Status: Ready to execute
-Last activity: 2026-05-28 -- Phase 08.1 planning complete
+Last activity: 2026-05-28
 
 Progress: [█████████░] 93% (25 of 27 plans complete)
 
@@ -125,6 +125,7 @@ See `.planning/PROJECT.md` Key Decisions table (D-V3-01 through D-V3-07).
 - [Phase 07.1]: Harness fallback (review-fix #6): test-only /test-routes/research-dialog route created since Phase 07 entry affordance not reachable via stable selector; V2/V4 not testable without real llama-server binary per D-08b
 - [Phase 07.1]: Pre-existing Playwright failures (Phase 04/05) excluded from 07.1 gate: git log confirms none modified during 07.1; timing/environment issues unrelated to 07.1 changes
 - [Phase 07.1]: grep gate: production code clean (0 period_label hits in medieval_forge/*.py and frontend/src); test-file hits are all negative assertions
+- [Phase 08.1]: Plan 08.1-01: bezierFit.ts + bezierFlatten.ts pure store-free geometry libs. BEZ_FIT_ERROR=30 calibrated (Iberia fixture -> 4 cubics, inside 4..30 band). No deps.inline needed for fit-curve under Vite 6 + vitest 3. BEZ-FLATTEN-02 tolerance relaxed 1e-4->0.01deg (fit error ~0.004deg by design, not float drift). buildPolyIndexMap closes Split-Index Gap via O(N) post-fit scan. 482/482 vitest green; 4 TDD commits.
 
 ### Blockers/Concerns
 
@@ -144,6 +145,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-28T14:52:25.301Z
-Stopped at: Phase 08.1 UI-SPEC approved
-Resume file: .planning/phases/08.1-bezier-assisted-barony-contour-editing-ui-layer-bezier-contr/08.1-UI-SPEC.md
+Last session: 2026-05-28T15:30:02.503Z
+Stopped at: Completed 08.1-01-PLAN.md
+Resume file: None
