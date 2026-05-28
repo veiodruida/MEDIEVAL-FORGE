@@ -412,6 +412,44 @@ export const VertexEditLayer: React.FC<Props> = ({
       .map(([id, { lat, lon }]) => ({ id, lat, lon }));
   }, [vertices, viewport, activeTerritoryId]);
 
+  // ── Phase 08 Plan 15: DEV-only __forgeEditorState() escape hatch ────────────
+  // Mirrors the __forgeSelectBarony / __forgeStageScale pattern from BaronyLayer
+  // and CanvasViewer. Gated on import.meta.env.DEV — never ships in production.
+  // Returns current editor state + first visible handle's page coords for UAT
+  // Konva drag testing (the Konva canvas is opaque to DOM queries).
+  useEffect(() => {
+    if (!import.meta.env.DEV) return
+    ;(window as unknown as { __forgeEditorState?: () => unknown }).__forgeEditorState = () => {
+      const stage = stageRef.current
+      let firstHandle: { id: string; x: number; y: number } | null = null
+      if (stage) {
+        // Find the first rendered vertex handle Circle carrying a data-vertex-id attr
+        const circles = stage.find('Circle')
+        const circle = circles.find((n) => Boolean(n.getAttr('data-vertex-id')))
+        if (circle) {
+          const abs = circle.getAbsolutePosition()           // includes stage scale+pos
+          const rect = stage.container().getBoundingClientRect()
+          firstHandle = {
+            id: String(circle.getAttr('data-vertex-id')),
+            x: rect.left + abs.x,
+            y: rect.top + abs.y,
+          }
+        }
+      }
+      return {
+        activeTerritoryId,
+        vertexCount: Object.keys(vertices).length,
+        visibleHandleCount: isLandmaskMode ? 0 : visibleEntries.length,
+        editLogLength: useEditorStore.getState().editLog.length,
+        activeTool: useEditorStore.getState().activeTool,
+        firstHandle,   // { id, x, y } page coords for page.mouse, or null
+      }
+    }
+    return () => {
+      delete (window as unknown as { __forgeEditorState?: unknown }).__forgeEditorState
+    }
+  }, [activeTerritoryId, vertices, isLandmaskMode, visibleEntries, stageRef])
+
   // ── Snap candidates: all visible vertices EXCEPT the currently dragged one ──
   // Rebuilt per-render — cheap because visibleEntries is already culled.
   const snapCandidatesRef = useRef<SnapCandidate[]>([]);
