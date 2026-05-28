@@ -164,7 +164,7 @@ Plans:
 1. Project without API key generates and exports successfully (zero LLM calls)
 2. With research run, territories show historical names instead of `Condado_001`
 3. `services/research_runner.py`, `services/llm/`, `services/research_cache.py`, `components/research/` are reused (moved into `v3/` namespace)
-**Plans:** 19 plans (15 original + 4 gap-closure 08-12..08-15 wiring the editor integration layer per 08-VERIFICATION.md) (post-revision: former Plan 07 split into 07a + 07b; former Plan 09 split into 09a + 09b — checker WARNINGs 1 + 2)
+**Plans:** 20 plans (15 original + 5 gap-closure 08-12..08-16; 08-12..08-15 wire the editor integration layer per 08-VERIFICATION.md, 08-16 delivers LANDMASK-01/02 split out of 08-14 to avoid scope reduction) (post-revision: former Plan 07 split into 07a + 07b; former Plan 09 split into 09a + 09b — checker WARNINGs 1 + 2)
 Plans:
 - [ ] 07-00-PLAN.md — Wave 0 Q2 gate: read Reconquista Unity loader → verdict file flips _ZIP_BOUND_FIELDS (Tolerant vs Strict)
 - [ ] 07-01-PLAN.md — Wave 0 DB foundation: Alembic 0006 + LLMCredential + ResearchCache models + credential_store.py + pytest anthropic marker (D-06, D-11, Discretion #1/#6)
@@ -226,7 +226,7 @@ Plans:
 **Goal:** Deliver a manual SVG-style vertex editor for territory (barony-tier) polygons with named-branch + auto-snapshot project model, integrated with the Phase 04 DAG via a new `manual_edit` stage. Preserves all CLAUDE.md non-negotiables (NEAREST upscale, per-country KD-tree, `original_idx` invariant) and Phase 04 cache contracts. First use of zundo `temporal` (D-V3-04 deferred-undo lifted, editor-scope only).
 **Requirements**: EDIT-VERTEX-01..05, EDIT-POLYGON-01..03, LANDMASK-01..02, BRANCH-01..05, DAG-01..05, TOPO-01..04, PERF-01, UX-01..02, UNDO-01, PERSIST-01..02, TELEM-01 (30 IDs; see .planning/REQUIREMENTS.md)
 **Depends on:** Phase 7
-**Plans:** 19 plans (15 original + 4 gap-closure 08-12..08-15 wiring the editor integration layer per 08-VERIFICATION.md)
+**Plans:** 20 plans (15 original + 5 gap-closure 08-12..08-16; 08-12..08-15 wire the editor integration layer per 08-VERIFICATION.md, 08-16 delivers LANDMASK-01/02 split out of 08-14 to avoid scope reduction)
 
 Plans:
 - [x] 08-00-PLAN.md — Wave 0 test scaffolds (28 skip-marked files: 15 backend + 10 vitest + 3 Playwright)
@@ -248,6 +248,7 @@ Plans:
 - [ ] 08-13-PLAN.md — Wave 1 gap-closure (GAP-C): EditToolPalette V/A/D/S/M+Esc in WorkspaceToolbar bound to useEditorStore.activeTool [UX-01]
 - [ ] 08-14-PLAN.md — Wave 2 gap-closure (GAP-B): BranchInitializer auto-select main + VertexEditLayer/LayerTogglePanel prop wiring [EDIT-POLYGON-01/02/03, LANDMASK-01/02]
 - [ ] 08-15-PLAN.md — Wave 3 gap-closure (UAT): 08-editor-reachable.spec.ts drives real workspace — proves editor reachability end-to-end
+- [ ] 08-16-PLAN.md — Wave 3 gap-closure (LANDMASK): editableLayer toggle + landmask coord plumbing + apply callback [LANDMASK-01/02] (split from 08-14)
 
 ---
 
