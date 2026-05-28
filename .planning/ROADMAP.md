@@ -248,7 +248,7 @@ Plans:
 - [ ] 08-13-PLAN.md — Wave 1 gap-closure (GAP-C): EditToolPalette V/A/D/S/M+Esc in WorkspaceToolbar bound to useEditorStore.activeTool [UX-01]
 - [ ] 08-14-PLAN.md — Wave 2 gap-closure (GAP-B): BranchInitializer auto-select main + VertexEditLayer/LayerTogglePanel prop wiring [EDIT-POLYGON-01/02/03, LANDMASK-01/02]
 - [ ] 08-15-PLAN.md — Wave 3 gap-closure (UAT): 08-editor-reachable.spec.ts drives real workspace — proves editor reachability end-to-end
-- [ ] 08-16-PLAN.md — Wave 3 gap-closure (LANDMASK): editableLayer toggle + landmask coord plumbing + apply callback [LANDMASK-01/02] (split from 08-14)
+- [ ] 08-16-PLAN.md — Wave 4 gap-closure (LANDMASK): editableLayer toggle + landmask coord plumbing + apply callback [LANDMASK-01/02] (split from 08-14)
 
 ---
 
