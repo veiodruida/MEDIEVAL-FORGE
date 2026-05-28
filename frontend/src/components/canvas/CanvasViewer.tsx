@@ -162,6 +162,9 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
 
   // Phase 08: activeTerritoryId from useEditorStore (for VertexEditLayer + clearCache)
   const activeTerritoryId = useEditorStore((s) => s.activeTerritoryId)
+  // Phase 08 Plan 14 (GAP-B): activeBranchId forwarded to VertexEditLayer + LayerTogglePanel
+  // so split/merge/translate no longer early-return with null branchId.
+  const activeBranchId = useEditorStore((s) => s.activeBranchId)
 
   // Pitfall 10: clearCache on activeTerritoryId change (Phase 08).
   // Fires AFTER hydration completes — guard on stageRef.current.
@@ -690,10 +693,25 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
           isEditMode={false}
         />
         <InteractionLayer territories={effectiveTerritories} />
-        {/* Phase 08 Plan 05: 6th Konva layer (z=5) — VertexEditLayer with viewport-culled handles */}
-        <VertexEditLayer stageRef={stageRef} viewport={vertexViewport} />
+        {/* Phase 08 Plan 05: 6th Konva layer (z=5) — VertexEditLayer with viewport-culled handles.
+            Plan 14 (GAP-B): projectId/branchId/tier='barony' wired so split/merge/translate
+            no longer early-return. editableLayer left at default 'baronies'; landmask edit
+            surface is Plan 08-16. */}
+        <VertexEditLayer
+          stageRef={stageRef}
+          viewport={vertexViewport}
+          tier="barony"
+          projectId={projectId}
+          branchId={activeBranchId ?? undefined}
+        />
       </Stage>
-      <LayerTogglePanel />
+      {/* Plan 14 (GAP-B): projectId/branchId forwarded so LandmaskEditorHeader renders.
+          onApplyLandmask intentionally NOT set here — Plan 08-16 supplies the real
+          coord-carrying callback. A payload:{} no-op stub would falsely imply LANDMASK-02. */}
+      <LayerTogglePanel
+        projectId={projectId}
+        branchId={activeBranchId ?? undefined}
+      />
       <LegendCard />
       <FitToViewButton onFit={fitToView} />
       <HoverTooltip name={hover.name} x={hover.x} y={hover.y} />
