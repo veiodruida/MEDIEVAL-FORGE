@@ -13,6 +13,7 @@ import { CoordTooltip } from './CoordTooltip'
 import { FitToViewButton } from './FitToViewButton'
 import { HoverTooltip } from './HoverTooltip'
 import { InspectorSidebar } from './InspectorSidebar'
+import { SelectionBridge } from '../editor/SelectionBridge'
 import { ProjectionProvider } from '../../context/ProjectionContext'
 import type { Project } from '../../api/client'
 import {
@@ -696,6 +697,9 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
       <LegendCard />
       <FitToViewButton onFit={fitToView} />
       <HoverTooltip name={hover.name} x={hover.x} y={hover.y} />
+      {/* Phase 08 Plan 12 (GAP-A): SelectionBridge wires barony selection →
+          useEditorStore.activeTerritoryId + vertices. Returns null (effect only). */}
+      <SelectionBridge baronies={effectiveBaronies} />
       {/* Phase 08 Plan 05: CoordTooltip DOM overlay for vertex drag (D-33) */}
       <CoordTooltip
         lat={coordTooltip.lat}
