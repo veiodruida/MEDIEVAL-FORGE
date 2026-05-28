@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
 milestone: v1.0
-milestone_name: + bootstrap v3 infrastructure
+milestone_name: milestone
 status: executing
-stopped_at: Phase 8 UI-SPEC approved
-last_updated: "2026-05-27T11:45:26.900Z"
-last_activity: 2026-05-27 -- Phase 08 execution started
+stopped_at: Phase 08.1 UI-SPEC approved
+last_updated: "2026-05-28T15:17:21.962Z"
+last_activity: 2026-05-28 -- Phase 08.1 planning complete
 progress:
-  total_phases: 12
-  completed_phases: 8
-  total_plans: 85
-  completed_plans: 69
-  percent: 81
+  total_phases: 1
+  completed_phases: 0
+  total_plans: 4
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State (v3)
@@ -27,8 +27,8 @@ See: .planning/PROJECT.md
 
 Phase: 08 (border-vertex-editor-manual-svg-style-vertex-editing-of-terr) — EXECUTING
 Plan: 1 of 15
-Status: Executing Phase 08
-Last activity: 2026-05-27 -- Phase 08 execution started
+Status: Ready to execute
+Last activity: 2026-05-28 -- Phase 08.1 planning complete
 
 Progress: [█████████░] 93% (25 of 27 plans complete)
 
@@ -144,6 +144,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-26T12:13:37.148Z
-Stopped at: Phase 8 UI-SPEC approved
-Resume file: .planning/phases/08-border-vertex-editor-manual-svg-style-vertex-editing-of-terr/08-UI-SPEC.md
+Last session: 2026-05-28T14:52:25.301Z
+Stopped at: Phase 08.1 UI-SPEC approved
+Resume file: .planning/phases/08.1-bezier-assisted-barony-contour-editing-ui-layer-bezier-contr/08.1-UI-SPEC.md
