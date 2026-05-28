@@ -275,8 +275,9 @@ export const VertexEditLayer: React.FC<Props> = ({
   const vertices = useEditorStore((s) => s.vertices);
   const selectedVertexIds = useEditorStore((s) => s.selectedVertexIds);
   const activeTool = useEditorStore((s) => s.activeTool);
-  // Phase 08 Plan 08: landmask mode (D-05 — manual vs auto-immediate)
-  const landmaskMode = useEditorStore((s) => s.landmaskMode);
+  // Phase 08 Plan 16: landmask mode decision moved to CanvasViewer (parent).
+  // VertexEditLayer always calls onLandmaskCoordsChange on dragend; parent decides
+  // whether to POST immediately (auto-immediate) or buffer until Apply (manual).
 
   const selectedSet = useMemo(() => new Set(selectedVertexIds), [selectedVertexIds]);
   const vertexCount = Object.keys(vertices).length;
@@ -805,13 +806,13 @@ export const VertexEditLayer: React.FC<Props> = ({
         lon,
       });
 
-      // Auto-immediate mode: notify parent immediately (D-05)
-      if (landmaskMode === 'auto-immediate') {
-        onLandmaskCoordsChange?.(newCoords);
-      }
-      // Manual mode: coords are buffered in localLandmaskCoords until Apply is clicked.
+      // Phase 08 Plan 16 (surgical fix): ALWAYS call onLandmaskCoordsChange so parent's
+      // latestLandmaskRef stays in sync regardless of mode. Parent decides whether to POST
+      // immediately (auto-immediate) or buffer until Apply is clicked (manual).
+      // Without this, manual-mode Apply would POST new_landmask_coords: [] (wiping landmask).
+      onLandmaskCoordsChange?.(newCoords);
     },
-    [localLandmaskCoords, projection, landmaskMode, onLandmaskCoordsChange],
+    [localLandmaskCoords, projection, onLandmaskCoordsChange],
   );
 
   return (

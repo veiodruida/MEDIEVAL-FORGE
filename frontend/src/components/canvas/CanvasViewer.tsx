@@ -29,6 +29,7 @@ import {
 } from '../../hooks/useZoomPan'
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts'
 import { useCanvasArtifacts } from '../../hooks/useCanvasArtifacts'
+import { useLandmaskRing } from '../../hooks/useLandmaskRing'
 import { useUIStore } from '../../stores/uiStore'
 import { usePipelineParams } from '../../stores/usePipelineParams'
 import { useRunStore } from '../../stores/useRunStore'
@@ -165,6 +166,59 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
   // Phase 08 Plan 14 (GAP-B): activeBranchId forwarded to VertexEditLayer + LayerTogglePanel
   // so split/merge/translate no longer early-return with null branchId.
   const activeBranchId = useEditorStore((s) => s.activeBranchId)
+  // Phase 08 Plan 16 (LANDMASK-01): editableLayer drives cyan handle rendering
+  const editableLayer = useEditorStore((s) => s.editableLayer)
+  const landmaskMode = useEditorStore((s) => s.landmaskMode)
+
+  // Phase 08 Plan 16: landmask ring from backend (branch edit-event or NE union)
+  const landmaskRing = useLandmaskRing(projectId, activeBranchId ?? undefined)
+
+  // Phase 08 Plan 16: latestLandmaskRef keeps the most recent coords buffered by
+  // VertexEditLayer, seeded with the query ring so Apply with no drags is a replay.
+  const latestLandmaskRef = useRef<Array<[number, number]>>(landmaskRing ?? [])
+  // Sync seed when ring loads (e.g. first query resolve)
+  useEffect(() => {
+    if (landmaskRing && landmaskRing.length > 0) {
+      latestLandmaskRef.current = landmaskRing
+    }
+  }, [landmaskRing])
+
+  // Phase 08 Plan 16: called by VertexEditLayer on every landmask handle dragend.
+  // Always buffers in latestLandmaskRef; POSTs immediately when auto-immediate mode.
+  const handleLandmaskCoordsChange = useCallback(
+    (coords: Array<[number, number]>) => {
+      latestLandmaskRef.current = coords
+      // In auto-immediate mode, POST on every dragend (per-edit cascade)
+      if (landmaskMode === 'auto-immediate' && projectId && activeBranchId) {
+        void fetch(`/api/v3/projects/${projectId}/editor/apply`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            op_type: 'landmask_replace',
+            payload: { new_landmask_coords: coords },
+            branch_id: activeBranchId,
+          }),
+        }).catch(() => {})
+      }
+    },
+    [landmaskMode, projectId, activeBranchId],
+  )
+
+  // Phase 08 Plan 16: Apply button callback (manual mode).
+  // POSTs latestLandmaskRef.current — which was seeded from the query ring on load
+  // and updated on every dragend, so Apply never sends [].
+  const handleApplyLandmask = useCallback(async () => {
+    if (!projectId || !activeBranchId) return
+    await fetch(`/api/v3/projects/${projectId}/editor/apply`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        op_type: 'landmask_replace',
+        payload: { new_landmask_coords: latestLandmaskRef.current },
+        branch_id: activeBranchId,
+      }),
+    }).catch(() => {})
+  }, [projectId, activeBranchId])
 
   // Pitfall 10: clearCache on activeTerritoryId change (Phase 08).
   // Fires AFTER hydration completes — guard on stageRef.current.
@@ -695,22 +749,26 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
         <InteractionLayer territories={effectiveTerritories} />
         {/* Phase 08 Plan 05: 6th Konva layer (z=5) — VertexEditLayer with viewport-culled handles.
             Plan 14 (GAP-B): projectId/branchId/tier='barony' wired so split/merge/translate
-            no longer early-return. editableLayer left at default 'baronies'; landmask edit
-            surface is Plan 08-16. */}
+            no longer early-return.
+            Plan 16 (LANDMASK-01/02): editableLayer + landmaskCoords + onLandmaskCoordsChange
+            plumbed so cyan handles render and Apply/auto-immediate reach the backend. */}
         <VertexEditLayer
           stageRef={stageRef}
           viewport={vertexViewport}
           tier="barony"
           projectId={projectId}
           branchId={activeBranchId ?? undefined}
+          editableLayer={editableLayer}
+          landmaskCoords={landmaskRing}
+          onLandmaskCoordsChange={handleLandmaskCoordsChange}
         />
       </Stage>
-      {/* Plan 14 (GAP-B): projectId/branchId forwarded so LandmaskEditorHeader renders.
-          onApplyLandmask intentionally NOT set here — Plan 08-16 supplies the real
-          coord-carrying callback. A payload:{} no-op stub would falsely imply LANDMASK-02. */}
+      {/* Plan 16 (LANDMASK-01/02): onApplyLandmask wired with real coord-carrying callback.
+          Manual Apply POSTs latestLandmaskRef.current (seeded from query ring, updated on drag). */}
       <LayerTogglePanel
         projectId={projectId}
         branchId={activeBranchId ?? undefined}
+        onApplyLandmask={handleApplyLandmask}
       />
       <LegendCard />
       <FitToViewButton onFit={fitToView} />
