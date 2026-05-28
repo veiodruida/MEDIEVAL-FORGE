@@ -19,6 +19,11 @@ export interface BaronyRender {
   // D-03 (Phase 04.1): geo centroid in lon/lat (degrees). Available when
   // the backend baronies.geojson includes the `centroid` property.
   centroid?: [number, number]
+  // Phase 08 Plan 12 (GAP-A): outer ring [lon,lat][] in degrees captured before
+  // pixel conversion — source for SelectionBridge → useEditorStore.vertices load.
+  // Optional so existing consumers (InspectorSidebar, BaronyLayer, tests)
+  // typecheck unchanged (additive field, D-03).
+  geoRing?: [number, number][]
 }
 
 export interface TerritoryMetadataCondado {
@@ -193,14 +198,20 @@ export function useCanvasArtifacts(
         placeholderData: keepPreviousData,  // Plan 04.1-05 D-01 fix
         select: (raw: FC<BaronyFeature>): BaronyRender[] => {
           if (!projection) return []
-          return raw.features.map((f) => ({
-            id: f.properties.id,
-            name: f.properties.name,
-            condado_id: f.properties.condado_id,
-            fill: f.properties.fill,
-            points: geoRingToKonvaPoints(firstOuterRing(f.geometry), projection),
-            centroid: f.properties.centroid,  // D-03: pass through if present
-          }))
+          return raw.features.map((f) => {
+            // Phase 08 Plan 12 (GAP-A): capture raw ring once, reuse for both
+            // pixel conversion and geoRing. No double-fetch, no extra compute.
+            const ring = firstOuterRing(f.geometry)
+            return {
+              id: f.properties.id,
+              name: f.properties.name,
+              condado_id: f.properties.condado_id,
+              fill: f.properties.fill,
+              points: geoRingToKonvaPoints(ring, projection),
+              centroid: f.properties.centroid,  // D-03: pass through if present
+              geoRing: ring,
+            }
+          })
         },
       },
       {
