@@ -41,6 +41,20 @@ interface ToolDescriptor {
   tooltip: string;
 }
 
+/**
+ * Phase 08.1: locked PT-BR copy shown when a tool is disabled in Bézier mode.
+ * Verbatim from 08.1-UI-SPEC §Disabled-tool states. EditToolPalette stays
+ * Bézier-UNAWARE (UI-SPEC Note #7): it never reads editableLayer/activeTerritoryId —
+ * the disabled set is threaded as the `disabledTools` prop by WorkspaceToolbar.
+ */
+/** Non-null tool keys (EditTool minus null) — DISABLED_TOOLTIP is keyed on these. */
+type NamedTool = NonNullable<EditTool>;
+
+const DISABLED_TOOLTIP: Partial<Record<NamedTool, string>> = {
+  A: 'Adicionar vértice indisponível em modo Bézier — alterne para modo raw para adicionar vértices',
+  D: 'Excluir vértice indisponível em modo Bézier — alterne para modo raw para excluir vértices',
+};
+
 const TOOL_DESCRIPTORS: ToolDescriptor[] = [
   {
     key: 'V',
@@ -84,11 +98,20 @@ const TOOL_DESCRIPTORS: ToolDescriptor[] = [
 // Component
 // ---------------------------------------------------------------------------
 
+export interface EditToolPaletteProps {
+  /**
+   * Phase 08.1: tools to render Radix-`disabled`. WorkspaceToolbar passes
+   * `['A','D']` in Bézier mode (UI-SPEC Note #7). The palette stays Bézier-unaware:
+   * it never derives this set itself, it only honors the prop.
+   */
+  disabledTools?: EditTool[];
+}
+
 /**
  * Visible V/A/D/S/M + Esc tool palette bound to useEditorStore.
  * Mount in WorkspaceToolbar between BranchPicker and Undo/Redo.
  */
-export function EditToolPalette() {
+export function EditToolPalette({ disabledTools = [] }: EditToolPaletteProps = {}) {
   const activeTool = useEditorStore((s) => s.activeTool);
   const selectTool = useEditorStore((s) => s.selectTool);
 
@@ -98,15 +121,20 @@ export function EditToolPalette() {
         // Esc button: 'ESC' never matches activeTool (EditTool type), so isActive
         // is always false for the cancel button — no special case needed.
         const isActive = activeTool === key;
+        // 'ESC' is never in disabledTools (EditTool type) — the cast is safe here.
+        const isDisabled = disabledTools.includes(key as EditTool);
+        // When disabled, surface the locked PT copy via tooltip + aria-label.
+        const label = isDisabled ? (DISABLED_TOOLTIP[key as NamedTool] ?? tooltip) : tooltip;
 
         return (
-          <Tooltip key={key} content={tooltip} delayDuration={300}>
+          <Tooltip key={key} content={label} delayDuration={300}>
             <IconButton
               size="2"
               variant={isActive ? 'solid' : 'soft'}
               color={isActive ? 'blue' : 'gray'}
               aria-pressed={isActive}
-              aria-label={tooltip}
+              aria-label={label}
+              disabled={isDisabled}
               data-testid={testid}
               onClick={() => selectTool(key === 'ESC' ? null : (key as EditTool))}
             >

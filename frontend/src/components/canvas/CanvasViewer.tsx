@@ -9,6 +9,7 @@ import { LegendCard } from './LegendCard'
 import { DecorationsLayer } from './DecorationsLayer'
 import { InteractionLayer } from './InteractionLayer'
 import { VertexEditLayer } from './VertexEditLayer'
+import { BezierEditLayer } from './BezierEditLayer'
 import { CoordTooltip } from './CoordTooltip'
 import { FitToViewButton } from './FitToViewButton'
 import { HoverTooltip } from './HoverTooltip'
@@ -169,6 +170,14 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
   // Phase 08 Plan 16 (LANDMASK-01): editableLayer drives cyan handle rendering
   const editableLayer = useEditorStore((s) => s.editableLayer)
   const landmaskMode = useEditorStore((s) => s.landmaskMode)
+
+  // Phase 08.1 (BEZ-UAT-01): z=5 mutual-exclusion gate. When a barony is selected on
+  // the baronies layer, mount BezierEditLayer (curve anchors) instead of VertexEditLayer
+  // (raw vertex handles). NOTE: this gate intentionally omits the activeTool==='V' check
+  // that WorkspaceToolbar's bezierMode uses — BezierEditLayer self-gates on the V tool
+  // internally and renders null otherwise, so under S/M tools neither layer shows handles
+  // (S/M operate at territory level, not per-vertex — see SUMMARY mutual-exclusion note).
+  const bezierActive = editableLayer === 'baronies' && activeTerritoryId !== null
 
   // Phase 08 Plan 16: landmask ring from backend (branch edit-event or NE union)
   const landmaskRing = useLandmaskRing(projectId, activeBranchId ?? undefined)
@@ -751,17 +760,28 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
             Plan 14 (GAP-B): projectId/branchId/tier='barony' wired so split/merge/translate
             no longer early-return.
             Plan 16 (LANDMASK-01/02): editableLayer + landmaskCoords + onLandmaskCoordsChange
-            plumbed so cyan handles render and Apply/auto-immediate reach the backend. */}
-        <VertexEditLayer
-          stageRef={stageRef}
-          viewport={vertexViewport}
-          tier="barony"
-          projectId={projectId}
-          branchId={activeBranchId ?? undefined}
-          editableLayer={editableLayer}
-          landmaskCoords={landmaskRing}
-          onLandmaskCoordsChange={handleLandmaskCoordsChange}
-        />
+            plumbed so cyan handles render and Apply/auto-immediate reach the backend.
+
+            Phase 08.1 (BEZ-UAT-01): z=5 mutual exclusion (UI-SPEC §Konva Layer Stack).
+            When a barony is selected on the baronies layer, the raw-vertex VertexEditLayer
+            is REPLACED by BezierEditLayer so the designer never sees ~100 raw dots — only
+            ~4 Bézier anchors. In landmask mode (or no barony selected) VertexEditLayer mounts
+            as before. Exactly ONE of the two is mounted at z=5 — never both (double handlers),
+            never neither (feature unreachable): the T-08.1-04-01 mitigation. */}
+        {bezierActive ? (
+          <BezierEditLayer projection={projection} />
+        ) : (
+          <VertexEditLayer
+            stageRef={stageRef}
+            viewport={vertexViewport}
+            tier="barony"
+            projectId={projectId}
+            branchId={activeBranchId ?? undefined}
+            editableLayer={editableLayer}
+            landmaskCoords={landmaskRing}
+            onLandmaskCoordsChange={handleLandmaskCoordsChange}
+          />
+        )}
       </Stage>
       {/* Plan 16 (LANDMASK-01/02): onApplyLandmask wired with real coord-carrying callback.
           Manual Apply POSTs latestLandmaskRef.current (seeded from query ring, updated on drag). */}

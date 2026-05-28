@@ -7,6 +7,7 @@ import type { PipelineStage, RunState } from '../../stores/useRunStore'
 import { usePipelineParams } from '../../stores/usePipelineParams'
 import { postRenderCancel } from '../../api/render'
 import { useEditorStore } from '../../stores/useEditorStore'
+import type { EditTool } from '../../stores/useEditorStore'
 import { BranchPicker } from '../editor/BranchPicker'
 import { EditorSyncBridge } from '../editor/EditorSyncBridge'
 import { EditToolPalette } from '../editor/EditToolPalette'
@@ -67,6 +68,17 @@ export function WorkspaceToolbar({
   const undoLabels = useEditorStore((s) => s.undoLabels)
   const redoLabels = useEditorStore((s) => s.redoLabels)
   const activeBranchId = useEditorStore((s) => s.activeBranchId)
+
+  // Phase 08.1: derive the Bézier-mode disabled-tool set here (WorkspaceToolbar
+  // owns the mode knowledge) and thread it into the Bézier-unaware EditToolPalette
+  // (UI-SPEC Note #7). Bézier mode = editing a selected barony with the V tool;
+  // A (add vertex) and D (delete vertex) are unavailable while curve-editing.
+  const editableLayer = useEditorStore((s) => s.editableLayer)
+  const activeTerritoryId = useEditorStore((s) => s.activeTerritoryId)
+  const activeTool = useEditorStore((s) => s.activeTool)
+  const bezierMode =
+    editableLayer === 'baronies' && activeTerritoryId !== null && activeTool === 'V'
+  const disabledTools: EditTool[] = bezierMode ? ['A', 'D'] : []
   const canUndo = useEditorStore.temporal.getState().pastStates.length > 0
   const canRedo = useEditorStore.temporal.getState().futureStates.length > 0
 
@@ -158,8 +170,9 @@ export function WorkspaceToolbar({
           <BranchPicker projectId={project?.id} />
 
           {/* GAP-C closure (08-13): visible V/A/D/S/M tool palette per UI-SPEC §Tool Palette Zone.
-              Bound to useEditorStore.activeTool/selectTool — same state as keyboard shortcuts. */}
-          <EditToolPalette />
+              Bound to useEditorStore.activeTool/selectTool — same state as keyboard shortcuts.
+              Phase 08.1: disabledTools threads the Bézier-mode-derived A/D disable set. */}
+          <EditToolPalette disabledTools={disabledTools} />
 
           {/* Undo/Redo buttons with dynamic tooltip from undoLabels/redoLabels (Gemini review) */}
           <Tooltip content={undoTooltip}>

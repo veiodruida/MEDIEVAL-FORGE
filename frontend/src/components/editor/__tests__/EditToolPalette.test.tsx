@@ -104,4 +104,49 @@ describe('Phase 08 — EditToolPalette (GAP-C, UX-01)', () => {
     expect(screen.getByTestId('edit-tool-v')).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByTestId('edit-tool-a')).toHaveAttribute('aria-pressed', 'false');
   });
+
+  // ── 9. Phase 08.1: disabledTools={['A','D']} disables A and D buttons ────────
+  it('with disabledTools={["A","D"]} the A and D IconButtons are disabled (Bézier mode)', () => {
+    render(wrap(<EditToolPalette disabledTools={['A', 'D']} />));
+
+    expect(screen.getByTestId('edit-tool-a')).toBeDisabled();
+    expect(screen.getByTestId('edit-tool-d')).toBeDisabled();
+    // V, S, M, Esc stay enabled — only A/D are disallowed in Bézier mode.
+    expect(screen.getByTestId('edit-tool-v')).toBeEnabled();
+    expect(screen.getByTestId('edit-tool-s')).toBeEnabled();
+    expect(screen.getByTestId('edit-tool-m')).toBeEnabled();
+    expect(screen.getByTestId('edit-tool-esc')).toBeEnabled();
+  });
+
+  // ── 10. Phase 08.1: disabled A/D carry the locked PT-BR tooltip copy ────────
+  it('disabled A and D buttons carry the locked PT Bézier-mode tooltip copy (aria-label)', () => {
+    render(wrap(<EditToolPalette disabledTools={['A', 'D']} />));
+
+    // The locked UI-SPEC copy is surfaced via aria-label (Radix Tooltip content
+    // on a disabled trigger does not open on hover; aria-label is the testable surface).
+    expect(screen.getByTestId('edit-tool-a')).toHaveAttribute(
+      'aria-label',
+      'Adicionar vértice indisponível em modo Bézier — alterne para modo raw para adicionar vértices',
+    );
+    expect(screen.getByTestId('edit-tool-d')).toHaveAttribute(
+      'aria-label',
+      'Excluir vértice indisponível em modo Bézier — alterne para modo raw para excluir vértices',
+    );
+  });
+
+  // ── 11. Phase 08.1 regression: no disabledTools prop → all tools enabled ─────
+  it('without disabledTools (default) every tool button is enabled — Phase 08 behavior unchanged', () => {
+    render(wrap(<EditToolPalette />));
+
+    for (const id of [
+      'edit-tool-v',
+      'edit-tool-a',
+      'edit-tool-d',
+      'edit-tool-s',
+      'edit-tool-m',
+      'edit-tool-esc',
+    ]) {
+      expect(screen.getByTestId(id)).toBeEnabled();
+    }
+  });
 });

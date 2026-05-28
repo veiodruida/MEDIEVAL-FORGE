@@ -247,6 +247,10 @@ export const BezierEditLayer: React.FC<BezierEditLayerProps> = ({ projection }) 
   const snapCandidatesRef = useRef<SnapCandidate[]>([])
   // Alt held → disable snap for current drag (D-28 parity).
   const altHeldRef = useRef(false)
+  // Plan 04 (BEZ-UAT-01): ref to the Konva Layer so __forgeBezierState can read a
+  // rendered anchor's absolute SCREEN position for a real Playwright Konva mouse drag
+  // (the canvas is opaque to DOM queries — mirrors VertexEditLayer's firstHandle hatch).
+  const layerRef = useRef<Konva.Layer | null>(null)
 
   // ── Fit on entry / activeTerritoryId change ─────────────────────────────────
   // vertices are loaded once by SelectionBridge and stable for the layer's life, so the
@@ -475,11 +479,35 @@ export const BezierEditLayer: React.FC<BezierEditLayerProps> = ({ projection }) 
   // the drag-commit plan makes it live. Cleaned up on unmount so it never leaks.
   useEffect(() => {
     if (!import.meta.env.DEV) return
-    ;(window as unknown as { __forgeBezierState?: () => unknown }).__forgeBezierState = () => ({
-      anchorCount: anchors.length,
-      activeAnchorIdx,
-      dirtySegmentCount: dirtyCount,
-    })
+    ;(window as unknown as { __forgeBezierState?: () => unknown }).__forgeBezierState = () => {
+      // Plan 04 (BEZ-UAT-01): resolve the first rendered anchor's SCREEN coords so a
+      // Playwright spec can drive a REAL Konva mouse drag (canvas is opaque to the DOM).
+      // Mirrors VertexEditLayer.firstHandle: abs position (stage scale+pos applied) +
+      // the canvas container's page offset. Returns null if no anchor is mounted.
+      let firstAnchor: { idx: number; x: number; y: number } | null = null
+      const layer = layerRef.current
+      if (layer) {
+        const stage = layer.getStage()
+        const rect = layer.find('Rect').find((n) => n.getAttr('data-testid') === 'bezier-anchor')
+        if (stage && rect) {
+          const abs = rect.getAbsolutePosition() // top-left of the 10×10 anchor Rect
+          const containerRect = stage.container().getBoundingClientRect()
+          firstAnchor = {
+            idx: Number(rect.getAttr('data-anchor-idx')),
+            // +5 → the anchor CENTER (Rect is positioned at anchorPx-5; see render).
+            x: containerRect.left + abs.x + 5,
+            y: containerRect.top + abs.y + 5,
+          }
+        }
+      }
+      return {
+        anchorCount: anchors.length,
+        activeAnchorIdx,
+        dirtySegmentCount: dirtyCount,
+        editLogLength: useEditorStore.getState().editLog.length,
+        firstAnchor, // { idx, x, y } page coords for page.mouse, or null
+      }
+    }
     return () => {
       delete (window as unknown as { __forgeBezierState?: unknown }).__forgeBezierState
     }
@@ -498,6 +526,7 @@ export const BezierEditLayer: React.FC<BezierEditLayerProps> = ({ projection }) 
 
   return (
     <Layer
+      ref={layerRef}
       onClick={(e) => {
         // Click on empty background (the Layer itself) clears the active anchor.
         if (e.target === e.currentTarget) setActiveAnchorIdx(null)
