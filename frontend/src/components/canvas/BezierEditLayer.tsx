@@ -154,6 +154,53 @@ export function deriveAnchorsFromStore(
   return deriveAnchors(cubics, ranges)
 }
 
+/** Drag kind: an anchor square, or one of the active anchor's two control handles. */
+type DragKind = 'anchor' | 'cp1' | 'cp2'
+
+/**
+ * Konva center px of the dragged node. The anchor Rect is positioned by its top-left
+ * (`x = anchorPx - 5` for a 10×10 square), so after a drag `e.target.x()` is the new
+ * top-left and the true anchor CENTER is `x()+5, y()+5`. Control handles are Circles
+ * (center-anchored) so their reported px IS the center.
+ */
+function draggedCenterPx(kind: DragKind, x: number, y: number): [number, number] {
+  return kind === 'anchor' ? [x + 5, y + 5] : [x, y]
+}
+
+/**
+ * Produce a new anchor list with the dragged element moved to `targetPx`.
+ * Anchor drag rigidly translates BOTH control handles by the same delta (preserves local
+ * curve shape, no cusp). Control-handle drag moves only that handle. Pure — no snap here
+ * (snap is applied to `targetPx` by the caller before this runs, anchors only).
+ */
+function applyDragToAnchors(
+  anchors: BezierAnchor[],
+  kind: DragKind,
+  idx: number,
+  targetPx: [number, number],
+): BezierAnchor[] {
+  const working = anchors.map((x) => ({
+    ...x,
+    anchorPx: [...x.anchorPx] as [number, number],
+    cp1Px: [...x.cp1Px] as [number, number],
+    cp2Px: [...x.cp2Px] as [number, number],
+  }))
+  const w = working[idx]
+  if (!w) return working
+  if (kind === 'anchor') {
+    const dx = targetPx[0] - w.anchorPx[0]
+    const dy = targetPx[1] - w.anchorPx[1]
+    w.anchorPx = targetPx
+    w.cp1Px = [w.cp1Px[0] + dx, w.cp1Px[1] + dy]
+    w.cp2Px = [w.cp2Px[0] + dx, w.cp2Px[1] + dy]
+  } else if (kind === 'cp1') {
+    w.cp1Px = targetPx
+  } else {
+    w.cp2Px = targetPx
+  }
+  return working
+}
+
 export const BezierEditLayer: React.FC<BezierEditLayerProps> = ({ projection }) => {
   const editableLayer = useEditorStore((s) => s.editableLayer)
   const activeTerritoryId = useEditorStore((s) => s.activeTerritoryId)
@@ -176,6 +223,10 @@ export const BezierEditLayer: React.FC<BezierEditLayerProps> = ({ projection }) 
   const [hoverAnchorIdx, setHoverAnchorIdx] = useState<number | null>(null)
   // Live dirty-segment count surfaced via __forgeBezierState (Plan 03).
   const [dirtyCount, setDirtyCount] = useState(0)
+  // Live in-flight preview anchors during a drag (UI-SPEC §Anchor step 1). When set,
+  // the curve outline + handles render from this instead of committed `anchors` — so the
+  // whole curve follows the drag, not just the dragged Konva node. Cleared on dragEnd.
+  const [previewAnchors, setPreviewAnchors] = useState<BezierAnchor[] | null>(null)
   // Original ordered coords, px points + ordered store keys, retained for the flatten path.
   const originalRef = useRef<{
     coords: Array<[number, number]>
@@ -279,38 +330,32 @@ export const BezierEditLayer: React.FC<BezierEditLayerProps> = ({ projection }) 
   // ── Drag handlers (the ONLY store-writing path; op MUST be 'move') ───────────
   // Live preview during move — repaint only, no store write (UI-SPEC §Anchor step 1).
   const handleDragMove = useCallback(
-    (kind: 'anchor' | 'cp1' | 'cp2', idx: number, e: Konva.KonvaEventObject<DragEvent>) => {
-      previewRef.current = { kind, idx, px: [e.target.x(), e.target.y()] }
+    (kind: DragKind, idx: number, e: Konva.KonvaEventObject<DragEvent>) => {
+      const center = draggedCenterPx(kind, e.target.x(), e.target.y())
+      previewRef.current = { kind, idx, px: center }
+      // Live preview: repaint the whole curve + handles following the drag (no store write).
+      setPreviewAnchors(applyDragToAnchors(anchorsRef.current, kind, idx, center))
       setDirtyCount(idx === 0 || kind === 'cp2' ? 1 : 2)
     },
     [],
   )
 
   const handleDragEnd = useCallback(
-    (kind: 'anchor' | 'cp1' | 'cp2', idx: number, e: Konva.KonvaEventObject<DragEvent>) => {
+    (kind: DragKind, idx: number, e: Konva.KonvaEventObject<DragEvent>) => {
       previewRef.current = null
+      setPreviewAnchors(null)
       const curAnchors = anchorsRef.current
       const a = curAnchors[idx]
       if (!a) return
       const { orderedKeys, baronyId } = originalRef.current
       if (orderedKeys.length === 0) return
 
-      const finalPx: [number, number] = [e.target.x(), e.target.y()]
+      // Konva center px of the dragged node (anchor Rect is top-left anchored → +5,+5).
+      let finalPx = draggedCenterPx(kind, e.target.x(), e.target.y())
 
-      // 1) Build the working anchor list with the dragged element moved.
-      //    Anchor drag → rigidly translate BOTH control handles by the same delta
-      //    (preserves local curve shape; no cusp). Control-handle drag → move only
-      //    the dragged handle, NEVER snap (RESEARCH constraint 2).
-      const working: BezierAnchor[] = curAnchors.map((x) => ({
-        ...x,
-        anchorPx: [...x.anchorPx] as [number, number],
-        cp1Px: [...x.cp1Px] as [number, number],
-        cp2Px: [...x.cp2Px] as [number, number],
-      }))
-      const w = working[idx]
-
+      // Snap (anchors only) — convert px → geo, snap to neighbour barony vertex, then use
+      // the snapped position. Control-handle drags SKIP snap entirely (RESEARCH constraint 2).
       if (kind === 'anchor') {
-        // snap (anchors only) — convert px → geo, snap to neighbour barony vertex
         const stage = e.target.getStage?.()
         const stageScale = stage?.scaleX?.() ?? 1
         const [rawLon, rawLat] = canvasToGeo(finalPx[0], finalPx[1], projection)
@@ -320,18 +365,12 @@ export const BezierEditLayer: React.FC<BezierEditLayerProps> = ({ projection }) 
           stageScale,
           altHeldRef.current,
         )
-        let snappedPx: [number, number] = finalPx
-        if (snap) snappedPx = geoToCanvas(snap.lon, snap.lat, projection)
-        const dx = snappedPx[0] - w.anchorPx[0]
-        const dy = snappedPx[1] - w.anchorPx[1]
-        w.anchorPx = snappedPx
-        w.cp1Px = [w.cp1Px[0] + dx, w.cp1Px[1] + dy]
-        w.cp2Px = [w.cp2Px[0] + dx, w.cp2Px[1] + dy]
-      } else if (kind === 'cp1') {
-        w.cp1Px = finalPx
-      } else {
-        w.cp2Px = finalPx
+        if (snap) finalPx = geoToCanvas(snap.lon, snap.lat, projection)
       }
+
+      // 1) Working anchors with the dragged element moved (rigid handle translation on
+      //    anchor drag; single-handle move on control-handle drag — handled in the helper).
+      const working = applyDragToAnchors(curAnchors, kind, idx, finalPx)
 
       // 2) Dirty segments. Segment s runs from anchor s (p0=anchorPx, c1=cp2Px) to
       //    anchor s+1 (c2=cp1Px of s+1, p3=anchorPx of s+1).
@@ -446,7 +485,12 @@ export const BezierEditLayer: React.FC<BezierEditLayerProps> = ({ projection }) 
     }
   }, [anchors.length, activeAnchorIdx, dirtyCount])
 
-  const pathData = useMemo(() => buildPathData(anchors), [anchors])
+  // During a drag, render the curve outline + handles from the live preview so the WHOLE
+  // curve follows the drag (UI-SPEC §Anchor step 1) — not just the dragged Konva node.
+  // The anchor squares keep rendering from committed `anchors` so the dragged Konva node
+  // (which Konva positions internally during the gesture) is not fought by a React re-pos.
+  const displayAnchors = previewAnchors ?? anchors
+  const pathData = useMemo(() => buildPathData(displayAnchors), [displayAnchors])
 
   if (!isActive || anchors.length === 0) {
     return null
@@ -498,11 +542,11 @@ export const BezierEditLayer: React.FC<BezierEditLayerProps> = ({ projection }) 
         )
       })}
 
-      {/* Control handles + tethers — active anchor ONLY */}
+      {/* Control handles + tethers — active anchor ONLY (follows live preview during drag) */}
       {activeAnchorIdx !== null &&
-        anchors[activeAnchorIdx] &&
+        displayAnchors[activeAnchorIdx] &&
         (() => {
-          const a = anchors[activeAnchorIdx]
+          const a = displayAnchors[activeAnchorIdx]
           return (
             <React.Fragment key={`handles-${a.idx}`}>
               <Line

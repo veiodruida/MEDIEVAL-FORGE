@@ -28,7 +28,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, fireEvent } from '@testing-library/react'
 import React from 'react'
 import { IBERIA_BARONY_RING } from '../__fixtures__/iberiaBaronyRing'
-import type { ProjectionConfig } from '../../../lib/projection'
+import { canvasToGeo, type ProjectionConfig } from '../../../lib/projection'
 
 // ── mock react-konva (forwards drag handlers + draggable) ──────────────────────
 vi.mock('react-konva', () => {
@@ -308,5 +308,52 @@ describe('BezierEditLayer drag-commit (Phase 08.1 Plan 03 — BEZ-DRAG-01)', () 
     expect(setVerticesAndLog).toHaveBeenCalledTimes(1)
     const [, op] = setVerticesAndLog.mock.calls[0]
     expect(op.op).toBe('move')
+  })
+
+  it('anchor drag uses the Rect CENTER (top-left + 5,5), so the committed anchor lands at the cursor center — not 5px off', () => {
+    // The anchor Rect is positioned at anchorPx-5 (10×10 square). Konva reports the new
+    // TOP-LEFT on dragEnd; the handler must add (5,5) to recover the center. We fire a
+    // dragEnd whose target reports a top-left such that the intended center is anchorPx+(60,0),
+    // and assert the flattened endpoint vertex equals geo(center), proving the +5 offset.
+    const anchors = deriveAnchorsFromStore(mockState.vertices, PROJ)
+    const i = 2
+    const a = anchors[i]
+    const center: [number, number] = [a.anchorPx[0] + 60, a.anchorPx[1] + 0]
+    const topLeft: [number, number] = [center[0] - 5, center[1] - 5]
+
+    const { getAllByTestId } = render(<BezierEditLayer projection={PROJ} />)
+    const anchorEl = getAllByTestId('bezier-anchor').find(
+      (el) => el.getAttribute('data-anchor-idx') === String(i),
+    )!
+    fireEvent.dragStart(anchorEl)
+    fireEvent.dragEnd(anchorEl, dragEventAt(topLeft[0], topLeft[1]))
+
+    expect(setVerticesAndLog).toHaveBeenCalledTimes(1)
+    const [nextVertices] = setVerticesAndLog.mock.calls[0]
+    // segment i starts at anchor i, so the vertex at anchors[i].polyRangeStart is the
+    // dragged anchor's polygon vertex; its committed coord must equal geo(center).
+    const [expLon, expLat] = canvasToGeo(center[0], center[1], PROJ)
+    const got = nextVertices[`b1#${a.polyRangeStart}`]
+    expect(got.lon).toBeCloseTo(expLon, 6)
+    expect(got.lat).toBeCloseTo(expLat, 6)
+  })
+
+  it('live preview during drag repaints the curve outline — onDragMove updates the path without writing the store', () => {
+    const anchors = deriveAnchorsFromStore(mockState.vertices, PROJ)
+    const i = 1
+    const a = anchors[i]
+    const { getAllByTestId, getByTestId } = render(<BezierEditLayer projection={PROJ} />)
+    const beforePath = getByTestId('bezier-curve-outline').getAttribute('data-d')
+
+    const anchorEl = getAllByTestId('bezier-anchor').find(
+      (el) => el.getAttribute('data-anchor-idx') === String(i),
+    )!
+    fireEvent.dragStart(anchorEl)
+    fireEvent.drag(anchorEl, dragEventAt(a.anchorPx[0] + 80, a.anchorPx[1] + 80))
+
+    // Curve path changed mid-drag (live preview) but NO store commit happened yet.
+    const duringPath = getByTestId('bezier-curve-outline').getAttribute('data-d')
+    expect(duringPath).not.toBe(beforePath)
+    expect(setVerticesAndLog).not.toHaveBeenCalled()
   })
 })
