@@ -93,11 +93,12 @@ const RING_B12: [number, number][] = [
   [-7.5, 38.5], // closed — last point === first point
 ]
 
+// Genuinely open ring: last point ≠ first point → all 4 included
 const RING_B13: [number, number][] = [
   [-8.0, 37.0],
   [-8.1, 37.1],
   [-8.0, 37.2],
-  [-8.0, 37.0],
+  [-7.9, 37.1],  // different from first point → open ring
 ]
 
 function renderBridge(baronies: BaronyRender[]) {
