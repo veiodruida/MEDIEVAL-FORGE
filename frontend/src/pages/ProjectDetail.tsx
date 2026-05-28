@@ -24,6 +24,7 @@ import {
   type DryRunOutcome,
 } from '../components/export/ExportErrorDialog'
 import { regionDisplayNameFor } from '../utils/regionDisplay'
+import { BranchInitializer } from '../components/editor/BranchInitializer'
 
 /**
  * ProjectDetailWorkspace — Phase 03 Plan 04 read-only Mapbox-style shell.
@@ -235,6 +236,10 @@ export function ProjectDetail() {
         statusBadgeOpen={logPanelOpen}
         onToggleStatusBadge={() => setLogPanelOpen((o) => !o)}
       />
+      {/* Phase 08 Plan 14 (GAP-B): auto-select active branch on load.
+          Returns null — effect only. Ensures activeBranchId is non-null
+          before user reaches for any edit tool. */}
+      <BranchInitializer projectId={id} />
       <Flex style={{ flex: 1, overflow: 'hidden' }}>
         {id && <ParameterSidebar projectId={id} />}
         <Box style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
