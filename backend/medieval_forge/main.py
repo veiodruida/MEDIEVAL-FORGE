@@ -24,11 +24,47 @@ ASSETS_DIR: Path = STATIC_DIR / "assets"
 
 
 @asynccontextmanager
+def _reconcile_added_columns(conn) -> None:
+    """Additive column migration for SQLite.
+
+    `create_all` creates missing tables but never adds columns to a table that
+    already exists. When a model gains a NOT NULL column with a default (e.g.
+    Phase 08 added branches.manual_edit_log_count / manual_edit_log_hash), an
+    existing DB is left without it and every ORM SELECT on that table fails with
+    "no such column". This walks each mapped table, compares its columns against
+    the live schema, and issues ALTER TABLE ADD COLUMN for any that are missing.
+    Only additive — never drops or alters existing columns.
+    """
+    from sqlalchemy import inspect, text
+
+    from .models import Base
+
+    insp = inspect(conn)
+    existing_tables = set(insp.get_table_names())
+    for table in Base.metadata.sorted_tables:
+        if table.name not in existing_tables:
+            continue  # create_all already made it with the full set of columns
+        live_cols = {c["name"] for c in insp.get_columns(table.name)}
+        for col in table.columns:
+            if col.name in live_cols:
+                continue
+            ddl_type = col.type.compile(dialect=conn.dialect)
+            clause = f'ADD COLUMN "{col.name}" {ddl_type}'
+            default = col.default.arg if col.default is not None and not callable(col.default.arg) else None
+            if not col.nullable:
+                if isinstance(default, str):
+                    clause += f" NOT NULL DEFAULT '{default}'"
+                elif default is not None:
+                    clause += f" NOT NULL DEFAULT {default}"
+            conn.execute(text(f'ALTER TABLE "{table.name}" {clause}'))
+
+
 async def lifespan(app: FastAPI):
     # Startup: ensure ORM tables exist (idempotent).
     from .models import Base  # noqa: F401
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await conn.run_sync(_reconcile_added_columns)
 
     # UAT 2026-05-23 — auto-discover `.env` files under the user's home
     # directory so a fresh install picks up keys without forcing the
