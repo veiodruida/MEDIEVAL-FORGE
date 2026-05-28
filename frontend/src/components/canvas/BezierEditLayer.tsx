@@ -25,7 +25,8 @@
  *   tether          #94a3b8 width 1 dash [4,4] listening=false (active anchor only)
  *   curve outline   #4a9eff width 2 fill transparent listening=false
  */
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type Konva from 'konva'
 import { Layer, Path, Rect, Circle, Line } from 'react-konva'
 import { useEditorStore } from '../../stores/useEditorStore'
 import {
@@ -33,7 +34,16 @@ import {
   buildPolyIndexMap,
   type BezierCubic,
 } from '../../lib/bezierFit'
-import { geoToCanvas, type ProjectionConfig } from '../../lib/projection'
+import { flattenSegment } from '../../lib/bezierFlatten'
+import { geoToCanvas, canvasToGeo, type ProjectionConfig } from '../../lib/projection'
+import { snapToNeighbour } from '../../lib/snap'
+import type { SnapCandidate } from '../../lib/snap'
+import {
+  buildSharedVertexIndex,
+  getCoupledVertices,
+  type SharedVertexIndex,
+  type VertexRef,
+} from '../../lib/sharedVertex'
 
 // UI-SPEC Konva color literals
 export const ANCHOR_INACTIVE_FILL = '#4a9eff'
@@ -74,6 +84,11 @@ function sortRingKeys(keys: string[]): string[] {
   })
 }
 
+/** Extract the barony id from a vertex key `<baronyId>#<n>`. */
+function keyBarony(key: string): string {
+  return key.split('#')[0]
+}
+
 /** Build the SVG cubic path string for the full curve outline (RESEARCH §Pattern 3). */
 export function buildPathData(anchors: BezierAnchor[]): string {
   if (anchors.length === 0) return ''
@@ -94,19 +109,49 @@ export function buildPathData(anchors: BezierAnchor[]): string {
 export function deriveAnchors(cubics: BezierCubic[], ranges: ReturnType<typeof buildPolyIndexMap>): BezierAnchor[] {
   const anchors: BezierAnchor[] = []
   for (let j = 0; j < cubics.length; j++) {
-    const [p0, c1, c2] = cubics[j]
+    const [p0, c1] = cubics[j]
     const range = ranges[j] ?? { rangeStart: 0, rangeEnd: 0 }
     anchors.push({
       idx: j,
       anchorPx: [p0[0], p0[1]],
-      // incoming handle: previous cubic's c2 if available, else this cubic's c1
+      // fit-curve convention: c1 is near p0 (this anchor), c2 is near p3 (next anchor).
+      // incoming handle (cp1) of anchor j is the PREVIOUS cubic's c2 (near prev p3 = this
+      // anchor); for the first anchor it falls back to this cubic's c1.
       cp1Px: j > 0 ? [cubics[j - 1][2][0], cubics[j - 1][2][1]] : [c1[0], c1[1]],
-      cp2Px: [c2[0], c2[1]],
+      // outgoing handle (cp2) of anchor j is THIS cubic's c1 (near p0 = this anchor).
+      // [Plan 03 Rule-1 fix] Plan 02 used c2 here, which sits near the NEXT anchor —
+      // verified on IBERIA_BARONY_RING (|p0->c1|≈9-13px vs |p0->c2|≈65-92px). Using c2
+      // made the outgoing tether stretch to the next anchor and broke rigid handle
+      // translation on drag. cp2 must be c1 (the handle that genuinely leaves this anchor).
+      cp2Px: [c1[0], c1[1]],
       polyRangeStart: range.rangeStart,
       polyRangeEnd: range.rangeEnd,
     })
   }
   return anchors
+}
+
+/**
+ * Convenience: fit the store's barony vertices to anchors in one call.
+ * Pure (no React) — used by the drag flatten path and by tests to compute the
+ * expected dirty ranges. Vertices are keyed `<baronyId>#<n>`; sorted by #N.
+ */
+export function deriveAnchorsFromStore(
+  vertices: Record<string, { lat: number; lon: number }>,
+  projection: ProjectionConfig,
+): BezierAnchor[] {
+  const orderedKeys = sortRingKeys(Object.keys(vertices))
+  const coords: Array<[number, number]> = orderedKeys.map((k) => {
+    const v = vertices[k]
+    return [v.lon, v.lat]
+  })
+  const cubics = fitPolygonToBezier(coords, projection)
+  if (cubics.length === 0) return []
+  const pxPts: Array<[number, number]> = coords.map(([lon, lat]) =>
+    geoToCanvas(lon, lat, projection),
+  )
+  const ranges = buildPolyIndexMap(pxPts, cubics)
+  return deriveAnchors(cubics, ranges)
 }
 
 export const BezierEditLayer: React.FC<BezierEditLayerProps> = ({ projection }) => {
@@ -129,35 +174,262 @@ export const BezierEditLayer: React.FC<BezierEditLayerProps> = ({ projection }) 
   const [anchors, setAnchors] = useState<BezierAnchor[]>([])
   const [activeAnchorIdx, setActiveAnchorIdx] = useState<number | null>(null)
   const [hoverAnchorIdx, setHoverAnchorIdx] = useState<number | null>(null)
-  // Original ordered coords + px points, retained for the later flatten path (Plan 03).
+  // Live dirty-segment count surfaced via __forgeBezierState (Plan 03).
+  const [dirtyCount, setDirtyCount] = useState(0)
+  // Original ordered coords, px points + ordered store keys, retained for the flatten path.
   const originalRef = useRef<{
     coords: Array<[number, number]>
     pxPts: Array<[number, number]>
-  }>({ coords: [], pxPts: [] })
+    orderedKeys: string[]
+    baronyId: string
+  }>({ coords: [], pxPts: [], orderedKeys: [], baronyId: '' })
+  // anchors snapshot for handlers (avoids stale closures without re-binding every render).
+  const anchorsRef = useRef<BezierAnchor[]>([])
+  anchorsRef.current = anchors
+  // in-flight drag preview (px) — NOT persisted to the store (mirrors VertexEditLayer.previewRef).
+  const previewRef = useRef<{ kind: 'anchor' | 'cp1' | 'cp2'; idx: number; px: [number, number] } | null>(
+    null,
+  )
+  // shared-vertex index over the editable vertex set; rebuilt on entry + after commit.
+  const sharedIndexRef = useRef<SharedVertexIndex>(new Map())
+  // snap candidates (anchor drags only) — vertices NOT belonging to the active barony.
+  const snapCandidatesRef = useRef<SnapCandidate[]>([])
+  // Alt held → disable snap for current drag (D-28 parity).
+  const altHeldRef = useRef(false)
 
   // ── Fit on entry / activeTerritoryId change ─────────────────────────────────
   // vertices are loaded once by SelectionBridge and stable for the layer's life, so the
   // dep is activeTerritoryId (+ count as a cheap identity key). We DO NOT write the store.
   useEffect(() => {
-    if (!isActive) {
+    if (!isActive || activeTerritoryId === null) {
       setAnchors([])
       setActiveAnchorIdx(null)
-      originalRef.current = { coords: [], pxPts: [] }
+      setDirtyCount(0)
+      originalRef.current = { coords: [], pxPts: [], orderedKeys: [], baronyId: '' }
+      sharedIndexRef.current = new Map()
+      snapCandidatesRef.current = []
       return
     }
-    const orderedKeys = sortRingKeys(Object.keys(vertices))
+    // Use the subscribed `vertices` (Plan 02 read path) — never getState here, so the
+    // Plan 02 render-test mock (selector-only) keeps working. Filter to the active barony:
+    // SelectionBridge normally loads only one barony, but a coupled neighbour vertex may
+    // also be present, and it must not pollute the ring fit.
+    const all = vertices
+    const ringKeys = Object.keys(all).filter((k) => keyBarony(k) === activeTerritoryId)
+    // Fallback: if no key matches activeTerritoryId (e.g. keys use a different prefix
+    // scheme in some harness), fit over all vertices — preserves Plan 02 behavior.
+    const orderedKeys = sortRingKeys(ringKeys.length > 0 ? ringKeys : Object.keys(all))
     const coords: Array<[number, number]> = orderedKeys.map((k) => {
-      const v = vertices[k]
+      const v = all[k]
       return [v.lon, v.lat]
     })
     const cubics = fitPolygonToBezier(coords, projection)
     const pxPts: Array<[number, number]> = coords.map(([lon, lat]) => geoToCanvas(lon, lat, projection))
     const ranges = buildPolyIndexMap(pxPts, cubics)
-    originalRef.current = { coords, pxPts }
+    originalRef.current = { coords, pxPts, orderedKeys, baronyId: activeTerritoryId }
     setAnchors(deriveAnchors(cubics, ranges))
     setActiveAnchorIdx(null)
+    setDirtyCount(0)
+    rebuildSharedIndex(all)
+    rebuildSnapCandidates(all, activeTerritoryId)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isActive, activeTerritoryId, vertexCount, projection])
+
+  // ── Shared-vertex index + snap candidates (mirror VertexEditLayer rebuild) ───
+  const rebuildSharedIndex = useCallback(
+    (all: Record<string, { lat: number; lon: number }>) => {
+      const refs: VertexRef[] = Object.entries(all).map(([vid, v]) => ({
+        vertexId: vid,
+        baronyId: keyBarony(vid),
+        lat: v.lat,
+        lon: v.lon,
+      }))
+      sharedIndexRef.current = buildSharedVertexIndex(refs)
+    },
+    [],
+  )
+
+  const rebuildSnapCandidates = useCallback(
+    (all: Record<string, { lat: number; lon: number }>, activeBarony: string) => {
+      // Anchor snap targets = vertices that do NOT belong to the active barony
+      // (neighbour barony vertices), same intent as VertexEditLayer snapCandidatesRef.
+      snapCandidatesRef.current = Object.entries(all)
+        .filter(([vid]) => keyBarony(vid) !== activeBarony)
+        .map(([vid, v]) => ({ id: vid, lat: v.lat, lon: v.lon }))
+    },
+    [],
+  )
+
+  // Alt key tracking (snap disable for current drag — D-28 parity).
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => {
+      if (e.altKey) altHeldRef.current = true
+    }
+    const up = (e: KeyboardEvent) => {
+      if (!e.altKey) altHeldRef.current = false
+    }
+    window.addEventListener('keydown', down)
+    window.addEventListener('keyup', up)
+    return () => {
+      window.removeEventListener('keydown', down)
+      window.removeEventListener('keyup', up)
+    }
+  }, [])
+
+  // ── Drag handlers (the ONLY store-writing path; op MUST be 'move') ───────────
+  // Live preview during move — repaint only, no store write (UI-SPEC §Anchor step 1).
+  const handleDragMove = useCallback(
+    (kind: 'anchor' | 'cp1' | 'cp2', idx: number, e: Konva.KonvaEventObject<DragEvent>) => {
+      previewRef.current = { kind, idx, px: [e.target.x(), e.target.y()] }
+      setDirtyCount(idx === 0 || kind === 'cp2' ? 1 : 2)
+    },
+    [],
+  )
+
+  const handleDragEnd = useCallback(
+    (kind: 'anchor' | 'cp1' | 'cp2', idx: number, e: Konva.KonvaEventObject<DragEvent>) => {
+      previewRef.current = null
+      const curAnchors = anchorsRef.current
+      const a = curAnchors[idx]
+      if (!a) return
+      const { orderedKeys, baronyId } = originalRef.current
+      if (orderedKeys.length === 0) return
+
+      const finalPx: [number, number] = [e.target.x(), e.target.y()]
+
+      // 1) Build the working anchor list with the dragged element moved.
+      //    Anchor drag → rigidly translate BOTH control handles by the same delta
+      //    (preserves local curve shape; no cusp). Control-handle drag → move only
+      //    the dragged handle, NEVER snap (RESEARCH constraint 2).
+      const working: BezierAnchor[] = curAnchors.map((x) => ({
+        ...x,
+        anchorPx: [...x.anchorPx] as [number, number],
+        cp1Px: [...x.cp1Px] as [number, number],
+        cp2Px: [...x.cp2Px] as [number, number],
+      }))
+      const w = working[idx]
+
+      if (kind === 'anchor') {
+        // snap (anchors only) — convert px → geo, snap to neighbour barony vertex
+        const stage = e.target.getStage?.()
+        const stageScale = stage?.scaleX?.() ?? 1
+        const [rawLon, rawLat] = canvasToGeo(finalPx[0], finalPx[1], projection)
+        const snap = snapToNeighbour(
+          { lat: rawLat, lon: rawLon },
+          snapCandidatesRef.current,
+          stageScale,
+          altHeldRef.current,
+        )
+        let snappedPx: [number, number] = finalPx
+        if (snap) snappedPx = geoToCanvas(snap.lon, snap.lat, projection)
+        const dx = snappedPx[0] - w.anchorPx[0]
+        const dy = snappedPx[1] - w.anchorPx[1]
+        w.anchorPx = snappedPx
+        w.cp1Px = [w.cp1Px[0] + dx, w.cp1Px[1] + dy]
+        w.cp2Px = [w.cp2Px[0] + dx, w.cp2Px[1] + dy]
+      } else if (kind === 'cp1') {
+        w.cp1Px = finalPx
+      } else {
+        w.cp2Px = finalPx
+      }
+
+      // 2) Dirty segments. Segment s runs from anchor s (p0=anchorPx, c1=cp2Px) to
+      //    anchor s+1 (c2=cp1Px of s+1, p3=anchorPx of s+1).
+      //    Anchor idx drag affects segment idx-1 (ends at idx) and segment idx
+      //    (starts at idx). cp2 of an anchor only shapes the OUTGOING segment idx;
+      //    cp1 only shapes the INCOMING segment idx-1.
+      const N = working.length
+      const dirty = new Set<number>()
+      const addSeg = (s: number) => {
+        if (s >= 0 && s < N - 1) dirty.add(s) // segment N-1 is the non-editable closing segment
+      }
+      if (kind === 'anchor') {
+        addSeg(idx - 1)
+        addSeg(idx)
+      } else if (kind === 'cp1') {
+        addSeg(idx - 1)
+      } else {
+        addSeg(idx)
+      }
+
+      // 3) Flatten ONLY dirty segments; copy non-dirty ranges VERBATIM from store.
+      const storeVerts = useEditorStore.getState().vertices
+      const nextVertices: Record<string, { lat: number; lon: number }> = { ...storeVerts }
+      const changedIds: string[] = []
+
+      for (const s of dirty) {
+        const startAnchor = working[s]
+        const endAnchor = working[s + 1]
+        // cubic for segment s in px: [p0, c1, c2, p3]
+        const cubic: BezierCubic = [
+          startAnchor.anchorPx,
+          startAnchor.cp2Px, // outgoing handle of start anchor (c1, near p0)
+          endAnchor.cp1Px, // incoming handle of end anchor (c2, near p3)
+          endAnchor.anchorPx,
+        ]
+        const rangeStart = startAnchor.polyRangeStart
+        const rangeEnd = startAnchor.polyRangeEnd
+        const targetCount = rangeEnd - rangeStart + 1
+        const flat = flattenSegment(cubic, targetCount, projection)
+        for (let k = 0; k < targetCount; k++) {
+          const key = orderedKeys[rangeStart + k]
+          if (key === undefined) continue
+          const [lon, lat] = flat[k]
+          nextVertices[key] = { lat, lon }
+          changedIds.push(key)
+        }
+      }
+
+      if (changedIds.length === 0) {
+        // closing-segment-only drag (no editable segment) — nothing to commit.
+        setDirtyCount(0)
+        return
+      }
+
+      // 4) Shared-vertex coupling — move coupled partners to the same coord.
+      for (const id of [...changedIds]) {
+        const coupled = getCoupledVertices(sharedIndexRef.current, id)
+        if (coupled.length > 1) {
+          const coord = nextVertices[id]
+          for (const partner of coupled) {
+            if (partner === id) continue
+            nextVertices[partner] = { lat: coord.lat, lon: coord.lon }
+            changedIds.push(partner)
+          }
+        }
+      }
+
+      // 5) Commit through the single chokepoint. op MUST be 'move' (never 'bezier_drag').
+      useEditorStore.getState().setVerticesAndLog(nextVertices, {
+        op: 'move',
+        ts: Date.now(),
+        vertexIds: changedIds,
+      })
+
+      // 6) Recompute display state from the updated store + refresh indices.
+      const updated = useEditorStore.getState().vertices
+      const refit = deriveAnchorsFromStore(
+        Object.fromEntries(
+          Object.entries(updated).filter(([k]) => keyBarony(k) === baronyId),
+        ),
+        projection,
+      )
+      const refitKeys = sortRingKeys(
+        Object.keys(updated).filter((k) => keyBarony(k) === baronyId),
+      )
+      originalRef.current = {
+        coords: refitKeys.map((k) => [updated[k].lon, updated[k].lat]),
+        pxPts: refitKeys.map((k) => geoToCanvas(updated[k].lon, updated[k].lat, projection)),
+        orderedKeys: refitKeys,
+        baronyId,
+      }
+      setAnchors(refit)
+      setDirtyCount(0)
+      rebuildSharedIndex(updated)
+      rebuildSnapCandidates(updated, baronyId)
+    },
+    [projection, rebuildSharedIndex, rebuildSnapCandidates],
+  )
 
   // ── DEV-only escape hatch for the later Playwright reachability spec ─────────
   // Mirrors VertexEditLayer's __forgeEditorState pattern. dirtySegmentCount is 0 here;
@@ -167,12 +439,12 @@ export const BezierEditLayer: React.FC<BezierEditLayerProps> = ({ projection }) 
     ;(window as unknown as { __forgeBezierState?: () => unknown }).__forgeBezierState = () => ({
       anchorCount: anchors.length,
       activeAnchorIdx,
-      dirtySegmentCount: 0,
+      dirtySegmentCount: dirtyCount,
     })
     return () => {
       delete (window as unknown as { __forgeBezierState?: unknown }).__forgeBezierState
     }
-  }, [anchors.length, activeAnchorIdx])
+  }, [anchors.length, activeAnchorIdx, dirtyCount])
 
   const pathData = useMemo(() => buildPathData(anchors), [anchors])
 
@@ -213,7 +485,11 @@ export const BezierEditLayer: React.FC<BezierEditLayerProps> = ({ projection }) 
             width={10}
             height={10}
             fill={fill}
+            draggable
             onClick={() => setActiveAnchorIdx(a.idx)}
+            onDragStart={() => setActiveAnchorIdx(a.idx)}
+            onDragMove={(e: Konva.KonvaEventObject<DragEvent>) => handleDragMove('anchor', a.idx, e)}
+            onDragEnd={(e: Konva.KonvaEventObject<DragEvent>) => handleDragEnd('anchor', a.idx, e)}
             onMouseEnter={() => setHoverAnchorIdx(a.idx)}
             onMouseLeave={() => setHoverAnchorIdx((cur) => (cur === a.idx ? null : cur))}
             data-testid="bezier-anchor"
@@ -250,14 +526,22 @@ export const BezierEditLayer: React.FC<BezierEditLayerProps> = ({ projection }) 
                 y={a.cp1Px[1]}
                 radius={4}
                 fill={HANDLE_FILL}
+                draggable
+                onDragMove={(e: Konva.KonvaEventObject<DragEvent>) => handleDragMove('cp1', a.idx, e)}
+                onDragEnd={(e: Konva.KonvaEventObject<DragEvent>) => handleDragEnd('cp1', a.idx, e)}
                 data-testid="bezier-handle"
+                data-handle-kind="cp1"
               />
               <Circle
                 x={a.cp2Px[0]}
                 y={a.cp2Px[1]}
                 radius={4}
                 fill={HANDLE_FILL}
+                draggable
+                onDragMove={(e: Konva.KonvaEventObject<DragEvent>) => handleDragMove('cp2', a.idx, e)}
+                onDragEnd={(e: Konva.KonvaEventObject<DragEvent>) => handleDragEnd('cp2', a.idx, e)}
                 data-testid="bezier-handle"
+                data-handle-kind="cp2"
               />
             </React.Fragment>
           )
