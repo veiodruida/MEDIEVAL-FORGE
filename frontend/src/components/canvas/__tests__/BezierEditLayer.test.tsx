@@ -1,0 +1,143 @@
+/**
+ * Phase 08.1 Plan 02 — BezierEditLayer render tests (Task 1).
+ * Covers BEZ-RENDER-01 (curve + few anchors, NOT hundreds of raw vertices),
+ * BEZ-RENDER-02 (activeTerritoryId=null → zero nodes), and the active-anchor-only
+ * handle behavior (handles appear ONLY after an anchor is clicked).
+ *
+ * react-konva is mocked (jsdom has no canvas — Plan 01 didn't add the `canvas` dep),
+ * following the VertexEditLayer.test.tsx pattern, extended with Path + Rect so anchors
+ * and the curve outline are countable. useEditorStore is mocked so each test can drive
+ * a deterministic store state. The store-identity guard against the REAL store lives in
+ * the separate useEditorStore.bezierIdentity.test.ts (Task 2).
+ */
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { render, fireEvent } from '@testing-library/react'
+import React from 'react'
+import { IBERIA_BARONY_RING } from '../__fixtures__/iberiaBaronyRing'
+import type { ProjectionConfig } from '../../../lib/projection'
+
+// ── mock react-konva ──────────────────────────────────────────────────────────
+vi.mock('react-konva', () => {
+  const React = require('react')
+  const Layer: React.FC<{ children?: React.ReactNode; onClick?: (e: unknown) => void }> = ({
+    children,
+  }) => React.createElement('div', { 'data-testid': 'konva-layer' }, children)
+  const Path: React.FC<{ data?: string; 'data-testid'?: string }> = (props) =>
+    React.createElement('div', {
+      'data-testid': props['data-testid'] ?? 'konva-path',
+      'data-d': props.data,
+    })
+  const Rect: React.FC<{
+    fill?: string
+    onClick?: () => void
+    onMouseEnter?: () => void
+    onMouseLeave?: () => void
+    'data-testid'?: string
+    'data-anchor-idx'?: number
+  }> = (props) =>
+    React.createElement('div', {
+      'data-testid': props['data-testid'] ?? 'konva-rect',
+      'data-fill': props.fill,
+      'data-anchor-idx': props['data-anchor-idx'],
+      onClick: props.onClick,
+      onMouseEnter: props.onMouseEnter,
+      onMouseLeave: props.onMouseLeave,
+    })
+  const Circle: React.FC<{ fill?: string; 'data-testid'?: string }> = (props) =>
+    React.createElement('div', {
+      'data-testid': props['data-testid'] ?? 'konva-circle',
+      'data-fill': props.fill,
+    })
+  const Line: React.FC<{ 'data-testid'?: string }> = (props) =>
+    React.createElement('div', { 'data-testid': props['data-testid'] ?? 'konva-line' })
+  return { Layer, Path, Rect, Circle, Line }
+})
+
+// ── mock useEditorStore ───────────────────────────────────────────────────────
+interface MockState {
+  editableLayer: 'baronies' | 'landmask'
+  activeTerritoryId: string | null
+  activeTool: 'V' | 'A' | 'D' | 'S' | 'M' | null
+  vertices: Record<string, { lat: number; lon: number }>
+}
+let mockState: MockState
+vi.mock('../../../stores/useEditorStore', () => ({
+  useEditorStore: (selector: (s: MockState) => unknown) => selector(mockState),
+}))
+
+import { BezierEditLayer } from '../BezierEditLayer'
+
+// Iberia-bounds projection matching the fixture bbox (lon [-10,3], lat [36,44])
+const PROJ: ProjectionConfig = {
+  lonMin: -10,
+  lonMax: 3,
+  latMin: 36,
+  latMax: 44,
+  mapW: 1920,
+  mapH: 1080,
+  lonScale: Math.cos(((36 + 44) / 2) * (Math.PI / 180)),
+}
+
+/** Load the real IBERIA_BARONY_RING into the mocked store keyed b1#0..b1#N. */
+function ringVertices(): Record<string, { lat: number; lon: number }> {
+  const out: Record<string, { lat: number; lon: number }> = {}
+  IBERIA_BARONY_RING.forEach(([lon, lat], i) => {
+    out[`b1#${i}`] = { lat, lon }
+  })
+  return out
+}
+
+beforeEach(() => {
+  mockState = {
+    editableLayer: 'baronies',
+    activeTerritoryId: 'b1',
+    activeTool: 'V',
+    vertices: ringVertices(),
+  }
+})
+
+describe('BezierEditLayer render (Phase 08.1 Plan 02)', () => {
+  it('BEZ-RENDER-01: renders a curve outline + a small anchor count (4..40), far below the raw vertex count, when a barony is selected in V-tool Bézier mode', () => {
+    const rawVertexCount = IBERIA_BARONY_RING.length // ~100 raw ring vertices
+    const { getAllByTestId, queryByTestId } = render(<BezierEditLayer projection={PROJ} />)
+
+    // One curve outline path
+    expect(queryByTestId('bezier-curve-outline')).not.toBeNull()
+
+    // Anchor squares: a handful, NOT hundreds
+    const anchors = getAllByTestId('bezier-anchor')
+    expect(anchors.length).toBeGreaterThanOrEqual(4)
+    expect(anchors.length).toBeLessThanOrEqual(40)
+    // far-below-raw clause: anchors are a sparse control set, not 1-per-vertex
+    expect(anchors.length).toBeLessThan(rawVertexCount / 2)
+  })
+
+  it('BEZ-RENDER-02: renders zero nodes (no path, no anchors) when activeTerritoryId is null', () => {
+    mockState.activeTerritoryId = null
+    const { queryByTestId, queryAllByTestId } = render(<BezierEditLayer projection={PROJ} />)
+    expect(queryByTestId('bezier-curve-outline')).toBeNull()
+    expect(queryAllByTestId('bezier-anchor')).toHaveLength(0)
+    expect(queryByTestId('konva-layer')).toBeNull()
+  })
+
+  it('renders control handles + tethers ONLY for the active anchor — before any click, zero handle circles render', () => {
+    const { queryAllByTestId, getAllByTestId } = render(<BezierEditLayer projection={PROJ} />)
+    // Before clicking any anchor: no handles, no tethers
+    expect(queryAllByTestId('bezier-handle')).toHaveLength(0)
+    expect(queryAllByTestId('bezier-tether')).toHaveLength(0)
+
+    // Click the first anchor → activates it
+    const anchors = getAllByTestId('bezier-anchor')
+    fireEvent.click(anchors[0])
+
+    // Now exactly two handle circles (cp1 + cp2) and two tethers render — for the active anchor only
+    expect(getAllByTestId('bezier-handle')).toHaveLength(2)
+    expect(getAllByTestId('bezier-tether')).toHaveLength(2)
+  })
+
+  it('does not render outside Bézier mode (e.g. landmask layer or non-V tool)', () => {
+    mockState.editableLayer = 'landmask'
+    const { queryByTestId } = render(<BezierEditLayer projection={PROJ} />)
+    expect(queryByTestId('konva-layer')).toBeNull()
+  })
+})
