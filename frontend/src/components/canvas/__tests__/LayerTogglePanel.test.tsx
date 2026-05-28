@@ -16,6 +16,22 @@ vi.mock('@radix-ui/themes', () => ({
   Tooltip: ({ children, content }: React.PropsWithChildren<{ content?: React.ReactNode }>) => (
     <div data-testid="tooltip" data-content={typeof content === 'string' ? content : ''}>{children}</div>
   ),
+  // Phase 08 Plan 08 (pre-existing): Separator needed by LayerTogglePanel
+  Separator: () => <hr />,
+  // Phase 08 Plan 16: Switch + Heading + RadioGroup + Badge + Button (used by LandmaskEditorHeader via LayerTogglePanel)
+  Switch: ({ checked, onCheckedChange, 'data-testid': testId }: { checked?: boolean; onCheckedChange?: (v: boolean) => void; 'data-testid'?: string }) => (
+    <input type="checkbox" data-testid={testId ?? 'switch'} checked={checked ?? false} onChange={(e) => onCheckedChange?.(e.target.checked)} />
+  ),
+  Heading: ({ children }: React.PropsWithChildren) => <h2>{children}</h2>,
+  Box: ({ children }: React.PropsWithChildren) => <div>{children}</div>,
+  Badge: ({ children }: React.PropsWithChildren) => <span>{children}</span>,
+  Button: ({ children, onClick }: React.PropsWithChildren<{ onClick?: () => void }>) => (
+    <button onClick={onClick}>{children}</button>
+  ),
+  RadioGroup: {
+    Root: ({ children }: React.PropsWithChildren) => <div>{children}</div>,
+    Item: ({ children }: React.PropsWithChildren) => <label><input type="radio" />{children}</label>,
+  },
 }))
 
 // Phase 03: 'terrain' layer removed (Plan 03-05). 5 layers remain:
@@ -44,7 +60,8 @@ describe('LayerTogglePanel', () => {
     expect(screen.getByText('Fronteiras')).toBeTruthy()
     expect(screen.getByText('Capitais')).toBeTruthy()
     expect(screen.getByText('Nomes')).toBeTruthy()
-    expect(screen.getAllByRole('checkbox').length).toBe(5)
+    // Phase 08 Plan 16: 6 checkboxes total — 5 layer toggles + 1 landmask-edit-toggle (Switch)
+    expect(screen.getAllByRole('checkbox').length).toBe(6)
   })
 
   it('does NOT render the Terreno (terrain) row', () => {

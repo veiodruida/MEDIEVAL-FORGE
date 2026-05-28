@@ -78,16 +78,41 @@ vi.mock('@radix-ui/themes', () => {
         children,
       ),
   };
-  return { Box, Heading, Badge, Button, Flex, RadioGroup };
+  const Switch: React.FC<{
+    checked?: boolean;
+    onCheckedChange?: (v: boolean) => void;
+    'data-testid'?: string;
+  }> = ({ checked, onCheckedChange, 'data-testid': testId }) =>
+    React.createElement('input', {
+      type: 'checkbox',
+      'data-testid': testId ?? 'switch',
+      checked: checked ?? false,
+      onChange: (e: React.ChangeEvent<HTMLInputElement>) => onCheckedChange?.(e.target.checked),
+    });
+  const Text: React.FC<{ children?: React.ReactNode; size?: string }> = ({ children }) =>
+    React.createElement('span', { 'data-testid': 'text' }, children);
+  return { Box, Heading, Badge, Button, Flex, RadioGroup, Switch, Text };
 });
 
 // ── mock useEditorStore ───────────────────────────────────────────────────────
 const mockSetLandmaskMode = vi.fn();
+const mockSetEditableLayer = vi.fn();
 let mockLandmaskMode = 'manual';
+let mockEditableLayer = 'baronies';
 
 vi.mock('../../../stores/useEditorStore', () => ({
-  useEditorStore: (selector: (s: { landmaskMode: string; setLandmaskMode: typeof mockSetLandmaskMode }) => unknown) =>
-    selector({ landmaskMode: mockLandmaskMode, setLandmaskMode: mockSetLandmaskMode }),
+  useEditorStore: (selector: (s: {
+    landmaskMode: string;
+    setLandmaskMode: typeof mockSetLandmaskMode;
+    editableLayer: string;
+    setEditableLayer: typeof mockSetEditableLayer;
+  }) => unknown) =>
+    selector({
+      landmaskMode: mockLandmaskMode,
+      setLandmaskMode: mockSetLandmaskMode,
+      editableLayer: mockEditableLayer,
+      setEditableLayer: mockSetEditableLayer,
+    }),
 }));
 
 // ── import after mocks ────────────────────────────────────────────────────────
@@ -99,6 +124,7 @@ describe('LandmaskEditorHeader (LANDMASK-01, LANDMASK-02)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockLandmaskMode = 'manual';
+    mockEditableLayer = 'baronies';
   });
 
   it('initial render shows RadioGroup with Manual selected (default per D-05)', () => {
@@ -180,5 +206,62 @@ describe('LandmaskEditorHeader (LANDMASK-01, LANDMASK-02)', () => {
 
     // onApply is called (which POSTs landmask_replace internally via parent)
     expect(mockOnApply).toHaveBeenCalledTimes(1);
+  });
+
+  // ── Phase 08 Plan 16: editableLayer toggle tests ──────────────────────────────
+
+  it('renders landmask-edit-toggle with data-testid and unchecked when baronies', () => {
+    mockEditableLayer = 'baronies';
+    render(
+      <LandmaskEditorHeader
+        projectId="proj-123"
+        branchId="branch-abc"
+        onApply={mockOnApply}
+      />,
+    );
+    const toggle = screen.getByTestId('landmask-edit-toggle') as HTMLInputElement;
+    expect(toggle).toBeTruthy();
+    expect(toggle.checked).toBe(false);
+  });
+
+  it('toggle is checked when editableLayer=landmask', () => {
+    mockEditableLayer = 'landmask';
+    render(
+      <LandmaskEditorHeader
+        projectId="proj-123"
+        branchId="branch-abc"
+        onApply={mockOnApply}
+      />,
+    );
+    const toggle = screen.getByTestId('landmask-edit-toggle') as HTMLInputElement;
+    expect(toggle.checked).toBe(true);
+  });
+
+  it('toggling ON calls setEditableLayer("landmask")', () => {
+    mockEditableLayer = 'baronies';
+    render(
+      <LandmaskEditorHeader
+        projectId="proj-123"
+        branchId="branch-abc"
+        onApply={mockOnApply}
+      />,
+    );
+    const toggle = screen.getByTestId('landmask-edit-toggle');
+    fireEvent.click(toggle);
+    expect(mockSetEditableLayer).toHaveBeenCalledWith('landmask');
+  });
+
+  it('toggling OFF calls setEditableLayer("baronies")', () => {
+    mockEditableLayer = 'landmask';
+    render(
+      <LandmaskEditorHeader
+        projectId="proj-123"
+        branchId="branch-abc"
+        onApply={mockOnApply}
+      />,
+    );
+    const toggle = screen.getByTestId('landmask-edit-toggle');
+    fireEvent.click(toggle);
+    expect(mockSetEditableLayer).toHaveBeenCalledWith('baronies');
   });
 });

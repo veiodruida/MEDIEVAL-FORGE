@@ -1,7 +1,10 @@
 /**
  * LandmaskEditorHeader — Phase 08 Plan 08 (LANDMASK-01, LANDMASK-02).
+ * Phase 08 Plan 16: added editableLayer toggle (baronies ↔ landmask).
  *
  * Header component for the Landmask Editor layer panel. Provides:
+ *   - "Editar landmask" Switch toggle: flips useEditorStore.editableLayer
+ *     between 'baronies' (OFF) and 'landmask' (ON). data-testid="landmask-edit-toggle".
  *   - Manual/Auto-immediate mode RadioGroup toggle (D-05).
  *   - Orange Badge "Modo auto: ~10s por edição" shown in Auto mode (must_haves).
  *   - "Aplicar landmask" Button (variant=outline) shown in Manual mode only (UI-SPEC Discretion #5).
@@ -15,7 +18,7 @@
  * D-05: Two modes — manual (batch Apply) vs auto-immediate (drag cascade ~10s).
  */
 import React from 'react';
-import { Box, Heading, RadioGroup, Badge, Button, Flex } from '@radix-ui/themes';
+import { Box, Heading, RadioGroup, Badge, Button, Flex, Switch, Text } from '@radix-ui/themes';
 import { useEditorStore } from '../../stores/useEditorStore';
 import type { LandmaskMode } from '../../stores/useEditorStore';
 
@@ -39,11 +42,28 @@ export const LandmaskEditorHeader: React.FC<LandmaskEditorHeaderProps> = ({
 }) => {
   const mode = useEditorStore((s) => s.landmaskMode);
   const setMode = useEditorStore((s) => s.setLandmaskMode);
+  // Phase 08 Plan 16: editableLayer toggle (baronies ↔ landmask)
+  const editableLayer = useEditorStore((s) => s.editableLayer);
+  const setEditableLayer = useEditorStore((s) => s.setEditableLayer);
+
+  const isLandmaskEditing = editableLayer === 'landmask';
 
   return (
     <Box>
       <Heading size="2">Landmask</Heading>
       <Flex direction="column" gap="2">
+        {/* Phase 08 Plan 16: editableLayer toggle — visible affordance to enter landmask edit mode */}
+        <Flex align="center" gap="2">
+          <Switch
+            data-testid="landmask-edit-toggle"
+            checked={isLandmaskEditing}
+            onCheckedChange={(checked) =>
+              setEditableLayer(checked ? 'landmask' : 'baronies')
+            }
+          />
+          <Text size="2">Editar landmask</Text>
+        </Flex>
+
         <RadioGroup.Root
           value={mode}
           onValueChange={(v) => setMode(v as LandmaskMode)}
