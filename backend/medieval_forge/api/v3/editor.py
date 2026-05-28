@@ -31,14 +31,17 @@ import hashlib
 import json
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from shapely.geometry import LineString, Polygon
+from shapely.ops import unary_union
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...database import get_db
-from ...models import Branch
+from ...models import Branch, EditEvent
 from ...services.branches.service import allocate_next_original_idx, append_edit_event
+from ...services.country_boundaries import get_country_polygon
 from ...services.paths import is_valid_uuid
 from ...services.pipeline.cache import cache_clear_branch
 from ...services.pipeline.manual_edit import replay_merge, replay_split
@@ -321,6 +324,86 @@ async def apply_op(
         new_count=new_count,
         allocated_original_idx=allocated_original_idx,
     )
+
+
+# ---------------------------------------------------------------------------
+# GET /editor/landmask_ring — Phase 08 Plan 16 (LANDMASK-01, Path B)
+# ---------------------------------------------------------------------------
+# Returns the current landmask polygon ring as [[lon, lat], ...] for the
+# VertexEditLayer to seed cyan handles.
+#
+# Priority:
+#   1. If branch_id is provided and a landmask_replace EditEvent exists for
+#      that branch → return those coords (branch-scoped editor override).
+#   2. Else → derive the ring from Natural Earth country polygons (PT + ES
+#      unary_union exterior) clipped to the map bounds.
+#   3. Else → 404 (no landmask ring available; client shows empty handles).
+#
+# READ-ONLY endpoint — no writes, no side effects. T-08-16-01 / LANDMASK-01.
+# ---------------------------------------------------------------------------
+
+_IBERIA_ISO_CODES = ["PT", "ES"]
+
+
+@router.get("/{project_id}/editor/landmask_ring")
+async def get_landmask_ring(
+    project_id: str,
+    branch_id: str | None = None,
+    db: AsyncSession = Depends(get_db),
+) -> JSONResponse:
+    """Return the landmask polygon ring as [[lon, lat], ...].
+
+    Priority: branch edit-event coords → Natural Earth union → 404.
+    """
+    if not is_valid_uuid(project_id):
+        raise HTTPException(status_code=400, detail="project_id must be a valid UUID")
+
+    # Priority 1: latest landmask_replace for this branch
+    if branch_id:
+        latest_lm = (
+            await db.execute(
+                select(EditEvent)
+                .where(
+                    EditEvent.branch_id == branch_id,
+                    EditEvent.op_type == "landmask_replace",
+                )
+                .order_by(EditEvent.id.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if latest_lm is not None:
+            coords = latest_lm.payload.get("new_landmask_coords")
+            if isinstance(coords, list) and len(coords) >= 3:
+                return JSONResponse(
+                    content={"ring": coords, "source": "branch_edit_event"},
+                    headers={"Cache-Control": "no-cache"},
+                )
+
+    # Priority 2: Natural Earth PT + ES unary_union exterior ring
+    try:
+        polys = [get_country_polygon(iso) for iso in _IBERIA_ISO_CODES]
+        polys = [p for p in polys if p is not None]
+        if len(polys) == 0:
+            raise HTTPException(
+                status_code=404,
+                detail="LANDMASK_RING_NOT_AVAILABLE: no Natural Earth polygon for PT/ES",
+            )
+        merged = unary_union(polys)
+        # Take the largest piece if MultiPolygon
+        if merged.geom_type == "MultiPolygon":
+            merged = max(merged.geoms, key=lambda g: g.area)
+        ring = [[round(lon, 6), round(lat, 6)] for lon, lat in merged.exterior.coords]
+        return JSONResponse(
+            content={"ring": ring, "source": "natural_earth"},
+            headers={"Cache-Control": "public, max-age=86400"},
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(
+            status_code=404,
+            detail=f"LANDMASK_RING_NOT_AVAILABLE: {exc.__class__.__name__}",
+        ) from exc
 
 
 __all__ = ["router"]

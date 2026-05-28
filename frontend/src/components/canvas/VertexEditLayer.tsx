@@ -50,7 +50,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Layer, Circle, Line } from 'react-konva';
 import type Konva from 'konva';
 import { useEditorStore } from '../../stores/useEditorStore';
-import type { VertexCoord } from '../../stores/useEditorStore';
+import type { VertexCoord, EditableLayer } from '../../stores/useEditorStore';
 import { useProjection } from '../../context/ProjectionContext';
 import { geoToCanvas, canvasToGeo } from '../../lib/projection';
 import { snapToNeighbour } from '../../lib/snap';
@@ -80,9 +80,10 @@ export {
   BORDER_LINE_STROKE,
 };
 
-// ── Editable layer type (Phase 08 Plan 08) ────────────────────────────────────
-/** Which polygon layer is currently being edited. D-03/D-04 distinction. */
-export type EditableLayer = 'baronies' | 'landmask';
+// ── Editable layer type (Phase 08 Plan 16) ────────────────────────────────────
+// EditableLayer is now defined in useEditorStore (store as single source of truth).
+// Re-export here for backward compat with any consumer importing from VertexEditLayer.
+export type { EditableLayer };
 
 // ── Viewport bbox type ────────────────────────────────────────────────────────
 export interface ViewportBBox {

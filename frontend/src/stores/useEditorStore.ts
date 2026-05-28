@@ -24,6 +24,8 @@ import { temporal } from 'zundo';
 
 export type EditTool = 'V' | 'A' | 'D' | 'S' | 'M' | null;
 export type LandmaskMode = 'manual' | 'auto-immediate';
+/** Phase 08 Plan 16: which polygon layer is currently being edited. */
+export type EditableLayer = 'baronies' | 'landmask';
 
 export interface EditOp {
   op:
@@ -52,6 +54,9 @@ interface EditorState {
   // Branch state (NOT in zundo history — D-25)
   activeBranchId: string | null;
   landmaskMode: LandmaskMode;
+  /** Phase 08 Plan 16: which layer is editable. NOT in zundo partialize — toggling
+   *  baronies↔landmask must not create undo history entries. */
+  editableLayer: EditableLayer;
 
   // Tool state (NOT in zundo history)
   activeTool: EditTool;
@@ -97,6 +102,8 @@ interface EditorActions {
   setSelectedVertexIds: (ids: string[]) => void;
   setActiveBranchId: (id: string | null) => void;
   setLandmaskMode: (m: LandmaskMode) => void;
+  /** Phase 08 Plan 16: flip baronies↔landmask. NOT undoable (excluded from partialize). */
+  setEditableLayer: (l: EditableLayer) => void;
 
   // Undoable (vertex/polygon ops) — all funnel through setVerticesAndLog
   moveVertex: (id: string, lat: number, lon: number) => void;
@@ -171,6 +178,7 @@ export const useEditorStore = create<EditorState & EditorActions>()(
       // Initial state
       activeBranchId: null,
       landmaskMode: 'manual',
+      editableLayer: 'baronies',
       activeTool: null,
       activeTerritoryId: null,
       selectedVertexIds: [],
@@ -186,6 +194,7 @@ export const useEditorStore = create<EditorState & EditorActions>()(
       setSelectedVertexIds: (ids) => set({ selectedVertexIds: ids }),
       setActiveBranchId: (id) => set({ activeBranchId: id }),
       setLandmaskMode: (m) => set({ landmaskMode: m }),
+      setEditableLayer: (l) => set({ editableLayer: l }),
 
       // Undoable actions — all delegate to setVerticesAndLog (chokepoint)
       moveVertex: (id, lat, lon) => {
