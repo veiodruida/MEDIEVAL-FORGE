@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: + bootstrap v3 infrastructure
-status: verifying
-stopped_at: Phase 8 context gathered
-last_updated: "2026-05-26T12:03:00.379Z"
-last_activity: 2026-05-19
+status: executing
+stopped_at: Phase 8 UI-SPEC approved
+last_updated: "2026-05-27T11:45:26.900Z"
+last_activity: 2026-05-27 -- Phase 08 execution started
 progress:
   total_phases: 12
   completed_phases: 8
-  total_plans: 70
+  total_plans: 85
   completed_plans: 69
-  percent: 99
+  percent: 81
 ---
 
 # Project State (v3)
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md
 
 **Core value:** A Game Designer goes from "country + historical period" to a validated, Unity-ready map package — driven by geometry, with LLM as opt-in metadata.
-**Current focus:** Phase 07.1 — period-numeric-inputs-llama-cpp-re-add-with-auto-launch-and-
+**Current focus:** Phase 08 — border-vertex-editor-manual-svg-style-vertex-editing-of-terr
 
 ## Current Position
 
-Phase: 07.1
-Plan: Not started
-Status: Phase complete — ready for verification
-Last activity: 2026-05-19
+Phase: 08 (border-vertex-editor-manual-svg-style-vertex-editing-of-terr) — EXECUTING
+Plan: 1 of 15
+Status: Executing Phase 08
+Last activity: 2026-05-27 -- Phase 08 execution started
 
 Progress: [█████████░] 93% (25 of 27 plans complete)
 
@@ -41,6 +41,7 @@ Progress: [█████████░] 93% (25 of 27 plans complete)
 - Phase 07.1 inserted after Phase 07: Period numeric inputs + Llama.cpp re-add with auto-launch and local model list (URGENT)
 - Phase 07.2 added: cloud LLM providers (OpenRouter / OpenAI / Gemini) + .env auto-discover + live token streaming + CredentialsManager dialog
 - Phase 08 added: border-vertex-editor — manual SVG-style vertex editing of territory polygons with project branching
+- Phase 08.1 inserted after Phase 08: Bezier-assisted barony contour editing — UI-layer Bezier control points over the existing polygon model, parity-safe (store stays polygon, curve-fit derived for display, only edited segments flatten back) (URGENT — raw vertex handles unusable: hundreds of dots per barony)
 
 ### Decisions
 
@@ -143,6 +144,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-26T12:03:00.376Z
-Stopped at: Phase 8 context gathered
-Resume file: .planning/phases/08-border-vertex-editor-manual-svg-style-vertex-editing-of-terr/08-CONTEXT.md
+Last session: 2026-05-26T12:13:37.148Z
+Stopped at: Phase 8 UI-SPEC approved
+Resume file: .planning/phases/08-border-vertex-editor-manual-svg-style-vertex-editing-of-terr/08-UI-SPEC.md

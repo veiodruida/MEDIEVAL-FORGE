@@ -244,14 +244,24 @@ Plans:
 - [x] 08-09-PLAN.md — Wave 7 branching UX: BranchPicker + 5 dialogs + SliderConflictDialog + SnapshotTimeline (D-13/D-14/D-19)
 - [x] 08-10-PLAN.md — Wave 7 export: MANIFEST_SCHEMA_VERSION 2→3 + branch metadata (D-16)
 - [ ] 08-11-PLAN.md — Wave 8 verification: UAT specs + empty-log parity + manual sign-off checkpoint
-- [ ] 08-12-PLAN.md — Wave 1 gap-closure (GAP-A): BaronyRender.geoRing + SelectionBridge (selection→activeTerritoryId+vertices, barony-only) [EDIT-VERTEX-01/02/03/05, PERF-01]
-- [ ] 08-13-PLAN.md — Wave 1 gap-closure (GAP-C): EditToolPalette V/A/D/S/M+Esc in WorkspaceToolbar bound to useEditorStore.activeTool [UX-01]
-- [ ] 08-14-PLAN.md — Wave 2 gap-closure (GAP-B): BranchInitializer auto-select main + VertexEditLayer/LayerTogglePanel prop wiring [EDIT-POLYGON-01/02/03, LANDMASK-01/02]
-- [ ] 08-15-PLAN.md — Wave 3 gap-closure (UAT): 08-editor-reachable.spec.ts drives real workspace — proves editor reachability end-to-end
-- [ ] 08-16-PLAN.md — Wave 4 gap-closure (LANDMASK): editableLayer toggle + landmask coord plumbing + apply callback [LANDMASK-01/02] (split from 08-14)
+- [x] 08-12-PLAN.md — Wave 1 gap-closure (GAP-A): BaronyRender.geoRing + SelectionBridge (selection→activeTerritoryId+vertices, barony-only) [EDIT-VERTEX-01/02/03/05, PERF-01]
+- [x] 08-13-PLAN.md — Wave 1 gap-closure (GAP-C): EditToolPalette V/A/D/S/M+Esc in WorkspaceToolbar bound to useEditorStore.activeTool [UX-01]
+- [x] 08-14-PLAN.md — Wave 2 gap-closure (GAP-B): BranchInitializer auto-select main + VertexEditLayer/LayerTogglePanel prop wiring [EDIT-POLYGON-01/02/03, LANDMASK-01/02]
+- [x] 08-15-PLAN.md — Wave 3 gap-closure (UAT): 08-editor-reachable.spec.ts drives real workspace — proves editor reachability end-to-end
+- [x] 08-16-PLAN.md — Wave 4 gap-closure (LANDMASK): editableLayer toggle + landmask coord plumbing + apply callback [LANDMASK-01/02] (split from 08-14)
 
 ---
 
 ## Backlog (v3.1 — deferred, not discarded)
 
 See `.planning/backlog.md`.
+
+### Phase 08.1: Bezier-assisted barony contour editing — UI-layer Bezier control points over the existing polygon model (parity-safe: store stays polygon, curve-fit derived for display, only edited segments flatten back) (INSERTED)
+
+**Goal:** [Urgent work - to be planned]
+**Requirements**: TBD
+**Depends on:** Phase 8
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 08.1 to break down)
