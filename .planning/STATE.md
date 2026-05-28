@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 08.1-02-PLAN.md
-last_updated: "2026-05-28T15:38:03.716Z"
+stopped_at: Completed 08.1-03-PLAN.md
+last_updated: "2026-05-28T15:50:48.355Z"
 last_activity: 2026-05-28
 progress:
   total_phases: 1
   completed_phases: 0
   total_plans: 4
-  completed_plans: 2
-  percent: 50
+  completed_plans: 3
+  percent: 75
 ---
 
 # Project State (v3)
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md
 ## Current Position
 
 Phase: 08.1 (bezier-assisted-barony-contour-editing-ui-layer-bezier-contr) — EXECUTING
-Plan: 3 of 4
+Plan: 4 of 4
 Status: Ready to execute
 Last activity: 2026-05-28
 
@@ -127,6 +127,7 @@ See `.planning/PROJECT.md` Key Decisions table (D-V3-01 through D-V3-07).
 - [Phase 07.1]: grep gate: production code clean (0 period_label hits in medieval_forge/*.py and frontend/src); test-file hits are all negative assertions
 - [Phase 08.1]: Plan 08.1-01: bezierFit.ts + bezierFlatten.ts pure store-free geometry libs. BEZ_FIT_ERROR=30 calibrated (Iberia fixture -> 4 cubics, inside 4..30 band). No deps.inline needed for fit-curve under Vite 6 + vitest 3. BEZ-FLATTEN-02 tolerance relaxed 1e-4->0.01deg (fit error ~0.004deg by design, not float drift). buildPolyIndexMap closes Split-Index Gap via O(N) post-fit scan. 482/482 vitest green; 4 TDD commits.
 - [Phase 08.1]: Plan 08.1-02: BezierEditLayer.tsx render+activate Konva Layer (z=5) created. Fits selected barony polygon to 4 cubics on entry (IBERIA_BARONY_RING -> 4 anchors, far below ~100 raw verts). All Bezier display state component-local (zero useEditorStore fields, zero partialize change); activeAnchorIdx never in store. projection passed as PROP (not useProjection). BEZ-IDENTITY-01 GREEN by construction (zero setVerticesAndLog). DEV-only window.__forgeBezierState escape hatch. temporal API fix in test: useEditorStore.temporal.getState().pause() (Rule 3). 488/488 vitest green.
+- [Phase 08.1]: Plan 08.1-03: BezierEditLayer drag-commit landed. Anchor drag marks segments i-1+i dirty, control-handle drag marks one (cp1->i-1, cp2->i); only dirty segments flatten via flattenSegment, non-dirty ranges copied verbatim from store (identity mechanism). Anchor drag rigidly translates both handles by the same delta (no cusp); snap (snapToNeighbour) on anchors only, never handles; getCoupledVertices coupling before commit. Single setVerticesAndLog(op:'move'). Rule-1 fix: deriveAnchors cp2 corrected from Plan02's c2 to c1 (fit-curve c1 near p0, c2 near next anchor; verified on IBERIA_BARONY_RING |p0->c1|~9-13px vs |p0->c2|~65-92px). BEZ-IDENTITY-01 stays green; 494/494 vitest, tsc clean.
 
 ### Blockers/Concerns
 
@@ -146,6 +147,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-28T15:38:03.714Z
-Stopped at: Completed 08.1-02-PLAN.md
+Last session: 2026-05-28T15:50:48.352Z
+Stopped at: Completed 08.1-03-PLAN.md
 Resume file: None
