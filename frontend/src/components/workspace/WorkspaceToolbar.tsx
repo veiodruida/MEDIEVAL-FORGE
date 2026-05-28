@@ -9,6 +9,7 @@ import { postRenderCancel } from '../../api/render'
 import { useEditorStore } from '../../stores/useEditorStore'
 import { BranchPicker } from '../editor/BranchPicker'
 import { EditorSyncBridge } from '../editor/EditorSyncBridge'
+import { EditToolPalette } from '../editor/EditToolPalette'
 
 // ---------------------------------------------------------------------------
 // Gemini review (UX): Portuguese label map for undo/redo tooltip per EditOp.op.
@@ -155,6 +156,10 @@ export function WorkspaceToolbar({
         <Flex align="center" gap="2">
           {/* D-13: Branch Picker zone — left of "Gerar Mapa" per UI-SPEC §Toolbar Layout */}
           <BranchPicker projectId={project?.id} />
+
+          {/* GAP-C closure (08-13): visible V/A/D/S/M tool palette per UI-SPEC §Tool Palette Zone.
+              Bound to useEditorStore.activeTool/selectTool — same state as keyboard shortcuts. */}
+          <EditToolPalette />
 
           {/* Undo/Redo buttons with dynamic tooltip from undoLabels/redoLabels (Gemini review) */}
           <Tooltip content={undoTooltip}>
