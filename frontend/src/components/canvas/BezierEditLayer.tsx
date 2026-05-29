@@ -830,9 +830,8 @@ export const BezierEditLayer: React.FC<BezierEditLayerProps> = ({ projection, cu
           onDblClick resolves the pointer position and delegates to handleInsertAtPx. */}
       <Path
         data={pathData}
-        stroke="rgba(0,0,0,0)"
+        stroke="transparent"
         strokeWidth={hitPathWidth}
-        strokeEnabled={true}
         hitStrokeWidth={hitPathWidth}
         fill={undefined}
         listening={true}
