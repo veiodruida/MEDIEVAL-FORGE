@@ -612,16 +612,25 @@ export const BezierEditLayer: React.FC<BezierEditLayerProps> = ({ projection, cu
           const stage = layer.getStage()
           const rect = layer.find('Rect').find((n) => n.getAttr('data-testid') === 'bezier-anchor')
           if (stage && rect) {
-            // getClientRect gives the anchor's SCREEN-SPACE bounding box (stage scale +
-            // pos already applied) — its center is the reliable Konva drag target. Adding
-            // a flat half-size to getAbsolutePosition would overshoot under a fit-to-view
-            // scale != 1 (the 10px square is in MAP space, shrunk on screen).
-            const box = rect.getClientRect({ relativeTo: stage })
+            // Compute firstAnchor page coords from anchorPx (map-space) + stage transform.
+            // getClientRect({relativeTo:stage}) returns map-space px (before stage scale/pos).
+            // To reach PAGE coords: containerOffset + stage.position + anchorMapPx * stageScale.
+            // anchorPx is the stage-local (map-space) center of the anchor square.
+            // We read it directly from the stored anchor rather than from Konva to avoid
+            // any getClientRect coordinate-space ambiguity.
             const containerRect = stage.container().getBoundingClientRect()
-            firstAnchor = {
-              idx: Number(rect.getAttr('data-anchor-idx')),
-              x: containerRect.left + box.x + box.width / 2,
-              y: containerRect.top + box.y + box.height / 2,
+            const stageScale = stage.scaleX()
+            const stageX = stage.x()
+            const stageY = stage.y()
+            // anchorPx is the stored center of the anchor square in map space.
+            // The anchor Rect is drawn at (anchorPx - anchorHalf), but its center is anchorPx.
+            const a0 = anchorsRef.current[0]
+            if (a0) {
+              firstAnchor = {
+                idx: 0,
+                x: containerRect.left + stageX + a0.anchorPx[0] * stageScale,
+                y: containerRect.top  + stageY + a0.anchorPx[1] * stageScale,
+              }
             }
           }
         } catch {
@@ -631,9 +640,14 @@ export const BezierEditLayer: React.FC<BezierEditLayerProps> = ({ projection, cu
       }
       // Plan 07 (G7): expose a MID-SEGMENT on-curve point between anchor 0 and anchor 1
       // as PAGE coords for the real dblclick target in the new spec. This is READ-ONLY
-      // inspection — NOT a trigger hook. Built the same way as firstAnchor (getClientRect
-      // + containerRect), but the point is a cubic mid-curve px (stage-local) converted
-      // to screen coords via the stage transform. Returns null if < 2 anchors.
+      // inspection — NOT a trigger hook. Returns null if < 2 anchors.
+      //
+      // COORDINATE CONVERSION (mirrors firstAnchor's getClientRect approach):
+      // anchorPx values are STAGE-LOCAL px (layer content coords, no stage transform applied).
+      // To reach PAGE coords: apply stage scale + position, then add container page offset.
+      //   screenX = containerRect.left + stage.x() + stagePx.x * stage.scaleX()
+      //   screenY = containerRect.top  + stage.y() + stagePx.y * stage.scaleY()
+      // This matches how getClientRect({relativeTo:stage}) works for rendered Rect nodes.
       let midCurvePoint: { x: number; y: number } | null = null
       const anchorsList = anchorsRef.current
       if (layer && anchorsList.length >= 2) {
@@ -642,21 +656,20 @@ export const BezierEditLayer: React.FC<BezierEditLayerProps> = ({ projection, cu
           if (stage) {
             const a0 = anchorsList[0]
             const a1 = anchorsList[1]
-            // Compute the on-curve stage-local px at t=0.5 between anchor 0 and anchor 1.
+            // Stage-local px at t=0.5 of the cubic from anchor 0 to anchor 1
             const midStagePx = cubicBezierAt(a0.anchorPx, a0.cp2Px, a1.cp1Px, a1.anchorPx, 0.5)
-            // Convert stage-local px to screen coords: apply the layer's absolute transform
-            // then add the canvas container's page offset (same conversion firstAnchor uses
-            // via getClientRect).
-            const transform = layer.getAbsoluteTransform()
-            const screenPt = transform.point({ x: midStagePx[0], y: midStagePx[1] })
+            // Convert stage-local px → page coords using stage transform + container offset
             const containerRect = stage.container().getBoundingClientRect()
+            const stageScale = stage.scaleX()
+            const stagePosX = stage.x()
+            const stagePosY = stage.y()
             midCurvePoint = {
-              x: containerRect.left + screenPt.x,
-              y: containerRect.top + screenPt.y,
+              x: containerRect.left + stagePosX + midStagePx[0] * stageScale,
+              y: containerRect.top  + stagePosY + midStagePx[1] * stageScale,
             }
           }
         } catch {
-          // jsdom/unit-test: Konva mock doesn't provide transform methods; midCurvePoint stays null.
+          // jsdom/unit-test: Konva mock doesn't provide stage methods; midCurvePoint stays null.
         }
       }
       return {
@@ -737,11 +750,47 @@ export const BezierEditLayer: React.FC<BezierEditLayerProps> = ({ projection, cu
       // Delegate to the SAME real insert handler the dbl-click uses — never setAnchors directly.
       return handleInsertAtPx(midPx)
     }
+    // Plan 07 (G5/G7 Playwright setup): pan the Konva Stage so the mid-curve point between
+    // anchor 0 and anchor 1 is at the viewport center. This ensures both the drag target
+    // (anchor 0 near center) and the dblclick target (midCurvePoint between 0 and 1) are
+    // in the visible area and not obscured by DOM overlays (Layers panel on left edge).
+    // Read-only state access + imperative stage mutation only (no store write, no React change).
+    ;(window as unknown as {
+      __forgePanToFirstAnchor?: () => boolean
+    }).__forgePanToFirstAnchor = () => {
+      const a0 = anchorsRef.current[0]
+      const a1 = anchorsRef.current[1]
+      if (!a0) return false
+      const layer = layerRef.current
+      if (!layer) return false
+      try {
+        const stage = layer.getStage()
+        if (!stage) return false
+        const scale = stage.scaleX()
+        const containerRect = stage.container().getBoundingClientRect()
+        const vw = containerRect.width
+        const vh = containerRect.height
+        // Center on mid-curve point between anchor 0 and anchor 1 (t=0.5) if ≥2 anchors,
+        // otherwise center on anchor 0. The mid-curve point is the dblclick target (G7).
+        const targetPx = a1
+          ? cubicBezierAt(a0.anchorPx, a0.cp2Px, a1.cp1Px, a1.anchorPx, 0.5)
+          : a0.anchorPx
+        const newX = vw / 2 - targetPx[0] * scale
+        const newY = vh / 2 - targetPx[1] * scale
+        stage.x(newX)
+        stage.y(newY)
+        stage.batchDraw()
+        return true
+      } catch {
+        return false
+      }
+    }
     return () => {
       delete (window as unknown as { __forgeBezierState?: unknown }).__forgeBezierState
       delete (window as unknown as { __forgeBezierTriggerDrag?: unknown }).__forgeBezierTriggerDrag
       delete (window as unknown as { __forgeBezierTriggerHandleDrag?: unknown }).__forgeBezierTriggerHandleDrag
       delete (window as unknown as { __forgeBezierTriggerInsert?: unknown }).__forgeBezierTriggerInsert
+      delete (window as unknown as { __forgePanToFirstAnchor?: unknown }).__forgePanToFirstAnchor
     }
   }, [anchors.length, activeAnchorIdx, dirtyCount, handleDragMove, handleDragEnd, handleInsertAtPx])
 
@@ -781,8 +830,9 @@ export const BezierEditLayer: React.FC<BezierEditLayerProps> = ({ projection, cu
           onDblClick resolves the pointer position and delegates to handleInsertAtPx. */}
       <Path
         data={pathData}
-        stroke="transparent"
+        stroke="rgba(0,0,0,0)"
         strokeWidth={hitPathWidth}
+        strokeEnabled={true}
         hitStrokeWidth={hitPathWidth}
         fill={undefined}
         listening={true}
@@ -790,9 +840,27 @@ export const BezierEditLayer: React.FC<BezierEditLayerProps> = ({ projection, cu
         onDblClick={(e: Konva.KonvaEventObject<MouseEvent>) => {
           const stage = e.target.getStage()
           if (!stage) return
-          const pos = stage.getPointerPosition()
-          if (!pos) return
-          // getPointerPosition returns stage-local px (already accounts for stage scale/pos)
+          // getRelativePointerPosition() inverts the node's absolute transform to return
+          // map-space px — the same coordinate space as anchorPx / pxPts in handleInsertAtPx.
+          // CRITICAL: stage.getPointerPosition() returns SCREEN px (container-relative), NOT
+          // map-space. At any non-identity scale/pan, screen px ≠ map px by hundreds of pixels,
+          // causing findNearestSegmentAndVertex to find nothing and insert to silently fail.
+          // getRelativePointerPosition() on the stage accounts for scale+position and gives
+          // the correct map-space coord. (G7 fix — Plan 07)
+          const pos = stage.getRelativePointerPosition()
+          if (!pos) {
+            // Fallback: convert clientX/clientY manually via stage transform
+            if (!e.evt) return
+            const containerRect = stage.container().getBoundingClientRect()
+            const stageScale = stage.scaleX()
+            const stageX = stage.x()
+            const stageY = stage.y()
+            const mapX = (e.evt.clientX - containerRect.left - stageX) / stageScale
+            const mapY = (e.evt.clientY - containerRect.top  - stageY) / stageScale
+            handleInsertAtPx([mapX, mapY])
+            return
+          }
+          // pos is map-space px (stage.getRelativePointerPosition inverts scale+position)
           handleInsertAtPx([pos.x, pos.y])
         }}
       />
