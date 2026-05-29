@@ -21,9 +21,12 @@
  *
  * UI-SPEC Konva color table (imperative hex literals — CSS vars cannot be used in Konva):
  *   anchor inactive #4a9eff / active #f0c040 / hover #ffffff (Rect 10×10)
- *   control handle  #94a3b8 (Circle r=4, active anchor only)
- *   tether          #94a3b8 width 1 dash [4,4] listening=false (active anchor only)
- *   curve outline   #4a9eff width 2 fill transparent listening=false
+ *   control handle  #e879f9 magenta (Circle r=4, active anchor only) — distinct from tether
+ *   tether          #94a3b8 slate-gray width 1 dash [4,4] listening=false (active anchor only)
+ *   curve outline   #22c55e green width 2 fill transparent listening=false
+ * [G4 fix Plan 08.1-05]: CURVE_STROKE changed #4a9eff→#22c55e (was same as ANCHOR_INACTIVE_FILL,
+ *   collision resolved). HANDLE_FILL changed #94a3b8→#e879f9 (was same as TETHER_STROKE).
+ *   5 visually distinct colors: green / blue / amber / white / magenta / slate-gray.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type Konva from 'konva'
@@ -45,13 +48,13 @@ import {
   type VertexRef,
 } from '../../lib/sharedVertex'
 
-// UI-SPEC Konva color literals
-export const ANCHOR_INACTIVE_FILL = '#4a9eff'
-export const ANCHOR_ACTIVE_FILL = '#f0c040'
-export const ANCHOR_HOVER_FILL = '#ffffff'
-export const HANDLE_FILL = '#94a3b8'
-export const TETHER_STROKE = '#94a3b8'
-export const CURVE_STROKE = '#4a9eff'
+// UI-SPEC Konva color literals (G4 fix: 5 visually distinct hexes — no collision)
+export const ANCHOR_INACTIVE_FILL = '#4a9eff'  // inactive anchor — blue
+export const ANCHOR_ACTIVE_FILL = '#f0c040'    // active anchor — amber
+export const ANCHOR_HOVER_FILL = '#ffffff'      // hover — white
+export const HANDLE_FILL = '#e879f9'            // control handle — magenta (distinct from tether)
+export const TETHER_STROKE = '#94a3b8'          // tether line — slate-gray
+export const CURVE_STROKE = '#22c55e'           // curve outline — green (was #4a9eff, collided with inactive anchor)
 
 /**
  * Derived display state for one Bézier anchor. ALL component-local — never in the store.
