@@ -51,8 +51,14 @@ vi.mock('react-konva', () => {
       'data-testid': props['data-testid'] ?? 'konva-circle',
       'data-fill': props.fill,
     })
-  const Line: React.FC<{ 'data-testid'?: string }> = (props) =>
-    React.createElement('div', { 'data-testid': props['data-testid'] ?? 'konva-line' })
+  const Line: React.FC<{ 'data-testid'?: string; points?: number[] }> = (props) =>
+    React.createElement('div', {
+      'data-testid': props['data-testid'] ?? 'konva-line',
+      // Forward points length as data-point-count so tests can assert the overlay geometry
+      // without parsing a serialised number[] string. The plan unit test for the overlay
+      // asserts points.length === 2 × vertexCount (explicit numeric fixture).
+      'data-point-count': props.points !== undefined ? String(props.points.length) : undefined,
+    })
   return { Layer, Path, Rect, Circle, Line }
 })
 
@@ -153,6 +159,37 @@ describe('BezierEditLayer render (Phase 08.1 Plan 02)', () => {
     expect(anchors.length).toBeGreaterThan(0)
     // The Rect mock forwards width as data-width (string)
     expect(Number(anchors[0].getAttribute('data-width'))).toBeCloseTo(2.5, 6)
+  })
+
+  it('renders a live edited-contour overlay (bezier-edited-contour) whose points derive from store.vertices', () => {
+    // G6 fix (Plan 08, option a): the overlay renders the active barony ring from
+    // store.vertices as a distinct amber-dashed closed Line — visually distinct from the
+    // colored raster BaronyLayer (backend GeoJSON) and the green Bézier curve outline.
+    //
+    // Fixture: 4-vertex square ring keyed 'b1#0'..'b1#3'.
+    // Expected editedRingPts.length = 2 × 4 = 8 (explicit numeric fixture).
+    // This proves the overlay maps each vertex lon/lat → canvas [x,y] pair.
+    //
+    // READ-ONLY: the overlay adds ZERO store writes; BEZ-IDENTITY-01 holds by construction.
+    mockState.vertices = {
+      'b1#0': { lat: 40.0, lon: -8.0 },
+      'b1#1': { lat: 40.5, lon: -8.0 },
+      'b1#2': { lat: 40.5, lon: -7.5 },
+      'b1#3': { lat: 40.0, lon: -7.5 },
+    }
+    mockState.activeTerritoryId = 'b1'
+
+    const { queryByTestId } = render(<BezierEditLayer projection={PROJ} currentScale={1} />)
+
+    // The overlay Line must be present
+    const overlay = queryByTestId('bezier-edited-contour')
+    expect(overlay, 'bezier-edited-contour overlay Line must render when a barony is active').not.toBeNull()
+
+    // data-point-count = 2 × 4 = 8 (explicit numeric fixture: 4 vertices → 8 numbers [x0,y0,...,x3,y3])
+    expect(
+      Number(overlay!.getAttribute('data-point-count')),
+      'overlay points length must be 2 × vertexCount = 8 (4 vertices, explicit fixture)',
+    ).toBe(8)
   })
 })
 
