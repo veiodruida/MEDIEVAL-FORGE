@@ -14,3 +14,14 @@ Plans:
 - [x] 08.1-06-PLAN.md — Wave 2 (gap-closure): G3 add control points — double-click insert anchor at nearest curve param, identity-safe NO-OP split of poly range [BEZ-IDENTITY-01, BEZ-INDEX-01]
 - [x] 08.1-07-PLAN.md — Wave 1 (gap-closure G5+G7): screen-space sizing for anchors/handles/hit-path (size = BASE / currentScale, mirror DecorationsLayer) + MAX_SCALE_MULTIPLIER 4→16 + the three "5" half-size sites synced + Playwright REAL page.mouse drag & dblclick at usable zoom (bans __forgeBezierTrigger*) [BEZ-RENDER-01, BEZ-RENDER-02, BEZ-DRAG-01, BEZ-UAT-01]
 - [x] 08.1-08-PLAN.md — Wave 2 (gap-closure G6): real-mouse reproduction (drag commits + colored map stale, G6 independent of G5) + live edited-contour overlay rendered read-only from store.vertices (option a — no /editor/apply, no /render; phase boundary preserved) + Playwright real-drag overlay-reflects-edit [BEZ-DRAG-01, BEZ-RENDER-01, BEZ-UAT-01]
+
+### Phase 08.2: Bézier edit-to-map convergence — backend vertex move/add/delete replay + render cascade so barony contour edits reach the colored map and 12-file export (INSERTED)
+
+**Goal:** Close G8 (08.1-HUMAN-UAT). Today a Bézier contour edit commits `op:'move'` and IS persisted to the branch edit-log (POST `/edit-events`), but the render pipeline silently drops it: `backend/medieval_forge/services/pipeline/manual_edit.py:128` only replays `split`/`merge`/`translate` — `move`/`add`/`delete` were deferred in Phase 08 and never implemented, and `render.py:148-167` only feeds `landmask_replace` into render. Net: the colored barony boundary + the 12-file Unity export NEVER reflect a Bézier edit, even after a re-render (the 08.1 overlay is a live preview only). This phase implements barony vertex-op replay in `manual_edit.compute()` and wires a render cascade (or explicit Apply) after Bézier commit so the edited contour converges to the colored `BaronyLayer` and the export — mirroring the existing `landmask_replace → cfg.landmask_override → /render` cascade. Iberia 10/10 byte/SSIM parity MUST stay green (sentinel ops only fire when a branch has barony edit-events; the zero-edit path is unchanged).
+
+**Requirements**: BEZ-CONV-01 (move replay in manual_edit), BEZ-CONV-02 (add/delete replay), BEZ-CONV-03 (render cascade trigger + baroniesQ refetch post-edit), BEZ-CONV-04 (Iberia parity 10/10 unchanged on zero-edit path), BEZ-CONV-05 (UAT: real-mouse Bézier edit → colored barony boundary changes + survives reload + appears in export) — proposed spine, to be formalized in /gsd-plan-phase.
+**Depends on:** Phase 08.1
+**Plans:** Not planned yet
+
+Plans:
+- (none yet — run /gsd-plan-phase 08.2)

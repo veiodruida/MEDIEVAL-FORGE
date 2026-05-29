@@ -42,6 +42,7 @@ Progress: [█████████░] 93% (25 of 27 plans complete)
 - Phase 07.2 added: cloud LLM providers (OpenRouter / OpenAI / Gemini) + .env auto-discover + live token streaming + CredentialsManager dialog
 - Phase 08 added: border-vertex-editor — manual SVG-style vertex editing of territory polygons with project branching
 - Phase 08.1 inserted after Phase 08: Bezier-assisted barony contour editing — UI-layer Bezier control points over the existing polygon model, parity-safe (store stays polygon, curve-fit derived for display, only edited segments flatten back) (URGENT — raw vertex handles unusable: hundreds of dots per barony)
+- Phase 08.2 inserted after Phase 08.1: Bézier edit-to-map convergence — backend vertex move/add/delete replay in manual_edit + render cascade so contour edits reach the colored map and export (URGENT — closes G8: 08.1 saves edits to branch but render pipeline drops op:'move', so colored boundary never changes; user-confirmed in browser 2026-05-29)
 
 ### Decisions
 
