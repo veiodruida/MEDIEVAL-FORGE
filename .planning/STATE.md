@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 08.1-07-PLAN.md
-last_updated: "2026-05-29T14:11:11.574Z"
+stopped_at: Completed 08.1-08-PLAN.md
+last_updated: "2026-05-29T14:28:21.887Z"
 last_activity: 2026-05-29
 progress:
   total_phases: 1
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 8
-  completed_plans: 7
-  percent: 88
+  completed_plans: 8
+  percent: 100
 ---
 
 # Project State (v3)
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md
 ## Current Position
 
 Phase: 08.1 (bezier-assisted-barony-contour-editing-ui-layer-bezier-contr) — EXECUTING
-Plan: 2 of 8
+Plan: 3 of 8
 Status: Ready to execute
 Last activity: 2026-05-29
 
@@ -136,6 +136,9 @@ See `.planning/PROJECT.md` Key Decisions table (D-V3-01 through D-V3-07).
 - [Phase 08.1]: [Rule 1] findNearestSegmentAndVertex closing-segment fix: loop s<N-1 -> s<N with wrap — all N segments reachable (G1+G2 mandate from plan 05)
 - [Phase 08.1-07]: getRelativePointerPosition() in onDblClick: map-space vs screen-space coordinate bug fixed (G7 production fix)
 - [Phase 08.1-07]: MAX_SCALE_MULTIPLIER raised 4→16; screen-space sizing BASE/currentScale for anchors/handles/hit-path
+- [Phase 08.1]: G6 fix (option a): live amber-dashed overlay reads store.vertices read-only — phase boundary preserved (backend never sees Bezier), BEZ-IDENTITY-01 safe by construction
+- [Phase 08.1]: op:move has NO Phase-08 precedent on the colored map — only split/merge/translate POST /editor/apply; colored barony converges only via /render; G6 contract is a new live-overlay, not a phantom pattern
+- [Phase 08.1]: editedRingPtsRef: ref synced every render for stale-closure-safe DEV hook access; editedRingSnapshot (not count) is the Playwright geometry-change discriminator
 
 ### Blockers/Concerns
 
@@ -155,6 +158,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-29T14:11:11.571Z
-Stopped at: Completed 08.1-07-PLAN.md
+Last session: 2026-05-29T14:28:21.884Z
+Stopped at: Completed 08.1-08-PLAN.md
 Resume file: None
