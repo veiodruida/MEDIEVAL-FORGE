@@ -380,19 +380,16 @@ export const BezierEditLayer: React.FC<BezierEditLayerProps> = ({ projection }) 
     // Derive cp1/cp2 for the new anchor from the cubic tangent at t≈0.5.
     // The tangent direction gives a small display-only handle; the actual geometry
     // is committed verbatim from the store on the next drag (no store write here).
-    const t = 0.5
+    // Derive cp1/cp2 tangent direction from the cubic at t=0.5 using a small finite difference.
     const cubic: BezierCubic = [a.anchorPx, a.cp2Px, b.cp1Px, b.anchorPx]
-    const midPt = cubicBezierAt(cubic[0], cubic[1], cubic[2], cubic[3], t)
-    const midNext = cubicBezierAt(cubic[0], cubic[1], cubic[2], cubic[3], Math.min(t + 0.05, 1))
-    const midPrev = cubicBezierAt(cubic[0], cubic[1], cubic[2], cubic[3], Math.max(t - 0.05, 0))
+    const midNext = cubicBezierAt(cubic[0], cubic[1], cubic[2], cubic[3], 0.55)
+    const midPrev = cubicBezierAt(cubic[0], cubic[1], cubic[2], cubic[3], 0.45)
     const tanDx = midNext[0] - midPrev[0]
     const tanDy = midNext[1] - midPrev[1]
     const tanLen = Math.sqrt(tanDx * tanDx + tanDy * tanDy) || 1
     const handleOffset = 15
     const normX = (tanDx / tanLen) * handleOffset
     const normY = (tanDy / tanLen) * handleOffset
-    // Suppress unused midPt if snap exactly equals the mid-curve point
-    void midPt
 
     const newAnchor: BezierAnchor = {
       idx: segmentIdx + 1, // will be renumbered below

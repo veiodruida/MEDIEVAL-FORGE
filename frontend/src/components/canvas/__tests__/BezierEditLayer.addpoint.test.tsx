@@ -149,11 +149,13 @@ describe('G3 insert-anchor — range split correctness (08.1-06 Task 2)', () => 
       inserted = insertFn ? insertFn(0) : false
     })
 
-    if (inserted) {
-      // Re-read from window after act — the useEffect re-registered the hook with the new anchor count
-      const after = readState()
-      expect(after?.anchorCount).toBe(beforeCount + 1)
-    }
+    // IBERIA_BARONY_RING segment 0 always has strictly-interior vertices (rangeEnd-rangeStart>=2);
+    // Playwright confirms this on the real seeded data. Assert unconditionally so this test
+    // cannot silently pass as a vacuous no-op.
+    expect(inserted, 'segment 0 of Iberia barony must have a strictly-interior vertex (non-degenerate)').toBe(true)
+    // Re-read from window after act — the useEffect re-registered the hook with the new anchor count
+    const after = readState()
+    expect(after?.anchorCount).toBe(beforeCount + 1)
   })
 })
 
@@ -170,7 +172,8 @@ describe('G3 insert-then-drag commits via op:move (08.1-06 Task 2)', () => {
       inserted = insertFn ? insertFn(0) : false
     })
 
-    if (!inserted) return // segment 0 had no interior vertex — skip rest
+    // Unconditional: segment 0 of IBERIA_BARONY_RING always has interior vertices (Playwright confirmed).
+    expect(inserted, 'segment 0 of Iberia barony must be insertable (non-degenerate)').toBe(true)
 
     // Store must still be unchanged after insert (identity-safe)
     expect(useEditorStore.getState().editLog.length).toBe(beforeLen)
@@ -179,15 +182,16 @@ describe('G3 insert-then-drag commits via op:move (08.1-06 Task 2)', () => {
     const stateFn = (window as unknown as { __forgeBezierState?: () => { anchorCount: number; activeAnchorIdx: number | null } }).__forgeBezierState
     const newIdx = stateFn?.()?.activeAnchorIdx
 
+    expect(newIdx, 'inserted anchor must become the activeAnchorIdx').not.toBeNull()
+
     const dragFn = (window as unknown as { __forgeBezierTriggerDrag?: (idx?: number, dx?: number, dy?: number) => boolean }).__forgeBezierTriggerDrag
-    if (newIdx !== null && newIdx !== undefined && dragFn) {
-      act(() => { dragFn(newIdx, 25, 25) })
-      // First commit happens HERE (drag-after-insert)
-      expect(useEditorStore.getState().editLog.length).toBeGreaterThan(beforeLen)
-      const lastEntry = useEditorStore.getState().editLog[useEditorStore.getState().editLog.length - 1]
-      expect(lastEntry.op).toBe('move')
-      expect(lastEntry.vertexIds.length).toBeGreaterThan(0)
-    }
+    expect(dragFn, '__forgeBezierTriggerDrag must be registered').toBeDefined()
+    act(() => { dragFn!(newIdx!, 25, 25) })
+    // First commit happens HERE (drag-after-insert) — store only writes on drag, never on insert
+    expect(useEditorStore.getState().editLog.length).toBeGreaterThan(beforeLen)
+    const lastEntry = useEditorStore.getState().editLog[useEditorStore.getState().editLog.length - 1]
+    expect(lastEntry.op).toBe('move')
+    expect(lastEntry.vertexIds.length).toBeGreaterThan(0)
   })
 })
 
