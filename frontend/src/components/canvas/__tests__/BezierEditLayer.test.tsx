@@ -65,7 +65,8 @@ vi.mock('../../../stores/useEditorStore', () => ({
   useEditorStore: (selector: (s: MockState) => unknown) => selector(mockState),
 }))
 
-import { BezierEditLayer } from '../BezierEditLayer'
+import { BezierEditLayer, buildPathData } from '../BezierEditLayer'
+import type { BezierAnchor } from '../BezierEditLayer'
 
 // Iberia-bounds projection matching the fixture bbox (lon [-10,3], lat [36,44])
 const PROJ: ProjectionConfig = {
@@ -139,5 +140,52 @@ describe('BezierEditLayer render (Phase 08.1 Plan 02)', () => {
     mockState.editableLayer = 'landmask'
     const { queryByTestId } = render(<BezierEditLayer projection={PROJ} />)
     expect(queryByTestId('konva-layer')).toBeNull()
+  })
+})
+
+describe('buildPathData closed ring (G1)', () => {
+  /** Build a minimal BezierAnchor fixture with 3 anchors. */
+  function makeAnchors(n: number): BezierAnchor[] {
+    return Array.from({ length: n }, (_, i) => ({
+      idx: i,
+      anchorPx: [i * 100, i * 50] as [number, number],
+      cp1Px: [i * 100 - 10, i * 50 - 5] as [number, number],
+      cp2Px: [i * 100 + 10, i * 50 + 5] as [number, number],
+      polyRangeStart: i * 5,
+      polyRangeEnd: i * 5 + 4,
+    }))
+  }
+
+  it('buildPathData with 3 anchors emits exactly 3 C commands (N=3, including closing segment)', () => {
+    const anchors = makeAnchors(3)
+    const d = buildPathData(anchors)
+    // Count occurrences of ' C ' in the path string
+    const cCount = (d.match(/ C /g) ?? []).length
+    expect(cCount).toBe(3) // N cubic commands, not N-1
+  })
+
+  it('buildPathData with 4 anchors emits exactly 4 C commands (N=4, including closing segment)', () => {
+    const anchors = makeAnchors(4)
+    const d = buildPathData(anchors)
+    const cCount = (d.match(/ C /g) ?? []).length
+    expect(cCount).toBe(4)
+  })
+
+  it('buildPathData last C command targets anchor[0] anchorPx (ring closed back to start)', () => {
+    const anchors = makeAnchors(3)
+    const a0 = anchors[0]
+    const d = buildPathData(anchors)
+    // The path must end with the anchor[0] position as the final C endpoint
+    const lastC = d.split(' C ').pop()!
+    const parts = lastC.trim().split(/\s+/)
+    // Last two numbers in the closing C command are the destination: anchor[0].anchorPx
+    const endX = parseFloat(parts[parts.length - 2])
+    const endY = parseFloat(parts[parts.length - 1])
+    expect(endX).toBeCloseTo(a0.anchorPx[0], 6)
+    expect(endY).toBeCloseTo(a0.anchorPx[1], 6)
+  })
+
+  it('buildPathData returns empty string for empty anchors array', () => {
+    expect(buildPathData([])).toBe('')
   })
 })

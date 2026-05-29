@@ -99,3 +99,34 @@ describe('buildPolyIndexMap (BEZ-INDEX-01)', () => {
     }
   })
 })
+
+describe('buildPolyIndexMap closing-segment coverage (G1 guard)', () => {
+  // Build pxPts with a closing duplicate to simulate the full ring with M points
+  // where pxPts[0] === pxPts[M-1] (the duplicate appended by fitPolygonToBezier caller).
+  // The closing segment (last cubic) must map to rangeEnd = pxPts.length - 1.
+  const rawPts = IBERIA_BARONY_RING.map(([lon, lat]) => geoToCanvas(lon, lat, projection)) as Array<[number, number]>
+  // Ensure the ring has the closing duplicate (same as first point).
+  const pxPtsWithDup: Array<[number, number]> = [...rawPts]
+  if (pxPtsWithDup[0][0] !== pxPtsWithDup[pxPtsWithDup.length - 1][0] ||
+      pxPtsWithDup[0][1] !== pxPtsWithDup[pxPtsWithDup.length - 1][1]) {
+    pxPtsWithDup.push([pxPtsWithDup[0][0], pxPtsWithDup[0][1]])
+  }
+  const cubics = fitPolygonToBezier(IBERIA_BARONY_RING, projection, BEZ_FIT_ERROR)
+  const ranges = buildPolyIndexMap(pxPtsWithDup, cubics)
+
+  it('closing segment rangeEnd equals inputPxPts.length - 1 (covers the closing-duplicate vertex)', () => {
+    // DISCRIMINATING: catches a forward-scan regression where pxPts[M-2] is found early,
+    // leaving vertex M-1 (the closing duplicate) without a range owner.
+    expect(ranges[ranges.length - 1].rangeEnd).toBe(pxPtsWithDup.length - 1)
+  })
+
+  it('ranges.length equals cubics.length even with closing duplicate in pxPts', () => {
+    expect(ranges).toHaveLength(cubics.length)
+  })
+
+  it('interior ranges are contiguous (range[j].rangeEnd === range[j+1].rangeStart) for all j < N-1', () => {
+    for (let j = 0; j < ranges.length - 1; j++) {
+      expect(ranges[j].rangeEnd).toBe(ranges[j + 1].rangeStart)
+    }
+  })
+})

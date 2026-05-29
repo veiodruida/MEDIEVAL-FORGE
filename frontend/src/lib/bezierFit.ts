@@ -84,7 +84,12 @@ export function buildPolyIndexMap(
     let k = prevEnd
 
     if (j === cubics.length - 1) {
-      // Force full coverage regardless of float drift.
+      // Force full coverage to the closing-duplicate vertex (index M-1).
+      // fitCurve drops the closing duplicate so cubics[N-1].p3 = P_{M-2}, not P_{M-1}.
+      // A forward-scan would find P_{M-2} at index M-2, leaving vertex M-1 (the closing
+      // duplicate, coincident with anchor 0) without a range owner. With k=M-1, the
+      // closing segment's flatten writes orderedKeys[q..M-1], so dragging anchor 0 moves
+      // BOTH index 0 and index M-1, keeping the ring closed (G1 guard against reopening).
       k = inputPxPts.length - 1
     } else {
       // Scan forward for the nearest input vertex matching this cubic's endpoint.

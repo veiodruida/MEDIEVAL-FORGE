@@ -89,7 +89,10 @@ function keyBarony(key: string): string {
   return key.split('#')[0]
 }
 
-/** Build the SVG cubic path string for the full curve outline (RESEARCH §Pattern 3). */
+/** Build the SVG cubic path string for the full curve outline (RESEARCH §Pattern 3).
+ * Emits N cubic C commands (N === anchors.length), including the wrap-around closing
+ * segment anchor[N-1] → anchor[0], so the outline forms a fully closed ring (G1).
+ */
 export function buildPathData(anchors: BezierAnchor[]): string {
   if (anchors.length === 0) return ''
   let d = `M ${anchors[0].anchorPx[0]} ${anchors[0].anchorPx[1]}`
@@ -98,6 +101,12 @@ export function buildPathData(anchors: BezierAnchor[]): string {
     const { cp1Px, anchorPx } = anchors[i + 1]
     d += ` C ${cp2Px[0]} ${cp2Px[1]} ${cp1Px[0]} ${cp1Px[1]} ${anchorPx[0]} ${anchorPx[1]}`
   }
+  // Closing segment: anchor[N-1] → anchor[0] — uses last anchor's cp2Px (outgoing) and
+  // anchor[0]'s cp1Px (incoming from the closing segment). This is the G1 fix: the outline
+  // now forms a closed loop with exactly N cubic commands (not N-1, which left the ring open).
+  const lastA = anchors[anchors.length - 1]
+  const firstA = anchors[0]
+  d += ` C ${lastA.cp2Px[0]} ${lastA.cp2Px[1]} ${firstA.cp1Px[0]} ${firstA.cp1Px[1]} ${firstA.anchorPx[0]} ${firstA.anchorPx[1]}`
   return d
 }
 
@@ -116,8 +125,11 @@ export function deriveAnchors(cubics: BezierCubic[], ranges: ReturnType<typeof b
       anchorPx: [p0[0], p0[1]],
       // fit-curve convention: c1 is near p0 (this anchor), c2 is near p3 (next anchor).
       // incoming handle (cp1) of anchor j is the PREVIOUS cubic's c2 (near prev p3 = this
-      // anchor); for the first anchor it falls back to this cubic's c1.
-      cp1Px: j > 0 ? [cubics[j - 1][2][0], cubics[j - 1][2][1]] : [c1[0], c1[1]],
+      // anchor); for anchor 0 it comes from the LAST cubic's c2 (c2 of the closing segment
+      // cubic), connecting the incoming handle of anchor 0 to the closing segment (G1 fix).
+      cp1Px: j > 0
+        ? [cubics[j - 1][2][0], cubics[j - 1][2][1]]
+        : [cubics[cubics.length - 1][2][0], cubics[cubics.length - 1][2][1]],
       // outgoing handle (cp2) of anchor j is THIS cubic's c1 (near p0 = this anchor).
       // [Plan 03 Rule-1 fix] Plan 02 used c2 here, which sits near the NEXT anchor —
       // verified on IBERIA_BARONY_RING (|p0->c1|≈9-13px vs |p0->c2|≈65-92px). Using c2
@@ -384,7 +396,7 @@ export const BezierEditLayer: React.FC<BezierEditLayerProps> = ({ projection }) 
       const N = working.length
       const dirty = new Set<number>()
       const addSeg = (s: number) => {
-        if (s >= 0 && s < N - 1) dirty.add(s) // segment N-1 is the non-editable closing segment
+        if (s >= 0 && s < N) dirty.add(s) // all N segments editable incl. closing segment N-1 (G1)
       }
       if (kind === 'anchor') {
         addSeg(idx - 1)
@@ -402,7 +414,7 @@ export const BezierEditLayer: React.FC<BezierEditLayerProps> = ({ projection }) 
 
       for (const s of dirty) {
         const startAnchor = working[s]
-        const endAnchor = working[s + 1]
+        const endAnchor = working[(s + 1) % N] // wrap-around: closing segment (s=N-1) uses anchor[0]
         // cubic for segment s in px: [p0, c1, c2, p3]
         const cubic: BezierCubic = [
           startAnchor.anchorPx,
