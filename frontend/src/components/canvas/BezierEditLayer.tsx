@@ -293,6 +293,10 @@ export const BezierEditLayer: React.FC<BezierEditLayerProps> = ({ projection, cu
   // rendered anchor's absolute SCREEN position for a real Playwright Konva mouse drag
   // (the canvas is opaque to DOM queries — mirrors VertexEditLayer's firstHandle hatch).
   const layerRef = useRef<Konva.Layer | null>(null)
+  // Plan 08 (G6 fix): ref that always holds the latest editedRingPts so the
+  // __forgeBezierState DEV hook (inside a stale-closure useEffect) can read the current
+  // overlay geometry without being added to the effect dependency array.
+  const editedRingPtsRef = useRef<number[]>([])
 
   // ── Fit on entry / activeTerritoryId change ─────────────────────────────────
   // vertices are loaded once by SelectionBridge and stable for the layer's life, so the
@@ -679,6 +683,19 @@ export const BezierEditLayer: React.FC<BezierEditLayerProps> = ({ projection, cu
         editLogLength: useEditorStore.getState().editLog.length,
         firstAnchor, // { idx, x, y } page coords for page.mouse, or null
         midCurvePoint, // { x, y } page coords of mid-segment on-curve point (between anchor 0 and 1), or null
+        // Plan 08 (G6 fix): additive read-only overlay inspection fields.
+        // editedContourPointCount: 2 × vertex count (length of the flat [x0,y0,...] array).
+        // editedRingSnapshot: JSON.stringify of the flat array for geometry change-detection
+        //   across a drag — count alone is invariant under op:'move' (move reshapes, not resizes).
+        // These are OPTIONAL/additive: sibling specs that omit them from their BezierState
+        // interface keep compiling. NEVER triggers — read-only state inspection only.
+        // Read from ref — NOT the closure-captured editedRingPts — so the value is always
+        // current even though this useEffect only re-runs when anchors/active state changes.
+        // editedRingPtsRef.current is synced every render (line above the useMemo return).
+        editedContourPointCount: editedRingPtsRef.current.length,
+        editedRingSnapshot: editedRingPtsRef.current.length > 0
+          ? JSON.stringify(editedRingPtsRef.current)
+          : undefined,
       }
     }
     // Plan 04 (BEZ-UAT-01, plan-sanctioned DEV-hook drag — Task 2 <action> "or use a DEV
@@ -794,6 +811,35 @@ export const BezierEditLayer: React.FC<BezierEditLayerProps> = ({ projection, cu
     }
   }, [anchors.length, activeAnchorIdx, dirtyCount, handleDragMove, handleDragEnd, handleInsertAtPx])
 
+  // ── Live edited-contour overlay (G6 fix, option a, Plan 08) ─────────────────
+  // The colored BaronyLayer reads effectiveBaronies (backend GeoJSON, CanvasViewer:365)
+  // which only converges via /render. The phase boundary forbids backend seeing Bézier,
+  // so op:'move' never POSTs to /editor/apply and the colored barony stays stale.
+  // Fix: render the active barony's CURRENT polygon ring from store.vertices as an
+  // UNSAVED-EDIT overlay (amber dashed) so the shape change is immediately visible.
+  //
+  // READ-ONLY by construction: editedRingPts is a pure useMemo derived from the
+  // subscribed `vertices` — zero store writes added, BEZ-IDENTITY-01 safe.
+  //
+  // Recomputes whenever `vertices` changes (i.e. after every setVerticesAndLog in
+  // handleDragEnd), so the overlay always tracks the latest committed geometry.
+  const editedRingPts = useMemo<number[]>(() => {
+    if (!isActive || activeTerritoryId === null) return []
+    const ringKeys = sortRingKeys(
+      Object.keys(vertices).filter((k) => keyBarony(k) === activeTerritoryId),
+    )
+    const flat: number[] = []
+    for (const k of ringKeys) {
+      const v = vertices[k]
+      const [x, y] = geoToCanvas(v.lon, v.lat, projection)
+      flat.push(x, y)
+    }
+    return flat
+  }, [vertices, isActive, activeTerritoryId, projection])
+  // Sync the ref every render so the stale-closure __forgeBezierState hook always
+  // reads the current overlay geometry (analogous to anchorsRef pattern above).
+  editedRingPtsRef.current = editedRingPts
+
   // During a drag, render the curve outline + handles from the live preview so the WHOLE
   // curve follows the drag (UI-SPEC §Anchor step 1) — not just the dragged Konva node.
   // The anchor squares keep rendering from committed `anchors` so the dragged Konva node
@@ -813,6 +859,27 @@ export const BezierEditLayer: React.FC<BezierEditLayerProps> = ({ projection, cu
         if (e.target === e.currentTarget) setActiveAnchorIdx(null)
       }}
     >
+      {/* Live edited-contour overlay (G6 fix, option a, Plan 08).
+          Renders the active barony's current polygon ring from store.vertices as an
+          UNSAVED-EDIT outline — immediately visible after any committed Bézier drag.
+          Visually distinct from the green Bézier curve and the colored raster baronies:
+            amber (#f0c040) + dashed [6,4] + faint amber fill → "unsaved edit" affordance.
+          Screen-space stroke via currentScale (Plan 07 pattern): constant ~2.5px on-screen.
+          listening=false: the overlay is read-only, never participates in hit-testing.
+          Guard: editedRingPts.length >= 6 requires ≥3 points (T-08.1-08-03 mitigation). */}
+      {editedRingPts.length >= 6 && (
+        <Line
+          points={editedRingPts}
+          closed
+          stroke="#f0c040"
+          strokeWidth={2.5 / (safeScale)}
+          dash={[6, 4]}
+          fill="rgba(240, 192, 64, 0.12)"
+          listening={false}
+          data-testid="bezier-edited-contour"
+        />
+      )}
+
       {/* Curve outline — static, non-interactive (BEZ-RENDER: MUST stay listening={false}) */}
       <Path
         data={pathData}
