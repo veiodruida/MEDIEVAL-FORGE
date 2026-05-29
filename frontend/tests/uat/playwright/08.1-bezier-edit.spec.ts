@@ -129,4 +129,52 @@ test.describe('Phase 08.1 — BEZ-UAT-01 Bézier reachability + drag', () => {
       .poll(async () => (await readBezierState(page))?.editLogLength ?? editLog0, { timeout: 8_000 })
       .toBeGreaterThan(editLog0)
   })
+
+  /**
+   * G1+G2 closing-segment handle drag re-verification (Plan 08.1-05 Task 2).
+   *
+   * RESEARCH Pitfall 5 / CLAUDE.md UI-UAT mandate: unit tests pass in isolation but the
+   * feature can still fail in the integrated app (canvas opaque to DOM, real Konva render).
+   * This test drives __forgeBezierTriggerHandleDrag('cp1', 0, ...) — the SAME real
+   * handleDragMove + handleDragEnd handlers the Konva onDrag* props call — to prove the
+   * G1+G2 fix works end-to-end in the running app, not just in the unit harness.
+   *
+   * ANTI-PATTERN GUARD: no direct store-action calls. The commit flows through the real
+   * handler path only: __forgeBezierTriggerHandleDrag → handleDragMove/handleDragEnd →
+   * flattenSegment → setVerticesAndLog(op:'move').
+   */
+  test('G1+G2 re-verify: cp1 drag on anchor 0 (closing-segment handle) commits op:move — editLog grows', async ({
+    page,
+  }) => {
+    const info = loadProjectInfo()
+    await navigateToWorkspace(page, info.project_id)
+
+    await expect(page.getByTestId('edit-tool-palette')).toBeVisible()
+    await page.getByTestId('edit-tool-v').click()
+
+    const baronyId = await discoverBaronyId(page, info.project_id)
+    await page.evaluate((id) => {
+      ;(window as unknown as { __forgeSelectBarony?: (id: string) => void }).__forgeSelectBarony?.(id)
+    }, baronyId)
+
+    // Wait until BezierEditLayer mounts and fits the ring (anchorCount >= 4).
+    await expect
+      .poll(async () => (await readBezierState(page))?.anchorCount ?? 0, { timeout: 15_000 })
+      .toBeGreaterThanOrEqual(4)
+
+    const editLog0 = (await readBezierState(page))!.editLogLength
+
+    // Trigger a cp1 drag on anchor 0 via the new DEV hook (center-anchored, no -5 offset).
+    // This was previously a silent-drop dead zone (WR-01 V1 limitation, now reversed by G2).
+    const dragged = await page.evaluate(() => {
+      const fn = (window as unknown as { __forgeBezierTriggerHandleDrag?: (kind: string, idx: number, dx: number, dy: number) => boolean }).__forgeBezierTriggerHandleDrag
+      return fn ? fn('cp1', 0, 25, 25) : false
+    })
+    expect(dragged, 'cp1 handle-drag DEV hook must be present and find anchor 0').toBe(true)
+
+    // Closing-segment commit proof: editLog grew, proving G1+G2 end-to-end in the running app.
+    await expect
+      .poll(async () => (await readBezierState(page))?.editLogLength ?? editLog0, { timeout: 8_000 })
+      .toBeGreaterThan(editLog0)
+  })
 })

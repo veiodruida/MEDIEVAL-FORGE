@@ -210,8 +210,15 @@ describe('BezierEditLayer drag-commit (Phase 08.1 Plan 03 — BEZ-DRAG-01)', () 
     expect(after.lat !== before.lat || after.lon !== before.lon).toBe(true)
   })
 
-  it('boundary i=0: dragging the first anchor marks only segment 0 dirty (no segment -1)', () => {
+  it('boundary i=0: dragging the first anchor marks segment 0 AND closing segment N-1 dirty (G2 — both ring endpoints are now editable)', () => {
+    // [G2 UPDATE from Plan 08.1-05]: WR-01 decision is REVERSED. Dragging anchor 0 now
+    // affects BOTH segment 0 (outgoing) AND segment N-1 (closing/incoming), via the
+    // (idx-1+N)%N wrap-around fix. The old test asserted only segment 0 was dirty; that
+    // behavior was the V1 non-editable closing segment limitation. The new correct behavior
+    // is that anchor 0 drag commits BOTH affected segments — segment 0 and segment N-1.
+    // Interior vertices of segments 2..N-2 (indices outside dirty ranges) remain verbatim.
     const anchors = deriveAnchorsFromStore(mockState.vertices, PROJ)
+    const N = anchors.length
     const a0 = anchors[0]
     const { getAllByTestId } = render(<BezierEditLayer projection={PROJ} />)
     const anchorEl = getAllByTestId('bezier-anchor').find(
@@ -222,28 +229,41 @@ describe('BezierEditLayer drag-commit (Phase 08.1 Plan 03 — BEZ-DRAG-01)', () 
 
     expect(setVerticesAndLog).toHaveBeenCalledTimes(1)
     const [nextVertices] = setVerticesAndLog.mock.calls[0]
-    // i=0 marks ONLY segment 0 dirty (segment -1 does not exist). The INTERIOR of the
-    // closing segment (indices strictly between the last anchor's start and the ring's
-    // final index) must stay byte-verbatim — proving the i-1 guard fired and no segment
-    // -1/closing-segment flatten ran. (The ring's closing-duplicate vertex, coincident
-    // with anchor 0, may still move via shared-vertex coupling — that is correct.)
-    const lastAnchor = anchors[anchors.length - 1]
-    const finalIdx = Object.keys(mockState.vertices).length - 1 // closing duplicate index
-    for (let k = lastAnchor.polyRangeStart + 1; k < finalIdx; k++) {
+
+    // segment 1's interior (between anchor 0's range end and anchor 1's range end) is
+    // untouched since only segments 0 and N-1 are dirty, not segment 1.
+    // Segment 1 spans anchors[0].polyRangeEnd+1 .. anchors[1].polyRangeEnd (exclusive of
+    // the shared endpoints). Interior indices strictly inside segment 1 must be verbatim.
+    // (Note: the dirty range from segment N-1 covers anchors[N-1].polyRange, and segment 0
+    //  covers anchors[0].polyRange; together they cover the ring endpoints but not seg 1+.)
+    const seg0End = anchors[0].polyRangeEnd
+    const seg1End = anchors[1].polyRangeEnd
+    for (let k = seg0End + 1; k < seg1End; k++) {
       const key = `b1#${k}`
-      expect(nextVertices[key].lat).toBe(mockState.vertices[key].lat)
-      expect(nextVertices[key].lon).toBe(mockState.vertices[key].lon)
+      if (nextVertices[key] !== undefined) {
+        expect(nextVertices[key].lat).toBe(mockState.vertices[key].lat)
+        expect(nextVertices[key].lon).toBe(mockState.vertices[key].lon)
+      }
     }
-    // segment 1's interior (between anchor 0's range end and anchor 1's range end) is also
-    // untouched since only segment 0 is dirty.
-    for (let k = anchors[0].polyRangeEnd + 1; k <= anchors[1].polyRangeEnd; k++) {
-      const key = `b1#${k}`
-      expect(nextVertices[key].lat).toBe(mockState.vertices[key].lat)
-      expect(nextVertices[key].lon).toBe(mockState.vertices[key].lon)
+    // Also check that segments 2..N-2 interior are not touched (skip segs 0 and N-1).
+    if (N >= 4) {
+      const seg2Start = anchors[1].polyRangeEnd
+      const segLastStart = anchors[N - 1].polyRangeStart
+      for (let k = seg2Start + 1; k < segLastStart; k++) {
+        const key = `b1#${k}`
+        if (nextVertices[key] !== undefined) {
+          expect(nextVertices[key].lat).toBe(mockState.vertices[key].lat)
+          expect(nextVertices[key].lon).toBe(mockState.vertices[key].lon)
+        }
+      }
     }
   })
 
-  it('boundary i=N-1: dragging the last anchor marks only segment N-2 dirty (closing segment N-1 stays non-editable)', () => {
+  it('boundary i=N-1: dragging the last anchor marks segments N-2 AND N-1 dirty (both closing-segment endpoints are editable)', () => {
+    // [G2 UPDATE from Plan 08.1-05]: Dragging the last anchor now also marks segment N-1
+    // (the closing segment) as dirty via addSeg(incomingSeg) where incomingSeg = (N-1-1+N)%N = N-2,
+    // and addSeg(idx) = addSeg(N-1). Both outgoing and incoming segments of the last anchor are dirty.
+    // Anything before segment N-2's start must be verbatim (segments 0..N-3 interior).
     const anchors = deriveAnchorsFromStore(mockState.vertices, PROJ)
     const iLast = anchors.length - 1
     const aLast = anchors[iLast]
@@ -256,8 +276,9 @@ describe('BezierEditLayer drag-commit (Phase 08.1 Plan 03 — BEZ-DRAG-01)', () 
 
     expect(setVerticesAndLog).toHaveBeenCalledTimes(1)
     const [nextVertices] = setVerticesAndLog.mock.calls[0]
-    // segment N-2 spans anchors[N-2].polyRange — those may change.
-    // Anything before segment N-2's start must be verbatim.
+    // segments N-2 and N-1 may change; segments 0..N-3 interior must be verbatim.
+    // Segment N-2 spans anchors[N-2].polyRange; N-1 spans anchors[N-1].polyRange.
+    // Interior of segments 0..N-3: indices before anchors[N-2].polyRangeStart.
     const segStart = anchors[iLast - 1].polyRangeStart
     for (let k = 0; k < segStart; k++) {
       const key = `b1#${k}`
@@ -355,5 +376,60 @@ describe('BezierEditLayer drag-commit (Phase 08.1 Plan 03 — BEZ-DRAG-01)', () 
     const duringPath = getByTestId('bezier-curve-outline').getAttribute('data-d')
     expect(duringPath).not.toBe(beforePath)
     expect(setVerticesAndLog).not.toHaveBeenCalled()
+  })
+
+  // ── Closing-segment handle drag (G2 — the previously-silent-drop dead zone) ──────
+  it('cp1 drag on anchor 0 produces a non-empty changedIds (closing segment N-1 marked dirty — no silent drop)', () => {
+    // DISCRIMINATING: before G2 fix, dragging anchor 0 cp1 hit addSeg(-1) → empty dirty
+    // → changedIds.length === 0 → early-return without calling setVerticesAndLog. This test
+    // proves the closing segment (N-1) is now in the dirty set when idx===0 cp1 is dragged.
+    const anchors = deriveAnchorsFromStore(mockState.vertices, PROJ)
+    const N = anchors.length
+    expect(N).toBeGreaterThanOrEqual(3) // sanity
+
+    const { getAllByTestId } = render(<BezierEditLayer projection={PROJ} />)
+    // Activate anchor 0 so its handles render
+    const anchor0El = getAllByTestId('bezier-anchor').find(
+      (el) => el.getAttribute('data-anchor-idx') === '0',
+    )!
+    fireEvent.click(anchor0El)
+
+    const handles = getAllByTestId('bezier-handle')
+    // cp1 handle is first (data-handle-kind="cp1")
+    const cp1Handle = handles.find((h) => h.getAttribute('data-handle-kind') === 'cp1')!
+    expect(cp1Handle).toBeTruthy()
+
+    // Drag cp1 of anchor 0 — this shapes the closing segment (N-1 → 0).
+    // With G2 fix, addSeg(N-1) is called when idx===0 and kind==='cp1'.
+    fireEvent.dragStart(cp1Handle)
+    fireEvent.dragEnd(cp1Handle, dragEventAt(anchors[0].cp1Px[0] + 25, anchors[0].cp1Px[1] + 25))
+
+    // Must have committed (not silently dropped)
+    expect(setVerticesAndLog).toHaveBeenCalledTimes(1)
+    const [, op] = setVerticesAndLog.mock.calls[0]
+    expect(op.op).toBe('move')
+  })
+
+  it('cp2 drag on last anchor produces a non-empty changedIds (closing segment N-1 marked dirty)', () => {
+    // Symmetric: dragging last anchor cp2 also shapes the closing segment.
+    const anchors = deriveAnchorsFromStore(mockState.vertices, PROJ)
+    const iLast = anchors.length - 1
+
+    const { getAllByTestId } = render(<BezierEditLayer projection={PROJ} />)
+    const lastAnchorEl = getAllByTestId('bezier-anchor').find(
+      (el) => el.getAttribute('data-anchor-idx') === String(iLast),
+    )!
+    fireEvent.click(lastAnchorEl)
+
+    const handles = getAllByTestId('bezier-handle')
+    const cp2Handle = handles.find((h) => h.getAttribute('data-handle-kind') === 'cp2')!
+    expect(cp2Handle).toBeTruthy()
+
+    fireEvent.dragStart(cp2Handle)
+    fireEvent.dragEnd(cp2Handle, dragEventAt(anchors[iLast].cp2Px[0] + 25, anchors[iLast].cp2Px[1] + 25))
+
+    expect(setVerticesAndLog).toHaveBeenCalledTimes(1)
+    const [, op] = setVerticesAndLog.mock.calls[0]
+    expect(op.op).toBe('move')
   })
 })

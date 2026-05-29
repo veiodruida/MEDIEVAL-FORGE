@@ -94,3 +94,46 @@ describe('density-match fidelity on an unedited segment (BEZ-FLATTEN-02)', () =>
     }
   })
 })
+
+describe('flattenSegment hardened for targetCount < 2 (WR-03)', () => {
+  // Explicit numeric fixture: a simple cubic with known p0=[0,0] and p3=[100,100] in px,
+  // converted to geo using the test projection. flattenSegment must always emit BOTH
+  // endpoints regardless of targetCount, never collapsing to a single t=0 sample.
+  const fixedProjection = projection
+
+  // p0 at (960, 540) center, p3 at (1060, 640) — both well inside the 1920x1080 map
+  const cubic: [number, number, number, number][] = [
+    [960, 540],   // p0
+    [970, 550],   // c1
+    [1050, 630],  // c2
+    [1060, 640],  // p3
+  ] as [[number, number], [number, number], [number, number], [number, number]]
+
+  const expectedP0 = canvasToGeo(960, 540, fixedProjection)
+  const expectedP3 = canvasToGeo(1060, 640, fixedProjection)
+
+  it('flattenSegment with targetCount=1 still emits 2 points (p0 and p3), not just p0', () => {
+    const result = flattenSegment(cubic as Parameters<typeof flattenSegment>[0], 1, fixedProjection)
+    expect(result.length).toBeGreaterThanOrEqual(2)
+    expect(result[0][0]).toBeCloseTo(expectedP0[0], 9)
+    expect(result[0][1]).toBeCloseTo(expectedP0[1], 9)
+    expect(result[result.length - 1][0]).toBeCloseTo(expectedP3[0], 9)
+    expect(result[result.length - 1][1]).toBeCloseTo(expectedP3[1], 9)
+  })
+
+  it('flattenSegment with targetCount=0 still emits 2 points (p0 and p3), not an empty array', () => {
+    const result = flattenSegment(cubic as Parameters<typeof flattenSegment>[0], 0, fixedProjection)
+    expect(result.length).toBeGreaterThanOrEqual(2)
+    expect(result[0][0]).toBeCloseTo(expectedP0[0], 9)
+    expect(result[0][1]).toBeCloseTo(expectedP0[1], 9)
+    expect(result[result.length - 1][0]).toBeCloseTo(expectedP3[0], 9)
+    expect(result[result.length - 1][1]).toBeCloseTo(expectedP3[1], 9)
+  })
+
+  it('flattenSegment with targetCount=2 still returns exactly 2 points at p0 and p3', () => {
+    const result = flattenSegment(cubic as Parameters<typeof flattenSegment>[0], 2, fixedProjection)
+    expect(result).toHaveLength(2)
+    expect(result[0][0]).toBeCloseTo(expectedP0[0], 9)
+    expect(result[result.length - 1][0]).toBeCloseTo(expectedP3[0], 9)
+  })
+})

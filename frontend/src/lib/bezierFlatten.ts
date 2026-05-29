@@ -30,10 +30,15 @@ export function cubicBezierAt(
 }
 
 /**
- * Flatten a cubic into exactly `targetCount` [lon, lat] pairs, evenly spaced in t.
+ * Flatten a cubic into `targetCount` [lon, lat] pairs, evenly spaced in t.
  * Evaluation is in px space; each sample is mapped back to geo via canvasToGeo.
  * targetCount = the original polygon range size, so the re-flattened segment keeps
  * the same vertex density as its neighbors.
+ *
+ * WR-03 hardening: when targetCount < 2, always emit BOTH endpoints [p0, p3] rather
+ * than a single t=0 sample. This prevents a degenerate flatten that would collapse a
+ * segment to a single point and corrupt the ring (e.g. when the closing segment's
+ * rangeEnd - rangeStart + 1 is 0 or 1 after index-map tiling).
  */
 export function flattenSegment(
   cubic: BezierCubic,
@@ -41,9 +46,13 @@ export function flattenSegment(
   projection: ProjectionConfig,
 ): Array<[number, number]> {
   const [p0, c1, c2, p3] = cubic
+  // WR-03: degenerate guard — always emit both endpoints for targetCount < 2.
+  if (targetCount < 2) {
+    return [canvasToGeo(p0[0], p0[1], projection), canvasToGeo(p3[0], p3[1], projection)]
+  }
   const result: Array<[number, number]> = []
   for (let k = 0; k < targetCount; k++) {
-    const t = targetCount > 1 ? k / (targetCount - 1) : 0
+    const t = k / (targetCount - 1)
     const [x, y] = cubicBezierAt(p0, c1, c2, p3, t)
     result.push(canvasToGeo(x, y, projection))
   }

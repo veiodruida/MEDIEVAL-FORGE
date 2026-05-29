@@ -389,20 +389,26 @@ export const BezierEditLayer: React.FC<BezierEditLayerProps> = ({ projection }) 
       const working = applyDragToAnchors(curAnchors, kind, idx, finalPx)
 
       // 2) Dirty segments. Segment s runs from anchor s (p0=anchorPx, c1=cp2Px) to
-      //    anchor s+1 (c2=cp1Px of s+1, p3=anchorPx of s+1).
+      //    anchor (s+1)%N (c2=cp1Px of (s+1)%N, p3=anchorPx of (s+1)%N).
       //    Anchor idx drag affects segment idx-1 (ends at idx) and segment idx
       //    (starts at idx). cp2 of an anchor only shapes the OUTGOING segment idx;
-      //    cp1 only shapes the INCOMING segment idx-1.
+      //    cp1 only shapes the INCOMING segment (idx-1). For idx=0 the INCOMING
+      //    segment is the closing segment N-1 (the wrap-around), not -1. (G2 fix)
       const N = working.length
       const dirty = new Set<number>()
       const addSeg = (s: number) => {
         if (s >= 0 && s < N) dirty.add(s) // all N segments editable incl. closing segment N-1 (G1)
       }
+      // For anchor 0: cp1 shapes the closing segment N-1 (incoming = wrap-around from last anchor).
+      // For anchor 0: anchor drag also affects the closing segment (the outgoing of the previous,
+      // which wraps from N-1 back to 0). Use (idx - 1 + N) % N to resolve wrap correctly.
+      const incomingSeg = (idx - 1 + N) % N // closing segment for idx=0
       if (kind === 'anchor') {
-        addSeg(idx - 1)
+        addSeg(incomingSeg)
         addSeg(idx)
       } else if (kind === 'cp1') {
-        addSeg(idx - 1)
+        // cp1 shapes the INCOMING segment of this anchor (the segment that ENDS at this anchor)
+        addSeg(incomingSeg)
       } else {
         addSeg(idx)
       }
@@ -479,6 +485,10 @@ export const BezierEditLayer: React.FC<BezierEditLayerProps> = ({ projection }) 
         baronyId,
       }
       setAnchors(refit)
+      // WR-02: clamp activeAnchorIdx so it never silently points past the new array length.
+      // After a commit-refit that yields fewer cubics, a stale activeAnchorIdx would make
+      // displayAnchors[activeAnchorIdx] undefined and the handles/tethers disappear silently.
+      setActiveAnchorIdx((cur) => (cur === null ? null : Math.min(cur, refit.length - 1)))
       setDirtyCount(0)
       rebuildSharedIndex(updated)
       rebuildSnapCandidates(updated, baronyId)
@@ -547,9 +557,32 @@ export const BezierEditLayer: React.FC<BezierEditLayerProps> = ({ projection }) 
       handleDragEnd('anchor', idx, evt)
       return true
     }
+    // Plan 05 (G2 closing-segment re-verify): handle-drag DEV hook for Playwright.
+    // Mirrors __forgeBezierTriggerDrag but for CONTROL HANDLES (Circles, center-anchored).
+    // CRITICAL: handles are center-anchored (not top-left like anchor Rects), so
+    // draggedCenterPx('cp1'|'cp2', x, y) returns [x, y] with NO +5 offset.
+    // Therefore: targetX = cp1Px[0] + dx (NOT cp1Px[0] - 5 + dx, which is Rect-specific).
+    ;(window as unknown as {
+      __forgeBezierTriggerHandleDrag?: (kind?: 'cp1' | 'cp2', idx?: number, dx?: number, dy?: number) => boolean
+    }).__forgeBezierTriggerHandleDrag = (kind = 'cp1', idx = 0, dx = 25, dy = 25) => {
+      const a = anchorsRef.current[idx]
+      if (!a) return false
+      // Center-anchored Circle: no -5 offset (unlike anchor Rect which uses anchorPx-5).
+      // This is the center-anchored offset CRITICAL noted in the plan spec.
+      const targetX = (kind === 'cp1' ? a.cp1Px[0] : a.cp2Px[0]) + dx
+      const targetY = (kind === 'cp1' ? a.cp1Px[1] : a.cp2Px[1]) + dy
+      const stage = layerRef.current?.getStage()
+      const evt = {
+        target: { x: () => targetX, y: () => targetY, getStage: () => stage },
+      } as unknown as Konva.KonvaEventObject<DragEvent>
+      handleDragMove(kind, idx, evt)
+      handleDragEnd(kind, idx, evt)
+      return true
+    }
     return () => {
       delete (window as unknown as { __forgeBezierState?: unknown }).__forgeBezierState
       delete (window as unknown as { __forgeBezierTriggerDrag?: unknown }).__forgeBezierTriggerDrag
+      delete (window as unknown as { __forgeBezierTriggerHandleDrag?: unknown }).__forgeBezierTriggerHandleDrag
     }
   }, [anchors.length, activeAnchorIdx, dirtyCount, handleDragMove, handleDragEnd])
 
