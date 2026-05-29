@@ -12,6 +12,7 @@
 
 import fitCurve from 'fit-curve'
 import { geoToCanvas, type ProjectionConfig } from './projection'
+import { cubicBezierAt } from './bezierFlatten'
 
 /** A cubic Bézier segment in canvas px: [p0, c1, c2, p3]. */
 export type BezierCubic = [
@@ -104,4 +105,103 @@ export function buildPolyIndexMap(
   }
 
   return ranges
+}
+
+/**
+ * Split one PolyRange at an interior vertex index into two contiguous sub-ranges
+ * that SHARE `splitIndex` as their boundary endpoint (08.1-06 G3). The shared-endpoint
+ * convention mirrors buildPolyIndexMap, where adjacent cubics share a vertex
+ * (`prevEnd` becomes the next range's `rangeStart`).
+ *
+ * A split at or outside the range bounds would create a zero-width sub-range, so
+ * `splitIndex` is clamped to the strictly-interior band [rangeStart+1, rangeEnd-1].
+ * For a range too narrow to split (rangeEnd - rangeStart < 2) the left sub-range
+ * collapses to a single shared vertex — documented, deterministic behavior.
+ */
+export function splitPolyRange(
+  range: PolyRange,
+  splitIndex: number,
+): [PolyRange, PolyRange] {
+  const lo = range.rangeStart
+  const hi = range.rangeEnd
+  // Clamp into the strictly-interior band so neither sub-range is zero-width
+  // (when width >= 2). For width < 2 this clamps to lo+1 capped at hi.
+  const clamped = Math.max(lo + 1, Math.min(splitIndex, Math.max(lo + 1, hi - 1)))
+  const split = Math.min(clamped, hi)
+  return [
+    { rangeStart: lo, rangeEnd: split },
+    { rangeStart: split, rangeEnd: hi },
+  ]
+}
+
+/**
+ * Given a click point in STAGE-LOCAL px, find the curve segment passing nearest the
+ * click and the original-polygon vertex index (strictly inside that segment's range)
+ * nearest the click (08.1-06 G3). All inputs share one px space.
+ *
+ * Each segment s is the cubic [a.anchorPx, a.cp2Px, b.cp1Px, b.anchorPx] where
+ * a = anchors[s], b = anchors[(s+1) % N]. The cubic is sampled at `samples` evenly
+ * spaced t values; the segment with the closest sample (within `tolerancePx`) wins.
+ * Within that segment's poly range the nearest original vertex in `pxPts` is chosen,
+ * snapped to a real integer index strictly between rangeStart and rangeEnd.
+ * Returns null when no segment is within tolerance.
+ */
+export function findNearestSegmentAndVertex(
+  clickPx: [number, number],
+  anchors: Array<{
+    anchorPx: [number, number]
+    cp1Px: [number, number]
+    cp2Px: [number, number]
+    polyRangeStart: number
+    polyRangeEnd: number
+  }>,
+  pxPts: Array<[number, number]>,
+  tolerancePx = 8,
+  samples = 16,
+): { segmentIdx: number; splitVertexIndex: number } | null {
+  const N = anchors.length
+  if (N < 2) return null
+  const dist2 = (a: [number, number], b: [number, number]) => {
+    const dx = a[0] - b[0]
+    const dy = a[1] - b[1]
+    return dx * dx + dy * dy
+  }
+
+  let bestSeg = -1
+  let bestSegDist2 = Infinity
+  // Only editable segments 0..N-2 (segment N-1 is the non-editable closing segment).
+  for (let s = 0; s < N - 1; s++) {
+    const a = anchors[s]
+    const b = anchors[s + 1]
+    for (let i = 0; i <= samples; i++) {
+      const t = i / samples
+      const p = cubicBezierAt(a.anchorPx, a.cp2Px, b.cp1Px, b.anchorPx, t)
+      const d2 = dist2(p, clickPx)
+      if (d2 < bestSegDist2) {
+        bestSegDist2 = d2
+        bestSeg = s
+      }
+    }
+  }
+
+  if (bestSeg === -1 || bestSegDist2 > tolerancePx * tolerancePx) return null
+
+  const { polyRangeStart: lo, polyRangeEnd: hi } = anchors[bestSeg]
+  // Need at least one strictly-interior index.
+  if (hi - lo < 2) return null
+
+  let bestVtx = -1
+  let bestVtxDist2 = Infinity
+  for (let i = lo + 1; i <= hi - 1; i++) {
+    const pt = pxPts[i]
+    if (!pt) continue
+    const d2 = dist2(pt, clickPx)
+    if (d2 < bestVtxDist2) {
+      bestVtxDist2 = d2
+      bestVtx = i
+    }
+  }
+  if (bestVtx === -1) return null
+
+  return { segmentIdx: bestSeg, splitVertexIndex: bestVtx }
 }
