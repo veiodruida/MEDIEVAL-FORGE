@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: verifying
-stopped_at: Completed 08.1-04-PLAN.md
-last_updated: "2026-05-28T16:15:53.735Z"
-last_activity: 2026-05-28
+status: executing
+stopped_at: Completed 08.1-05-PLAN.md
+last_updated: "2026-05-29T09:55:43.490Z"
+last_activity: 2026-05-29
 progress:
   total_phases: 1
-  completed_phases: 1
-  total_plans: 4
-  completed_plans: 4
-  percent: 100
+  completed_phases: 0
+  total_plans: 6
+  completed_plans: 5
+  percent: 83
 ---
 
 # Project State (v3)
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md
 ## Current Position
 
 Phase: 08.1 (bezier-assisted-barony-contour-editing-ui-layer-bezier-contr) — EXECUTING
-Plan: 4 of 4
-Status: Phase complete — ready for verification
-Last activity: 2026-05-28
+Plan: 2 of 6
+Status: Ready to execute
+Last activity: 2026-05-29
 
 Progress: [█████████░] 93% (25 of 27 plans complete)
 
@@ -129,6 +129,9 @@ See `.planning/PROJECT.md` Key Decisions table (D-V3-01 through D-V3-07).
 - [Phase 08.1]: Plan 08.1-02: BezierEditLayer.tsx render+activate Konva Layer (z=5) created. Fits selected barony polygon to 4 cubics on entry (IBERIA_BARONY_RING -> 4 anchors, far below ~100 raw verts). All Bezier display state component-local (zero useEditorStore fields, zero partialize change); activeAnchorIdx never in store. projection passed as PROP (not useProjection). BEZ-IDENTITY-01 GREEN by construction (zero setVerticesAndLog). DEV-only window.__forgeBezierState escape hatch. temporal API fix in test: useEditorStore.temporal.getState().pause() (Rule 3). 488/488 vitest green.
 - [Phase 08.1]: Plan 08.1-03: BezierEditLayer drag-commit landed. Anchor drag marks segments i-1+i dirty, control-handle drag marks one (cp1->i-1, cp2->i); only dirty segments flatten via flattenSegment, non-dirty ranges copied verbatim from store (identity mechanism). Anchor drag rigidly translates both handles by the same delta (no cusp); snap (snapToNeighbour) on anchors only, never handles; getCoupledVertices coupling before commit. Single setVerticesAndLog(op:'move'). Rule-1 fix: deriveAnchors cp2 corrected from Plan02's c2 to c1 (fit-curve c1 near p0, c2 near next anchor; verified on IBERIA_BARONY_RING |p0->c1|~9-13px vs |p0->c2|~65-92px). BEZ-IDENTITY-01 stays green; 494/494 vitest, tsc clean.
 - [Phase 08.1]: Plan 08.1-04: BezierEditLayer wired into CanvasViewer z=5 via bezierActive ternary (exactly one of VertexEditLayer/BezierEditLayer mounted — T-08.1-04-01). EditToolPalette gains disabledTools prop (A/D Radix-disabled with locked PT copy); stays Bézier-unaware, WorkspaceToolbar derives bezierMode set. BEZ-UAT-01 green (barony Grado → anchorCount 4..40 → DEV-hook __forgeBezierTriggerDrag commits op:move); BEZ-UAT-02 green (lookup_barony.png SHA d557e8e6... byte-identical after zero-drag round trip). Real page.mouse drag non-deterministic vs ~3px anchor at fit scale → plan-sanctioned DEV hook (Rule 3). Zero backend commits; vitest 499/499; tsc clean.
+- [Phase 08.1-05]: Ring model: last-anchor-wrap chosen; closing segment runs anchor[N-1]->anchor[0] via last cubic
+- [Phase 08.1-05]: RESEARCH Pattern1/WR-01 REVERSED: closing segment now editable; cp1 anchor-0 commits via op:move (G2 fix)
+- [Phase 08.1-05]: G4 palette: CURVE_STROKE #22c55e (green), HANDLE_FILL #e879f9 (magenta) — 5 distinct hexes, no collision
 
 ### Blockers/Concerns
 
@@ -148,6 +151,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-28T16:15:43.297Z
-Stopped at: Completed 08.1-04-PLAN.md
+Last session: 2026-05-29T09:55:43.487Z
+Stopped at: Completed 08.1-05-PLAN.md
 Resume file: None

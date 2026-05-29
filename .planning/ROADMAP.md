@@ -10,5 +10,5 @@ Plans:
 - [x] 08.1-02-PLAN.md — Wave 2: BezierEditLayer render + click-to-activate (NO drag) + BEZ-IDENTITY-01 empty-log byte-identity guard (authored before any drag code) + __forgeBezierState DEV hatch [BEZ-RENDER-01, BEZ-RENDER-02, BEZ-IDENTITY-01]
 - [x] 08.1-03-PLAN.md — Wave 3: anchor + control-handle drag → dirty-segment flatten → setVerticesAndLog(op:'move') with snap (anchors only) + shared-vertex coupling reused from Phase 08 [BEZ-DRAG-01]
 - [x] 08.1-04-PLAN.md — Wave 4: integration — CanvasViewer z=5 mutual-exclusion mount + EditToolPalette disabledTools (A/D disabled in Bézier mode) threaded from WorkspaceToolbar + Playwright BEZ-UAT-01 reachability/drag + BEZ-UAT-02 identity-through-export [BEZ-UAT-01, BEZ-UAT-02]
-- [ ] 08.1-05-PLAN.md — Wave 1 (gap-closure): G1 close Bezier ring + G2 commit closing-segment drags (WR-02 clamp, WR-03 flatten endpoints, WR-01 superseded) + G4 distinct color palette [BEZ-IDENTITY-01, BEZ-DRAG-01]
+- [x] 08.1-05-PLAN.md — Wave 1 (gap-closure): G1 close Bezier ring + G2 commit closing-segment drags (WR-02 clamp, WR-03 flatten endpoints, WR-01 superseded) + G4 distinct color palette [BEZ-IDENTITY-01, BEZ-DRAG-01]
 - [ ] 08.1-06-PLAN.md — Wave 2 (gap-closure): G3 add control points — double-click insert anchor at nearest curve param, identity-safe NO-OP split of poly range [BEZ-IDENTITY-01, BEZ-INDEX-01]
