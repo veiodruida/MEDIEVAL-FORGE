@@ -89,7 +89,7 @@ describe('BEZ-IDENTITY-01 — empty-log byte-identity guard (Phase 08.1 Plan 02)
 
     // Enter Bézier edit mode: mount the real component (runs fitPolygonToBezier internally
     // + builds component-local display state). Then exit without dragging.
-    const { unmount } = render(React.createElement(BezierEditLayer, { projection: PROJ }))
+    const { unmount } = render(React.createElement(BezierEditLayer, { projection: PROJ, currentScale: 1 }))
     unmount()
 
     expect(JSON.stringify(useEditorStore.getState().vertices)).toBe(beforeStr)
@@ -99,7 +99,7 @@ describe('BEZ-IDENTITY-01 — empty-log byte-identity guard (Phase 08.1 Plan 02)
   it('the entry fit produces no phantom editLog entries even after the display state is built', () => {
     // Sanity guard distinct from the byte-identity match: the editLog stays empty,
     // proving setVerticesAndLog was never called on entry.
-    const { unmount } = render(React.createElement(BezierEditLayer, { projection: PROJ }))
+    const { unmount } = render(React.createElement(BezierEditLayer, { projection: PROJ, currentScale: 1 }))
     expect(useEditorStore.getState().editLog).toHaveLength(0)
     unmount()
     expect(useEditorStore.getState().editLog).toHaveLength(0)

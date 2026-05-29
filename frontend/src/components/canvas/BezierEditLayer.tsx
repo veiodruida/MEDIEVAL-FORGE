@@ -75,6 +75,9 @@ export interface BezierAnchor {
 export interface BezierEditLayerProps {
   /** Projection passed by the parent (CanvasViewer reads it from useProjection at mount). */
   projection: ProjectionConfig
+  /** Live stage scale from CanvasViewer — used to keep anchor/handle/hit-path sizes
+   *  constant in screen space (= BASE / currentScale, mirroring DecorationsLayer). */
+  currentScale: number
 }
 
 /**
@@ -176,12 +179,14 @@ type DragKind = 'anchor' | 'cp1' | 'cp2'
 
 /**
  * Konva center px of the dragged node. The anchor Rect is positioned by its top-left
- * (`x = anchorPx - 5` for a 10×10 square), so after a drag `e.target.x()` is the new
- * top-left and the true anchor CENTER is `x()+5, y()+5`. Control handles are Circles
- * (center-anchored) so their reported px IS the center.
+ * (`x = anchorPx - anchorHalf`), so after a drag `e.target.x()` is the new top-left
+ * and the true anchor CENTER is `x() + anchorHalf, y() + anchorHalf`. Control handles
+ * are Circles (center-anchored) so their reported px IS the center.
+ * anchorHalf must be the LIVE half-size (= ANCHOR_BASE_PX / safeScale / 2) to stay in
+ * sync with the Rect offset — a desync would commit the drag to the wrong center (T-08.1-07-01).
  */
-function draggedCenterPx(kind: DragKind, x: number, y: number): [number, number] {
-  return kind === 'anchor' ? [x + 5, y + 5] : [x, y]
+function draggedCenterPx(kind: DragKind, x: number, y: number, anchorHalf: number): [number, number] {
+  return kind === 'anchor' ? [x + anchorHalf, y + anchorHalf] : [x, y]
 }
 
 /**
@@ -218,7 +223,23 @@ function applyDragToAnchors(
   return working
 }
 
-export const BezierEditLayer: React.FC<BezierEditLayerProps> = ({ projection }) => {
+export const BezierEditLayer: React.FC<BezierEditLayerProps> = ({ projection, currentScale }) => {
+  // Screen-space sizing constants (G5): all interactive nodes keep a constant on-screen
+  // size by dividing their map-space base value by the live stage scale — mirroring the
+  // DecorationsLayer `value / safeScale` inversion pattern (already shipping).
+  const ANCHOR_BASE_PX = 10      // on-screen square size
+  const HANDLE_BASE_PX = 9       // on-screen handle diameter → radius = HANDLE_BASE_PX / 2 / safeScale
+  const HITPATH_BASE_PX = 24     // on-screen dbl-click target width (wider than before for real dblclick — G7)
+  const TETHER_BASE_PX = 1.5     // on-screen tether stroke width
+  const CURVE_BASE_PX = 2        // on-screen curve outline stroke width
+  const safeScale = currentScale > 0 ? currentScale : 1   // guard against 0/NaN (T-08.1-07-02)
+  const anchorSize = ANCHOR_BASE_PX / safeScale
+  const anchorHalf = anchorSize / 2
+  const handleRadius = (HANDLE_BASE_PX / 2) / safeScale
+  const hitPathWidth = HITPATH_BASE_PX / safeScale
+  const tetherWidth = TETHER_BASE_PX / safeScale
+  const curveWidth = CURVE_BASE_PX / safeScale
+
   const editableLayer = useEditorStore((s) => s.editableLayer)
   const activeTerritoryId = useEditorStore((s) => s.activeTerritoryId)
   const activeTool = useEditorStore((s) => s.activeTool)
@@ -254,6 +275,10 @@ export const BezierEditLayer: React.FC<BezierEditLayerProps> = ({ projection }) 
   // anchors snapshot for handlers (avoids stale closures without re-binding every render).
   const anchorsRef = useRef<BezierAnchor[]>([])
   anchorsRef.current = anchors
+  // Live half-size ref — updated every render so draggedCenterPx and the DEV drag hook
+  // always use the current anchorHalf (T-08.1-07-01: desync guard).
+  const anchorHalfRef = useRef(anchorHalf)
+  anchorHalfRef.current = anchorHalf
   // in-flight drag preview (px) — NOT persisted to the store (mirrors VertexEditLayer.previewRef).
   const previewRef = useRef<{ kind: 'anchor' | 'cp1' | 'cp2'; idx: number; px: [number, number] } | null>(
     null,
@@ -421,7 +446,7 @@ export const BezierEditLayer: React.FC<BezierEditLayerProps> = ({ projection }) 
   // Live preview during move — repaint only, no store write (UI-SPEC §Anchor step 1).
   const handleDragMove = useCallback(
     (kind: DragKind, idx: number, e: Konva.KonvaEventObject<DragEvent>) => {
-      const center = draggedCenterPx(kind, e.target.x(), e.target.y())
+      const center = draggedCenterPx(kind, e.target.x(), e.target.y(), anchorHalfRef.current)
       previewRef.current = { kind, idx, px: center }
       // Live preview: repaint the whole curve + handles following the drag (no store write).
       setPreviewAnchors(applyDragToAnchors(anchorsRef.current, kind, idx, center))
@@ -440,8 +465,8 @@ export const BezierEditLayer: React.FC<BezierEditLayerProps> = ({ projection }) 
       const { orderedKeys, baronyId } = originalRef.current
       if (orderedKeys.length === 0) return
 
-      // Konva center px of the dragged node (anchor Rect is top-left anchored → +5,+5).
-      let finalPx = draggedCenterPx(kind, e.target.x(), e.target.y())
+      // Konva center px of the dragged node (anchor Rect is top-left anchored → +anchorHalf).
+      let finalPx = draggedCenterPx(kind, e.target.x(), e.target.y(), anchorHalfRef.current)
 
       // Snap (anchors only) — convert px → geo, snap to neighbour barony vertex, then use
       // the snapped position. Control-handle drags SKIP snap entirely (RESEARCH constraint 2).
@@ -604,12 +629,43 @@ export const BezierEditLayer: React.FC<BezierEditLayerProps> = ({ projection }) 
           // firstAnchor stays null — anchorCount/activeAnchorIdx/editLogLength are still valid.
         }
       }
+      // Plan 07 (G7): expose a MID-SEGMENT on-curve point between anchor 0 and anchor 1
+      // as PAGE coords for the real dblclick target in the new spec. This is READ-ONLY
+      // inspection — NOT a trigger hook. Built the same way as firstAnchor (getClientRect
+      // + containerRect), but the point is a cubic mid-curve px (stage-local) converted
+      // to screen coords via the stage transform. Returns null if < 2 anchors.
+      let midCurvePoint: { x: number; y: number } | null = null
+      const anchorsList = anchorsRef.current
+      if (layer && anchorsList.length >= 2) {
+        try {
+          const stage = layer.getStage()
+          if (stage) {
+            const a0 = anchorsList[0]
+            const a1 = anchorsList[1]
+            // Compute the on-curve stage-local px at t=0.5 between anchor 0 and anchor 1.
+            const midStagePx = cubicBezierAt(a0.anchorPx, a0.cp2Px, a1.cp1Px, a1.anchorPx, 0.5)
+            // Convert stage-local px to screen coords: apply the layer's absolute transform
+            // then add the canvas container's page offset (same conversion firstAnchor uses
+            // via getClientRect).
+            const transform = layer.getAbsoluteTransform()
+            const screenPt = transform.point({ x: midStagePx[0], y: midStagePx[1] })
+            const containerRect = stage.container().getBoundingClientRect()
+            midCurvePoint = {
+              x: containerRect.left + screenPt.x,
+              y: containerRect.top + screenPt.y,
+            }
+          }
+        } catch {
+          // jsdom/unit-test: Konva mock doesn't provide transform methods; midCurvePoint stays null.
+        }
+      }
       return {
         anchorCount: anchors.length,
         activeAnchorIdx,
         dirtySegmentCount: dirtyCount,
         editLogLength: useEditorStore.getState().editLog.length,
         firstAnchor, // { idx, x, y } page coords for page.mouse, or null
+        midCurvePoint, // { x, y } page coords of mid-segment on-curve point (between anchor 0 and 1), or null
       }
     }
     // Plan 04 (BEZ-UAT-01, plan-sanctioned DEV-hook drag — Task 2 <action> "or use a DEV
@@ -624,10 +680,12 @@ export const BezierEditLayer: React.FC<BezierEditLayerProps> = ({ projection }) 
     }).__forgeBezierTriggerDrag = (idx = 0, dx = 30, dy = 30) => {
       const a = anchorsRef.current[idx]
       if (!a) return false
-      // onDrag* read e.target.x()/y() as the Rect TOP-LEFT (anchorPx - 5); draggedCenterPx
-      // adds +5 back to recover the center, so target = (anchorPx - 5) + delta.
-      const targetX = a.anchorPx[0] - 5 + dx
-      const targetY = a.anchorPx[1] - 5 + dy
+      // onDrag* read e.target.x()/y() as the Rect TOP-LEFT (anchorPx - anchorHalf);
+      // draggedCenterPx adds +anchorHalf back to recover the center.
+      // MUST use anchorHalfRef.current (not the literal 5) so this stays in sync with
+      // the live Rect offset after sizing changes (T-08.1-07-01: silent third "5" site).
+      const targetX = a.anchorPx[0] - anchorHalfRef.current + dx
+      const targetY = a.anchorPx[1] - anchorHalfRef.current + dy
       // In jsdom/unit-test the Konva mock doesn't provide getStage(); fall back to null.
       const stage = (() => { try { return layerRef.current?.getStage() } catch { return null } })()
       const evt = {
@@ -710,7 +768,7 @@ export const BezierEditLayer: React.FC<BezierEditLayerProps> = ({ projection }) 
       <Path
         data={pathData}
         stroke={CURVE_STROKE}
-        strokeWidth={2}
+        strokeWidth={curveWidth}
         fill="transparent"
         listening={false}
         data-testid="bezier-curve-outline"
@@ -718,11 +776,14 @@ export const BezierEditLayer: React.FC<BezierEditLayerProps> = ({ projection }) 
 
       {/* Dedicated double-click hit-Path — transparent wider stroke for easy dbl-click target.
           SEPARATE from the visible outline so the outline stays listening={false} (BEZ-RENDER).
+          hitPathWidth = HITPATH_BASE_PX / safeScale keeps the target constant in screen space (G7).
+          hitStrokeWidth is set explicitly so Konva's hit canvas uses the wider stroke for detection.
           onDblClick resolves the pointer position and delegates to handleInsertAtPx. */}
       <Path
         data={pathData}
         stroke="transparent"
-        strokeWidth={12}
+        strokeWidth={hitPathWidth}
+        hitStrokeWidth={hitPathWidth}
         fill={undefined}
         listening={true}
         data-testid="bezier-hit-path"
@@ -747,10 +808,10 @@ export const BezierEditLayer: React.FC<BezierEditLayerProps> = ({ projection }) 
         return (
           <Rect
             key={`anchor-${a.idx}`}
-            x={a.anchorPx[0] - 5}
-            y={a.anchorPx[1] - 5}
-            width={10}
-            height={10}
+            x={a.anchorPx[0] - anchorHalf}
+            y={a.anchorPx[1] - anchorHalf}
+            width={anchorSize}
+            height={anchorSize}
             fill={fill}
             draggable
             onClick={() => setActiveAnchorIdx(a.idx)}
@@ -775,7 +836,7 @@ export const BezierEditLayer: React.FC<BezierEditLayerProps> = ({ projection }) 
               <Line
                 points={[a.anchorPx[0], a.anchorPx[1], a.cp1Px[0], a.cp1Px[1]]}
                 stroke={TETHER_STROKE}
-                strokeWidth={1}
+                strokeWidth={tetherWidth}
                 dash={[4, 4]}
                 listening={false}
                 data-testid="bezier-tether"
@@ -783,7 +844,7 @@ export const BezierEditLayer: React.FC<BezierEditLayerProps> = ({ projection }) 
               <Line
                 points={[a.anchorPx[0], a.anchorPx[1], a.cp2Px[0], a.cp2Px[1]]}
                 stroke={TETHER_STROKE}
-                strokeWidth={1}
+                strokeWidth={tetherWidth}
                 dash={[4, 4]}
                 listening={false}
                 data-testid="bezier-tether"
@@ -791,7 +852,7 @@ export const BezierEditLayer: React.FC<BezierEditLayerProps> = ({ projection }) 
               <Circle
                 x={a.cp1Px[0]}
                 y={a.cp1Px[1]}
-                radius={4}
+                radius={handleRadius}
                 fill={HANDLE_FILL}
                 draggable
                 onDragMove={(e: Konva.KonvaEventObject<DragEvent>) => handleDragMove('cp1', a.idx, e)}
@@ -802,7 +863,7 @@ export const BezierEditLayer: React.FC<BezierEditLayerProps> = ({ projection }) 
               <Circle
                 x={a.cp2Px[0]}
                 y={a.cp2Px[1]}
-                radius={4}
+                radius={handleRadius}
                 fill={HANDLE_FILL}
                 draggable
                 onDragMove={(e: Konva.KonvaEventObject<DragEvent>) => handleDragMove('cp2', a.idx, e)}

@@ -84,12 +84,12 @@ beforeEach(() => {
 
 describe('G3 insert-anchor — identity-safe NO-OP insert (08.1-06 Task 2)', () => {
   it('__forgeBezierTriggerInsert is registered on window in DEV mode after mount', () => {
-    render(React.createElement(BezierEditLayer, { projection: PROJ }))
+    render(React.createElement(BezierEditLayer, { projection: PROJ, currentScale: 1 }))
     expect(typeof (window as unknown as { __forgeBezierTriggerInsert?: unknown }).__forgeBezierTriggerInsert).toBe('function')
   })
 
   it('insert-without-drag: store.vertices byte-identical after __forgeBezierTriggerInsert(0)', () => {
-    render(React.createElement(BezierEditLayer, { projection: PROJ }))
+    render(React.createElement(BezierEditLayer, { projection: PROJ, currentScale: 1 }))
 
     const beforeStr = JSON.stringify(useEditorStore.getState().vertices)
     const beforeLen = useEditorStore.getState().editLog.length
@@ -108,7 +108,7 @@ describe('G3 insert-anchor — identity-safe NO-OP insert (08.1-06 Task 2)', () 
   })
 
   it('insert-without-drag: editLog length unchanged (no phantom commit)', () => {
-    render(React.createElement(BezierEditLayer, { projection: PROJ }))
+    render(React.createElement(BezierEditLayer, { projection: PROJ, currentScale: 1 }))
 
     const beforeLen = useEditorStore.getState().editLog.length
     const fn = (window as unknown as { __forgeBezierTriggerInsert?: (s?: number) => boolean }).__forgeBezierTriggerInsert
@@ -123,7 +123,7 @@ describe('G3 insert-anchor — identity-safe NO-OP insert (08.1-06 Task 2)', () 
     const beforeStr = JSON.stringify(useEditorStore.getState().vertices)
     const beforeLogLen = useEditorStore.getState().editLog.length
 
-    render(React.createElement(BezierEditLayer, { projection: PROJ }))
+    render(React.createElement(BezierEditLayer, { projection: PROJ, currentScale: 1 }))
 
     const fn = (window as unknown as { __forgeBezierTriggerInsert?: (s?: number) => boolean }).__forgeBezierTriggerInsert
     fn?.(0)
@@ -135,7 +135,7 @@ describe('G3 insert-anchor — identity-safe NO-OP insert (08.1-06 Task 2)', () 
 
 describe('G3 insert-anchor — range split correctness (08.1-06 Task 2)', () => {
   it('after insert, __forgeBezierState reports anchorCount increased by 1', async () => {
-    render(React.createElement(BezierEditLayer, { projection: PROJ }))
+    render(React.createElement(BezierEditLayer, { projection: PROJ, currentScale: 1 }))
 
     // Read beforeCount from window BEFORE insert (fresh hook reference)
     const readState = () => (window as unknown as { __forgeBezierState?: () => { anchorCount: number; activeAnchorIdx: number | null } }).__forgeBezierState?.()
@@ -161,7 +161,7 @@ describe('G3 insert-anchor — range split correctness (08.1-06 Task 2)', () => 
 
 describe('G3 insert-then-drag commits via op:move (08.1-06 Task 2)', () => {
   it('drag after insert: editLog grows (first store mutation on drag, not on insert)', async () => {
-    render(React.createElement(BezierEditLayer, { projection: PROJ }))
+    render(React.createElement(BezierEditLayer, { projection: PROJ, currentScale: 1 }))
 
     const beforeLen = useEditorStore.getState().editLog.length
 
@@ -197,14 +197,14 @@ describe('G3 insert-then-drag commits via op:move (08.1-06 Task 2)', () => {
 
 describe('G3 visible-outline listening contract (08.1-06 Task 2 — WARNING-2 pin)', () => {
   it('the bezier-hit-path element is rendered (separate from bezier-curve-outline)', () => {
-    const { queryByTestId } = render(React.createElement(BezierEditLayer, { projection: PROJ }))
+    const { queryByTestId } = render(React.createElement(BezierEditLayer, { projection: PROJ, currentScale: 1 }))
     // Both paths must exist: the non-interactive outline and the dedicated hit-Path
     expect(queryByTestId('bezier-curve-outline')).not.toBeNull()
     expect(queryByTestId('bezier-hit-path')).not.toBeNull()
   })
 
   it('bezier-curve-outline and bezier-hit-path are DISTINCT elements', () => {
-    const { getAllByTestId } = render(React.createElement(BezierEditLayer, { projection: PROJ }))
+    const { getAllByTestId } = render(React.createElement(BezierEditLayer, { projection: PROJ, currentScale: 1 }))
     const outlines = getAllByTestId('bezier-curve-outline')
     const hits = getAllByTestId('bezier-hit-path')
     // They must be different DOM nodes

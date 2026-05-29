@@ -139,7 +139,7 @@ describe('BezierEditLayer drag-commit (Phase 08.1 Plan 03 — BEZ-DRAG-01)', () 
     expect(i).toBeGreaterThanOrEqual(1)
     expect(i).toBeLessThanOrEqual(anchors.length - 2)
 
-    const { getAllByTestId } = render(<BezierEditLayer projection={PROJ} />)
+    const { getAllByTestId } = render(<BezierEditLayer projection={PROJ} currentScale={1} />)
     const anchorEls = getAllByTestId('bezier-anchor')
     const anchorEl = anchorEls.find((el) => el.getAttribute('data-anchor-idx') === String(i))!
     expect(anchorEl).toBeTruthy()
@@ -194,7 +194,7 @@ describe('BezierEditLayer drag-commit (Phase 08.1 Plan 03 — BEZ-DRAG-01)', () 
     const a = anchors[i]
     const before = { ...mockState.vertices[`b1#${a.polyRangeStart}`] }
 
-    const { getAllByTestId } = render(<BezierEditLayer projection={PROJ} />)
+    const { getAllByTestId } = render(<BezierEditLayer projection={PROJ} currentScale={1} />)
     const anchorEl = getAllByTestId('bezier-anchor').find(
       (el) => el.getAttribute('data-anchor-idx') === String(i),
     )!
@@ -220,7 +220,7 @@ describe('BezierEditLayer drag-commit (Phase 08.1 Plan 03 — BEZ-DRAG-01)', () 
     const anchors = deriveAnchorsFromStore(mockState.vertices, PROJ)
     const N = anchors.length
     const a0 = anchors[0]
-    const { getAllByTestId } = render(<BezierEditLayer projection={PROJ} />)
+    const { getAllByTestId } = render(<BezierEditLayer projection={PROJ} currentScale={1} />)
     const anchorEl = getAllByTestId('bezier-anchor').find(
       (el) => el.getAttribute('data-anchor-idx') === '0',
     )!
@@ -267,7 +267,7 @@ describe('BezierEditLayer drag-commit (Phase 08.1 Plan 03 — BEZ-DRAG-01)', () 
     const anchors = deriveAnchorsFromStore(mockState.vertices, PROJ)
     const iLast = anchors.length - 1
     const aLast = anchors[iLast]
-    const { getAllByTestId } = render(<BezierEditLayer projection={PROJ} />)
+    const { getAllByTestId } = render(<BezierEditLayer projection={PROJ} currentScale={1} />)
     const anchorEl = getAllByTestId('bezier-anchor').find(
       (el) => el.getAttribute('data-anchor-idx') === String(iLast),
     )!
@@ -298,7 +298,7 @@ describe('BezierEditLayer drag-commit (Phase 08.1 Plan 03 — BEZ-DRAG-01)', () 
     // add partner coincident vertex into the store vertices map
     mockState.vertices[partnerKey] = { lat: sharedCoord.lat, lon: sharedCoord.lon }
 
-    const { getAllByTestId } = render(<BezierEditLayer projection={PROJ} />)
+    const { getAllByTestId } = render(<BezierEditLayer projection={PROJ} currentScale={1} />)
     const anchorEl = getAllByTestId('bezier-anchor').find(
       (el) => el.getAttribute('data-anchor-idx') === String(i),
     )!
@@ -314,7 +314,7 @@ describe('BezierEditLayer drag-commit (Phase 08.1 Plan 03 — BEZ-DRAG-01)', () 
 
   it('control-handle drag commits via the same flatten path with op:"move" and does NOT add a bezier_drag op', () => {
     // activate anchor 1 so its handles render
-    const { getAllByTestId } = render(<BezierEditLayer projection={PROJ} />)
+    const { getAllByTestId } = render(<BezierEditLayer projection={PROJ} currentScale={1} />)
     const anchorEl = getAllByTestId('bezier-anchor').find(
       (el) => el.getAttribute('data-anchor-idx') === '1',
     )!
@@ -342,7 +342,7 @@ describe('BezierEditLayer drag-commit (Phase 08.1 Plan 03 — BEZ-DRAG-01)', () 
     const center: [number, number] = [a.anchorPx[0] + 60, a.anchorPx[1] + 0]
     const topLeft: [number, number] = [center[0] - 5, center[1] - 5]
 
-    const { getAllByTestId } = render(<BezierEditLayer projection={PROJ} />)
+    const { getAllByTestId } = render(<BezierEditLayer projection={PROJ} currentScale={1} />)
     const anchorEl = getAllByTestId('bezier-anchor').find(
       (el) => el.getAttribute('data-anchor-idx') === String(i),
     )!
@@ -363,7 +363,7 @@ describe('BezierEditLayer drag-commit (Phase 08.1 Plan 03 — BEZ-DRAG-01)', () 
     const anchors = deriveAnchorsFromStore(mockState.vertices, PROJ)
     const i = 1
     const a = anchors[i]
-    const { getAllByTestId, getByTestId } = render(<BezierEditLayer projection={PROJ} />)
+    const { getAllByTestId, getByTestId } = render(<BezierEditLayer projection={PROJ} currentScale={1} />)
     const beforePath = getByTestId('bezier-curve-outline').getAttribute('data-d')
 
     const anchorEl = getAllByTestId('bezier-anchor').find(
@@ -387,7 +387,7 @@ describe('BezierEditLayer drag-commit (Phase 08.1 Plan 03 — BEZ-DRAG-01)', () 
     const N = anchors.length
     expect(N).toBeGreaterThanOrEqual(3) // sanity
 
-    const { getAllByTestId } = render(<BezierEditLayer projection={PROJ} />)
+    const { getAllByTestId } = render(<BezierEditLayer projection={PROJ} currentScale={1} />)
     // Activate anchor 0 so its handles render
     const anchor0El = getAllByTestId('bezier-anchor').find(
       (el) => el.getAttribute('data-anchor-idx') === '0',
@@ -415,7 +415,7 @@ describe('BezierEditLayer drag-commit (Phase 08.1 Plan 03 — BEZ-DRAG-01)', () 
     const anchors = deriveAnchorsFromStore(mockState.vertices, PROJ)
     const iLast = anchors.length - 1
 
-    const { getAllByTestId } = render(<BezierEditLayer projection={PROJ} />)
+    const { getAllByTestId } = render(<BezierEditLayer projection={PROJ} currentScale={1} />)
     const lastAnchorEl = getAllByTestId('bezier-anchor').find(
       (el) => el.getAttribute('data-anchor-idx') === String(iLast),
     )!

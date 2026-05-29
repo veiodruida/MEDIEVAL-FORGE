@@ -29,6 +29,8 @@ vi.mock('react-konva', () => {
     })
   const Rect: React.FC<{
     fill?: string
+    width?: number
+    height?: number
     onClick?: () => void
     onMouseEnter?: () => void
     onMouseLeave?: () => void
@@ -38,6 +40,7 @@ vi.mock('react-konva', () => {
     React.createElement('div', {
       'data-testid': props['data-testid'] ?? 'konva-rect',
       'data-fill': props.fill,
+      'data-width': props.width,
       'data-anchor-idx': props['data-anchor-idx'],
       onClick: props.onClick,
       onMouseEnter: props.onMouseEnter,
@@ -100,7 +103,7 @@ beforeEach(() => {
 describe('BezierEditLayer render (Phase 08.1 Plan 02)', () => {
   it('BEZ-RENDER-01: renders a curve outline + a small anchor count (4..40), far below the raw vertex count, when a barony is selected in V-tool Bézier mode', () => {
     const rawVertexCount = IBERIA_BARONY_RING.length // ~100 raw ring vertices
-    const { getAllByTestId, queryByTestId } = render(<BezierEditLayer projection={PROJ} />)
+    const { getAllByTestId, queryByTestId } = render(<BezierEditLayer projection={PROJ} currentScale={1} />)
 
     // One curve outline path
     expect(queryByTestId('bezier-curve-outline')).not.toBeNull()
@@ -115,14 +118,14 @@ describe('BezierEditLayer render (Phase 08.1 Plan 02)', () => {
 
   it('BEZ-RENDER-02: renders zero nodes (no path, no anchors) when activeTerritoryId is null', () => {
     mockState.activeTerritoryId = null
-    const { queryByTestId, queryAllByTestId } = render(<BezierEditLayer projection={PROJ} />)
+    const { queryByTestId, queryAllByTestId } = render(<BezierEditLayer projection={PROJ} currentScale={1} />)
     expect(queryByTestId('bezier-curve-outline')).toBeNull()
     expect(queryAllByTestId('bezier-anchor')).toHaveLength(0)
     expect(queryByTestId('konva-layer')).toBeNull()
   })
 
   it('renders control handles + tethers ONLY for the active anchor — before any click, zero handle circles render', () => {
-    const { queryAllByTestId, getAllByTestId } = render(<BezierEditLayer projection={PROJ} />)
+    const { queryAllByTestId, getAllByTestId } = render(<BezierEditLayer projection={PROJ} currentScale={1} />)
     // Before clicking any anchor: no handles, no tethers
     expect(queryAllByTestId('bezier-handle')).toHaveLength(0)
     expect(queryAllByTestId('bezier-tether')).toHaveLength(0)
@@ -138,8 +141,18 @@ describe('BezierEditLayer render (Phase 08.1 Plan 02)', () => {
 
   it('does not render outside Bézier mode (e.g. landmask layer or non-V tool)', () => {
     mockState.editableLayer = 'landmask'
-    const { queryByTestId } = render(<BezierEditLayer projection={PROJ} />)
+    const { queryByTestId } = render(<BezierEditLayer projection={PROJ} currentScale={1} />)
     expect(queryByTestId('konva-layer')).toBeNull()
+  })
+
+  it('sizes the anchor square in screen space: width = ANCHOR_BASE_PX / currentScale', () => {
+    // At currentScale=4, anchorSize = 10 / 4 = 2.5 (explicit numeric fixture, not computed).
+    // Verifies the G5 screen-space sizing: a constant ~10 CSS px square regardless of zoom.
+    const { getAllByTestId } = render(<BezierEditLayer projection={PROJ} currentScale={4} />)
+    const anchors = getAllByTestId('bezier-anchor')
+    expect(anchors.length).toBeGreaterThan(0)
+    // The Rect mock forwards width as data-width (string)
+    expect(Number(anchors[0].getAttribute('data-width'))).toBeCloseTo(2.5, 6)
   })
 })
 
