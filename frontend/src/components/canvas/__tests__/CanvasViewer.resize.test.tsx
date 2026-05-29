@@ -84,7 +84,7 @@ vi.mock('react-konva', () => ({
 
 vi.mock('../../../hooks/useZoomPan', () => ({
   SCALE_BY: 1.05,
-  MAX_SCALE_MULTIPLIER: 4,
+  MAX_SCALE_MULTIPLIER: 16,
   panToGeoCenter: vi.fn(),
   makeWheelHandler: vi.fn(() => () => {}),
   makeDragBoundFunc: vi.fn(() => (pos: { x: number; y: number }) => pos),

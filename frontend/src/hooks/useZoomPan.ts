@@ -2,7 +2,7 @@ import type Konva from 'konva'
 import { geoToCanvas, type ProjectionConfig } from '../lib/projection'
 
 export const SCALE_BY = 1.05
-export const MAX_SCALE_MULTIPLIER = 4
+export const MAX_SCALE_MULTIPLIER = 16  // 16× fit — raised from 4 (Phase 08.1 G5: 4× too low to edit one barony)
 
 export interface PanClampConfig {
   mapW: number

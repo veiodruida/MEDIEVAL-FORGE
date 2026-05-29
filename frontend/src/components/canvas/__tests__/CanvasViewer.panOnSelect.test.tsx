@@ -15,7 +15,7 @@ const { panToGeoCenterMock } = hooks
 
 vi.mock('../../../hooks/useZoomPan', () => ({
   SCALE_BY: 1.05,
-  MAX_SCALE_MULTIPLIER: 4,
+  MAX_SCALE_MULTIPLIER: 16,
   panToGeoCenter: hooks.panToGeoCenterMock,
   makeWheelHandler: hooks.makeWheelHandlerMock,
   makeDragBoundFunc: hooks.makeDragBoundFuncMock,

@@ -39,9 +39,9 @@ function makeStage(init: {
 }
 
 describe('useZoomPan: constants', () => {
-  it('exports SCALE_BY = 1.05 and MAX_SCALE_MULTIPLIER = 4', () => {
+  it('exports SCALE_BY = 1.05 and MAX_SCALE_MULTIPLIER = 16', () => {
     expect(SCALE_BY).toBe(1.05)
-    expect(MAX_SCALE_MULTIPLIER).toBe(4)
+    expect(MAX_SCALE_MULTIPLIER).toBe(16)
   })
 })
 
