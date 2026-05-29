@@ -174,10 +174,11 @@ export function findNearestSegmentAndVertex(
 
   let bestSeg = -1
   let bestSegDist2 = Infinity
-  // Only editable segments 0..N-2 (segment N-1 is the non-editable closing segment).
-  for (let s = 0; s < N - 1; s++) {
+  // All N segments are editable (G1+G2 from Plan 05: WR-01 reversed, closing segment
+  // is no longer non-interactive). Segment N-1 wraps from anchor[N-1] back to anchor[0].
+  for (let s = 0; s < N; s++) {
     const a = anchors[s]
-    const b = anchors[s + 1]
+    const b = anchors[(s + 1) % N]
     for (let i = 0; i <= samples; i++) {
       const t = i / samples
       const p = cubicBezierAt(a.anchorPx, a.cp2Px, b.cp1Px, b.anchorPx, t)
