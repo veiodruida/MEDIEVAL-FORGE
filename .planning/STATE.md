@@ -4,7 +4,7 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: Completed 08.1-08-PLAN.md
-last_updated: "2026-05-29T14:28:21.887Z"
+last_updated: "2026-05-29T20:18:17.686Z"
 last_activity: 2026-05-29
 progress:
   total_phases: 1
@@ -25,8 +25,8 @@ See: .planning/PROJECT.md
 
 ## Current Position
 
-Phase: 08.1 (bezier-assisted-barony-contour-editing-ui-layer-bezier-contr) — EXECUTING
-Plan: 3 of 8
+Phase: 08.1
+Plan: Not started
 Status: Ready to execute
 Last activity: 2026-05-29
 
