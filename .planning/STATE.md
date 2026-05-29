@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 08.1-06-PLAN.md
-last_updated: "2026-05-29T10:10:50.727Z"
+stopped_at: Completed 08.1-07-PLAN.md
+last_updated: "2026-05-29T14:11:11.574Z"
 last_activity: 2026-05-29
 progress:
   total_phases: 1
-  completed_phases: 1
-  total_plans: 6
-  completed_plans: 6
-  percent: 100
+  completed_phases: 0
+  total_plans: 8
+  completed_plans: 7
+  percent: 88
 ---
 
 # Project State (v3)
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md
 ## Current Position
 
 Phase: 08.1 (bezier-assisted-barony-contour-editing-ui-layer-bezier-contr) — EXECUTING
-Plan: 3 of 6
+Plan: 2 of 8
 Status: Ready to execute
 Last activity: 2026-05-29
 
@@ -134,6 +134,8 @@ See `.planning/PROJECT.md` Key Decisions table (D-V3-01 through D-V3-07).
 - [Phase 08.1-05]: G4 palette: CURVE_STROKE #22c55e (green), HANDLE_FILL #e879f9 (magenta) — 5 distinct hexes, no collision
 - [Phase 08.1]: G3 insert-anchor: identity-safe NO-OP (setAnchors only), first commit on drag via op:move; dedicated hit-Path keeps visible outline listening=false
 - [Phase 08.1]: [Rule 1] findNearestSegmentAndVertex closing-segment fix: loop s<N-1 -> s<N with wrap — all N segments reachable (G1+G2 mandate from plan 05)
+- [Phase 08.1-07]: getRelativePointerPosition() in onDblClick: map-space vs screen-space coordinate bug fixed (G7 production fix)
+- [Phase 08.1-07]: MAX_SCALE_MULTIPLIER raised 4→16; screen-space sizing BASE/currentScale for anchors/handles/hit-path
 
 ### Blockers/Concerns
 
@@ -153,6 +155,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-29T10:10:50.724Z
-Stopped at: Completed 08.1-06-PLAN.md
+Last session: 2026-05-29T14:11:11.571Z
+Stopped at: Completed 08.1-07-PLAN.md
 Resume file: None
