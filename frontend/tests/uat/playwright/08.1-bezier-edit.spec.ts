@@ -177,4 +177,67 @@ test.describe('Phase 08.1 — BEZ-UAT-01 Bézier reachability + drag', () => {
       .poll(async () => (await readBezierState(page))?.editLogLength ?? editLog0, { timeout: 8_000 })
       .toBeGreaterThan(editLog0)
   })
+
+  /**
+   * G3 re-verification: insert-without-drag is identity-safe; drag-after-insert commits.
+   *
+   * RESEARCH Pitfall 5 / CLAUDE.md UI-UAT mandate: unit tests pass in isolation but the
+   * feature can still fail in the integrated app. This test drives the INDEX-based
+   * __forgeBezierTriggerInsert(0) hook — the SAME real handleInsertAtPx the dbl-click
+   * calls — to prove:
+   *   (a) a bare insert leaves editLog unchanged (identity-safe, BEZ-IDENTITY-01 extended)
+   *   (b) a follow-up drag of the inserted anchor grows editLog (first commit via op:'move')
+   *
+   * ANTI-PATTERN GUARD: no direct store-action calls. Insert flows through handleInsertAtPx
+   * via __forgeBezierTriggerInsert; drag flows through handleDragEnd via __forgeBezierTriggerDrag.
+   * Grep: setVerticesAndLog|moveVertex must return NO hits in this spec.
+   */
+  test('G3 re-verify: bare insert is identity-safe (editLog unchanged), drag-after-insert commits via op:move', async ({
+    page,
+  }) => {
+    const info = loadProjectInfo()
+    await navigateToWorkspace(page, info.project_id)
+
+    await expect(page.getByTestId('edit-tool-palette')).toBeVisible()
+    await page.getByTestId('edit-tool-v').click()
+
+    const baronyId = await discoverBaronyId(page, info.project_id)
+    await page.evaluate((id) => {
+      ;(window as unknown as { __forgeSelectBarony?: (id: string) => void }).__forgeSelectBarony?.(id)
+    }, baronyId)
+
+    // Wait until BezierEditLayer mounts and fits the ring (anchorCount >= 4).
+    await expect
+      .poll(async () => (await readBezierState(page))?.anchorCount ?? 0, { timeout: 15_000 })
+      .toBeGreaterThanOrEqual(4)
+
+    // Capture baseline state before insert
+    const s0 = (await readBezierState(page))!
+    const editLog0 = s0.editLogLength
+    const anchorCount0 = s0.anchorCount
+
+    // Drive the insert via the INDEX-based hook (no caller-supplied px — the hook computes
+    // its own stage-local mid-curve px from segmentIdx, avoiding the page-vs-stage coord trap).
+    const inserted = await page.evaluate(() => {
+      const fn = (window as unknown as { __forgeBezierTriggerInsert?: (segmentIdx?: number) => boolean }).__forgeBezierTriggerInsert
+      return fn ? fn(0) : false
+    })
+    expect(inserted, 'insert DEV hook must be present and hit segment 0').toBe(true)
+
+    // G3 identity-safe insert assertion: store unchanged despite new anchor in component state
+    const s1 = (await readBezierState(page))!
+    expect(s1.anchorCount, 'anchorCount must increase by 1 after insert').toBe(anchorCount0 + 1)
+    expect(s1.editLogLength, 'editLog must be unchanged after bare insert (identity-safe)').toBe(editLog0)
+
+    // G3 drag-after-insert assertion: first store mutation happens on the drag, not the insert
+    const newIdx = s1.activeAnchorIdx!
+    await page.evaluate((idx) => {
+      const fn = (window as unknown as { __forgeBezierTriggerDrag?: (i?: number, dx?: number, dy?: number) => boolean }).__forgeBezierTriggerDrag
+      return fn ? fn(idx, 25, 25) : false
+    }, newIdx)
+
+    await expect
+      .poll(async () => (await readBezierState(page))?.editLogLength ?? editLog0, { timeout: 8_000 })
+      .toBeGreaterThan(editLog0)
+  })
 })
