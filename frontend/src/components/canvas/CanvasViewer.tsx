@@ -769,7 +769,7 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
             as before. Exactly ONE of the two is mounted at z=5 — never both (double handlers),
             never neither (feature unreachable): the T-08.1-04-01 mitigation. */}
         {bezierActive ? (
-          <BezierEditLayer projection={projection} />
+          <BezierEditLayer projection={projection} currentScale={currentScale} />
         ) : (
           <VertexEditLayer
             stageRef={stageRef}
