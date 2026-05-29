@@ -35,9 +35,11 @@ import { useEditorStore } from '../../stores/useEditorStore'
 import {
   fitPolygonToBezier,
   buildPolyIndexMap,
+  splitPolyRange,
+  findNearestSegmentAndVertex,
   type BezierCubic,
 } from '../../lib/bezierFit'
-import { flattenSegment } from '../../lib/bezierFlatten'
+import { flattenSegment, cubicBezierAt } from '../../lib/bezierFlatten'
 import { geoToCanvas, canvasToGeo, type ProjectionConfig } from '../../lib/projection'
 import { snapToNeighbour } from '../../lib/snap'
 import type { SnapCandidate } from '../../lib/snap'
@@ -346,6 +348,78 @@ export const BezierEditLayer: React.FC<BezierEditLayerProps> = ({ projection }) 
     }
   }, [])
 
+  // ── Insert handler (G3 — double-click inserts anchor; pure component-local NO-OP) ──
+  // A bare insert does NOT call setVerticesAndLog — store stays byte-identical (BEZ-IDENTITY-01).
+  // The new anchor snaps to the nearest original polygon vertex strictly inside the segment's
+  // range so both sub-ranges remain valid integer-bounded contiguous ranges (splitPolyRange
+  // shared-endpoint convention). cp1Px/cp2Px are derived from the local tangent for display
+  // only; the first commit happens on a subsequent drag via the existing op:'move' path.
+  const handleInsertAtPx = useCallback((clickPx: [number, number]): boolean => {
+    const cur = anchorsRef.current
+    const pxPts = originalRef.current.pxPts
+    if (cur.length < 2 || pxPts.length === 0) return false
+
+    const hit = findNearestSegmentAndVertex(clickPx, cur, pxPts)
+    if (hit === null) return false
+
+    const { segmentIdx, splitVertexIndex } = hit
+    const a = cur[segmentIdx]
+    const N = cur.length
+    const b = cur[(segmentIdx + 1) % N]
+
+    // Snap the new anchor to the actual original polygon vertex (integer index)
+    const snapPx = pxPts[splitVertexIndex]
+    if (!snapPx) return false
+
+    // Split the segment's poly range at the snap vertex
+    const [leftRange, rightRange] = splitPolyRange(
+      { rangeStart: a.polyRangeStart, rangeEnd: a.polyRangeEnd },
+      splitVertexIndex,
+    )
+
+    // Derive cp1/cp2 for the new anchor from the cubic tangent at t≈0.5.
+    // The tangent direction gives a small display-only handle; the actual geometry
+    // is committed verbatim from the store on the next drag (no store write here).
+    const t = 0.5
+    const cubic: BezierCubic = [a.anchorPx, a.cp2Px, b.cp1Px, b.anchorPx]
+    const midPt = cubicBezierAt(cubic[0], cubic[1], cubic[2], cubic[3], t)
+    const midNext = cubicBezierAt(cubic[0], cubic[1], cubic[2], cubic[3], Math.min(t + 0.05, 1))
+    const midPrev = cubicBezierAt(cubic[0], cubic[1], cubic[2], cubic[3], Math.max(t - 0.05, 0))
+    const tanDx = midNext[0] - midPrev[0]
+    const tanDy = midNext[1] - midPrev[1]
+    const tanLen = Math.sqrt(tanDx * tanDx + tanDy * tanDy) || 1
+    const handleOffset = 15
+    const normX = (tanDx / tanLen) * handleOffset
+    const normY = (tanDy / tanLen) * handleOffset
+    // Suppress unused midPt if snap exactly equals the mid-curve point
+    void midPt
+
+    const newAnchor: BezierAnchor = {
+      idx: segmentIdx + 1, // will be renumbered below
+      anchorPx: [snapPx[0], snapPx[1]],
+      cp1Px: [snapPx[0] - normX, snapPx[1] - normY],
+      cp2Px: [snapPx[0] + normX, snapPx[1] + normY],
+      polyRangeStart: rightRange.rangeStart,
+      polyRangeEnd: rightRange.rangeEnd,
+    }
+
+    // Update the split anchor (the original segment anchor now covers only the left sub-range)
+    const next: BezierAnchor[] = cur.map((anchor) =>
+      anchor.idx === a.idx
+        ? { ...anchor, polyRangeStart: leftRange.rangeStart, polyRangeEnd: leftRange.rangeEnd }
+        : { ...anchor },
+    )
+
+    // Insert the new anchor after segmentIdx and renumber all idx fields
+    next.splice(segmentIdx + 1, 0, newAnchor)
+    next.forEach((anchor, i) => { anchor.idx = i })
+
+    // Component-local only — zero store writes (identity-safe insert, BEZ-IDENTITY-01)
+    setAnchors(next)
+    setActiveAnchorIdx(segmentIdx + 1)
+    return true
+  }, [])
+
   // ── Drag handlers (the ONLY store-writing path; op MUST be 'move') ───────────
   // Live preview during move — repaint only, no store write (UI-SPEC §Anchor step 1).
   const handleDragMove = useCallback(
@@ -512,20 +586,25 @@ export const BezierEditLayer: React.FC<BezierEditLayerProps> = ({ projection }) 
       let firstAnchor: { idx: number; x: number; y: number } | null = null
       const layer = layerRef.current
       if (layer) {
-        const stage = layer.getStage()
-        const rect = layer.find('Rect').find((n) => n.getAttr('data-testid') === 'bezier-anchor')
-        if (stage && rect) {
-          // getClientRect gives the anchor's SCREEN-SPACE bounding box (stage scale +
-          // pos already applied) — its center is the reliable Konva drag target. Adding
-          // a flat half-size to getAbsolutePosition would overshoot under a fit-to-view
-          // scale != 1 (the 10px square is in MAP space, shrunk on screen).
-          const box = rect.getClientRect({ relativeTo: stage })
-          const containerRect = stage.container().getBoundingClientRect()
-          firstAnchor = {
-            idx: Number(rect.getAttr('data-anchor-idx')),
-            x: containerRect.left + box.x + box.width / 2,
-            y: containerRect.top + box.y + box.height / 2,
+        try {
+          const stage = layer.getStage()
+          const rect = layer.find('Rect').find((n) => n.getAttr('data-testid') === 'bezier-anchor')
+          if (stage && rect) {
+            // getClientRect gives the anchor's SCREEN-SPACE bounding box (stage scale +
+            // pos already applied) — its center is the reliable Konva drag target. Adding
+            // a flat half-size to getAbsolutePosition would overshoot under a fit-to-view
+            // scale != 1 (the 10px square is in MAP space, shrunk on screen).
+            const box = rect.getClientRect({ relativeTo: stage })
+            const containerRect = stage.container().getBoundingClientRect()
+            firstAnchor = {
+              idx: Number(rect.getAttr('data-anchor-idx')),
+              x: containerRect.left + box.x + box.width / 2,
+              y: containerRect.top + box.y + box.height / 2,
+            }
           }
+        } catch {
+          // In jsdom/unit-test environments the Konva mock doesn't provide getStage();
+          // firstAnchor stays null — anchorCount/activeAnchorIdx/editLogLength are still valid.
         }
       }
       return {
@@ -552,7 +631,8 @@ export const BezierEditLayer: React.FC<BezierEditLayerProps> = ({ projection }) 
       // adds +5 back to recover the center, so target = (anchorPx - 5) + delta.
       const targetX = a.anchorPx[0] - 5 + dx
       const targetY = a.anchorPx[1] - 5 + dy
-      const stage = layerRef.current?.getStage()
+      // In jsdom/unit-test the Konva mock doesn't provide getStage(); fall back to null.
+      const stage = (() => { try { return layerRef.current?.getStage() } catch { return null } })()
       const evt = {
         target: { x: () => targetX, y: () => targetY, getStage: () => stage },
       } as unknown as Konva.KonvaEventObject<DragEvent>
@@ -574,7 +654,8 @@ export const BezierEditLayer: React.FC<BezierEditLayerProps> = ({ projection }) 
       // This is the center-anchored offset CRITICAL noted in the plan spec.
       const targetX = (kind === 'cp1' ? a.cp1Px[0] : a.cp2Px[0]) + dx
       const targetY = (kind === 'cp1' ? a.cp1Px[1] : a.cp2Px[1]) + dy
-      const stage = layerRef.current?.getStage()
+      // In jsdom/unit-test the Konva mock doesn't provide getStage(); fall back to null.
+      const stage = (() => { try { return layerRef.current?.getStage() } catch { return null } })()
       const evt = {
         target: { x: () => targetX, y: () => targetY, getStage: () => stage },
       } as unknown as Konva.KonvaEventObject<DragEvent>
@@ -582,12 +663,32 @@ export const BezierEditLayer: React.FC<BezierEditLayerProps> = ({ projection }) 
       handleDragEnd(kind, idx, evt)
       return true
     }
+    // Plan 06 (G3 insert re-verify): index-based insert DEV hook for Playwright + unit tests.
+    // COORDINATE-SPACE NOTE: __forgeBezierState().firstAnchor exposes PAGE coords (built for
+    // page.mouse). They are NOT usable as hit-test input for findNearestSegmentAndVertex, which
+    // expects STAGE-LOCAL px. This hook is INDEX-based: it computes its own stage-local mid-curve
+    // px from segmentIdx so callers never supply px coords (avoiding the page-vs-stage trap).
+    // Signature: __forgeBezierTriggerInsert(segmentIdx?: number): boolean  (default segmentIdx=0)
+    ;(window as unknown as {
+      __forgeBezierTriggerInsert?: (segmentIdx?: number) => boolean
+    }).__forgeBezierTriggerInsert = (segmentIdx = 0) => {
+      const a = anchorsRef.current[segmentIdx]
+      const N = anchorsRef.current.length
+      const b = anchorsRef.current[(segmentIdx + 1) % N]
+      if (!a || !b) return false
+      // Compute the stage-local px at the cubic mid-point (t=0.5). This is the SAME px space
+      // the anchors live in, so findNearestSegmentAndVertex will hit segment segmentIdx reliably.
+      const midPx = cubicBezierAt(a.anchorPx, a.cp2Px, b.cp1Px, b.anchorPx, 0.5)
+      // Delegate to the SAME real insert handler the dbl-click uses — never setAnchors directly.
+      return handleInsertAtPx(midPx)
+    }
     return () => {
       delete (window as unknown as { __forgeBezierState?: unknown }).__forgeBezierState
       delete (window as unknown as { __forgeBezierTriggerDrag?: unknown }).__forgeBezierTriggerDrag
       delete (window as unknown as { __forgeBezierTriggerHandleDrag?: unknown }).__forgeBezierTriggerHandleDrag
+      delete (window as unknown as { __forgeBezierTriggerInsert?: unknown }).__forgeBezierTriggerInsert
     }
-  }, [anchors.length, activeAnchorIdx, dirtyCount, handleDragMove, handleDragEnd])
+  }, [anchors.length, activeAnchorIdx, dirtyCount, handleDragMove, handleDragEnd, handleInsertAtPx])
 
   // During a drag, render the curve outline + handles from the live preview so the WHOLE
   // curve follows the drag (UI-SPEC §Anchor step 1) — not just the dragged Konva node.
@@ -608,7 +709,7 @@ export const BezierEditLayer: React.FC<BezierEditLayerProps> = ({ projection }) 
         if (e.target === e.currentTarget) setActiveAnchorIdx(null)
       }}
     >
-      {/* Curve outline — static, non-interactive */}
+      {/* Curve outline — static, non-interactive (BEZ-RENDER: MUST stay listening={false}) */}
       <Path
         data={pathData}
         stroke={CURVE_STROKE}
@@ -616,6 +717,26 @@ export const BezierEditLayer: React.FC<BezierEditLayerProps> = ({ projection }) 
         fill="transparent"
         listening={false}
         data-testid="bezier-curve-outline"
+      />
+
+      {/* Dedicated double-click hit-Path — transparent wider stroke for easy dbl-click target.
+          SEPARATE from the visible outline so the outline stays listening={false} (BEZ-RENDER).
+          onDblClick resolves the pointer position and delegates to handleInsertAtPx. */}
+      <Path
+        data={pathData}
+        stroke="transparent"
+        strokeWidth={12}
+        fill={undefined}
+        listening={true}
+        data-testid="bezier-hit-path"
+        onDblClick={(e: Konva.KonvaEventObject<MouseEvent>) => {
+          const stage = e.target.getStage()
+          if (!stage) return
+          const pos = stage.getPointerPosition()
+          if (!pos) return
+          // getPointerPosition returns stage-local px (already accounts for stage scale/pos)
+          handleInsertAtPx([pos.x, pos.y])
+        }}
       />
 
       {/* Anchors — one square per cubic endpoint */}
