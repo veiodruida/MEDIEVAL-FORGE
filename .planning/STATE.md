@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 08.3-03-PLAN.md
-last_updated: "2026-05-30T18:47:58.020Z"
+stopped_at: Completed 08.3-04-PLAN.md
+last_updated: "2026-05-30T19:02:55.610Z"
 last_activity: 2026-05-30
 progress:
   total_phases: 3
   completed_phases: 2
   total_plans: 19
-  completed_plans: 16
-  percent: 84
+  completed_plans: 17
+  percent: 89
 ---
 
 # Project State (v3)
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md
 ## Current Position
 
 Phase: 08.3 (pen-tool-barony-contour-authoring) — EXECUTING
-Plan: 4 of 6
+Plan: 5 of 6
 Status: Ready to execute
 Last activity: 2026-05-30
 
@@ -156,6 +156,7 @@ See `.planning/PROJECT.md` Key Decisions table (D-V3-01 through D-V3-07).
 - [Phase 08.3]: duchy lookup via cfg.duchies (not param) in build_baronies_geojson_sidecar — same dict already on RegionConfig; no signature change needed
 - [Phase 08.3]: EditOp create fields optional (not required): required fields conflict with index-signature + existing op constructors
 - [Phase 08.3]: DISABLED_TOOLTIP A/D retains Bezier copy (test-locked); S/M get pen-draw copy (new)
+- [Phase 08.3]: barony_floor derived via load_region + setup_baronies (backend-authoritative) — frontend nb not trusted; split + create share the same floor computation
 
 ### Blockers/Concerns
 
@@ -175,6 +176,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-30T18:47:58.016Z
-Stopped at: Completed 08.3-03-PLAN.md
+Last session: 2026-05-30T19:02:55.606Z
+Stopped at: Completed 08.3-04-PLAN.md
 Resume file: None
