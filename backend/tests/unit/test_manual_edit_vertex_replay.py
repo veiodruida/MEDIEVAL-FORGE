@@ -695,18 +695,22 @@ def test_two_sequential_applies_same_barony_keep_gijon_in_baronies_geojson_sidec
     verts_apply2 = make_self_intersecting_snapshot(ring, "gijon_apply2_bbb", swap_b_i, swap_b_j)
 
     # Verify both vertex sets produce self-intersecting rings in pixel space.
+    # NO pytest.skip() here — the plan explicitly forbids skip in these tests (acceptance criterion).
+    # The swaps are chosen to be far apart in the ring (quarter and half ring distance),
+    # which reliably causes crossing on any non-trivial polygon. The fixture is deterministic
+    # (seed 42), so this assertion will hold every run. If this ever fails, adjust swap indices
+    # — do NOT convert to skip.
     def assert_self_intersecting(verts, label):
         keys = sorted(verts.keys(), key=lambda k: int(k.split("#")[1]))
         px_coords = [_lonlat_to_rasterio_xy(verts[k]["lon"], verts[k]["lat"], base_cfg, W, H)
                      for k in keys]
         poly = Polygon(px_coords)
-        if poly.is_valid:
-            # Swapped vertices happened to not cross — try a larger swap
-            pytest.skip(
-                f"Ring swap {label} did not produce a self-intersecting polygon "
-                f"(ring_len={ring_len}, swap indices used). "
-                f"buffer(0) will not fire. Test inconclusive — adjust swap indices."
-            )
+        assert not poly.is_valid, (
+            f"Test premise broken: swap {label} must produce a self-intersecting polygon "
+            f"so buffer(0) fires (ring_len={ring_len}, swap_a=({swap_a_i},{swap_a_j}), "
+            f"swap_b=({swap_b_i},{swap_b_j})). Got is_valid=True. "
+            f"Adjust swap indices to be further apart. DO NOT convert to skip."
+        )
         return poly
 
     ring1_poly = assert_self_intersecting(verts_apply1, "apply1")
