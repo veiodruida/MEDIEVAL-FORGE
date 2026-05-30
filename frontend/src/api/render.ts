@@ -29,8 +29,13 @@ export async function postRender(
   projectId: string,
   cfgOverrides: CfgOverrides,
   stageView?: StageView,
+  branchId?: string,
 ): Promise<RenderResponse> {
-  const body = JSON.stringify({ cfg_overrides: cfgOverrides, stage_view: stageView })
+  const body = JSON.stringify({
+    cfg_overrides: cfgOverrides,
+    stage_view: stageView,
+    ...(branchId ? { branch_id: branchId } : {}),
+  })
   const res = await fetch(`/api/v3/projects/${projectId}/render`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

@@ -89,10 +89,13 @@ async function runApply(
   pendingApplyRef.current = true
 
   // Step 2: call postRender DIRECTLY (not via dispatch/diffOverrides — Pitfall 3)
+  // Pass branchId so _render_producer can fetch the branch row and load snapshot_loader.
+  // Without branchId, the backend defaults to "main" (literal string) and select(Branch.id==
+  // "main") returns None → snapshot_loader never set → replay_vertex_ring skipped (bug fix).
   const effectiveStageView = stageView ?? usePipelineParams.getState().stageView
   let run_id: string
   try {
-    const resp = await postRender(projectId, {}, effectiveStageView)
+    const resp = await postRender(projectId, {}, effectiveStageView, branchId)
     run_id = resp.run_id
   } catch (err) {
     pendingApplyRef.current = false

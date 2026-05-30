@@ -138,7 +138,8 @@ describe('useBezierApply', () => {
       await result.current.handleApplyEdits('render-final')
     })
 
-    expect(postRender).toHaveBeenCalledWith('proj-1', {}, 'render-final')
+    // Branch id ('branch-1') is now passed as 4th arg so _render_producer can load snapshot_loader
+    expect(postRender).toHaveBeenCalledWith('proj-1', {}, 'render-final', 'branch-1')
   })
 
   it('on render success, editLog is cleared via temporal.pause → setState → resume', async () => {
@@ -209,7 +210,7 @@ describe('useBezierApply', () => {
     expect(global.fetch).toHaveBeenCalled()
     const [url] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0]
     expect(url).toContain('/snapshots')
-    // postRender also called
-    expect(postRender).toHaveBeenCalledWith('proj-1', {}, 'render-final')
+    // postRender also called — branchId now passed as 4th arg
+    expect(postRender).toHaveBeenCalledWith('proj-1', {}, 'render-final', 'branch-1')
   })
 })
