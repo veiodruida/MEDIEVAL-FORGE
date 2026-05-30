@@ -118,7 +118,11 @@ async function discoverBaronyByName(page: Page, projectId: string, name: string)
 async function fetchBaronyRing(page: Page, projectId: string, name: string): Promise<string> {
   const ring = await page.evaluate(
     async ([pid, targetName]: [string, string]) => {
-      const res = await fetch(`/api/v3/projects/${pid}/artifacts/baronies.geojson`)
+      // cache: 'no-store' bypasses the browser cache (artifacts use max-age=31536000 immutable;
+      // without this, the fetch returns the cached pre-render version even after _render_producer
+      // regenerates baronies.geojson). Append timestamp as fallback for non-standard fetch impls.
+      const url = `/api/v3/projects/${pid}/artifacts/baronies.geojson?_nc=${Date.now()}`
+      const res = await fetch(url, { cache: 'no-store' })
       if (!res.ok) return null
       const fc = await res.json()
       for (const feat of fc.features ?? []) {
@@ -140,7 +144,9 @@ async function fetchBaronyRing(page: Page, projectId: string, name: string): Pro
 /** Fetch lookup_barony.png through the running app and return its SHA-256 hex digest. */
 async function lookupBaronySha(page: Page, projectId: string): Promise<string> {
   const b64 = await page.evaluate(async (pid) => {
-    const res = await fetch(`/api/v3/projects/${pid}/artifacts/lookup_barony.png`)
+    // cache: 'no-store' bypasses immutable HTTP cache (artifacts use max-age=31536000)
+    const url = `/api/v3/projects/${pid}/artifacts/lookup_barony.png?_nc=${Date.now()}`
+    const res = await fetch(url, { cache: 'no-store' })
     if (!res.ok) throw new Error(`artifact fetch failed: ${res.status}`)
     const buf = new Uint8Array(await res.arrayBuffer())
     let binary = ''
@@ -301,7 +307,7 @@ test.describe('Phase 08.2 — BEZ-CONV-05: Bézier edit reaches colored map', ()
       // ANTI-PATTERN GUARD: the drag is a real page.mouse event.
       // __forgeBezierState is read-only state inspection, never a trigger.
 
-      test.setTimeout(120_000) // render cascade can take ~15-30s on a real project
+      test.setTimeout(240_000) // full pipeline render (251 baronies) takes ~90-120s on first run
 
       const info = loadProjectInfo()
       const { stateAfterZoom } = await setupCoastlineBarony(page, info.project_id)
@@ -348,8 +354,8 @@ test.describe('Phase 08.2 — BEZ-CONV-05: Bézier edit reaches colored map', ()
             return ring !== ringBefore
           },
           {
-            timeout: 90_000, // generous: full pipeline render takes ~30-60s
-            intervals: [2_000, 3_000, 5_000],
+            timeout: 180_000, // full pipeline render (251 baronies) can take 90-120s on first run
+            intervals: [3_000, 5_000, 8_000],
             message: 'baronies.geojson ring for Gijón must change after Apply+render cascade',
           },
         )
@@ -378,7 +384,7 @@ test.describe('Phase 08.2 — BEZ-CONV-05: Bézier edit reaches colored map', ()
   test(
     'coastline: after Apply + reload, boundary persists (edit survives page reload)',
     async ({ page }: { page: Page }) => {
-      test.setTimeout(180_000) // render cascade + reload
+      test.setTimeout(360_000) // full pipeline render (~120s) + reload
 
       const info = loadProjectInfo()
       const { stateAfterZoom } = await setupCoastlineBarony(page, info.project_id)
@@ -407,7 +413,7 @@ test.describe('Phase 08.2 — BEZ-CONV-05: Bézier edit reaches colored map', ()
             const ring = await fetchBaronyRing(page, info.project_id, COASTLINE_BARONY)
             return ring !== ringBefore
           },
-          { timeout: 90_000, intervals: [2_000, 3_000, 5_000] },
+          { timeout: 180_000, intervals: [3_000, 5_000, 8_000] },
         )
         .toBe(true)
 
@@ -434,7 +440,7 @@ test.describe('Phase 08.2 — BEZ-CONV-05: Bézier edit reaches colored map', ()
   test(
     'coastline: after Apply, lookup_barony.png in export differs from pre-edit baseline',
     async ({ page }: { page: Page }) => {
-      test.setTimeout(180_000) // render + export pipeline
+      test.setTimeout(360_000) // full pipeline render (~120s) + export pipeline
 
       const info = loadProjectInfo()
       const { stateAfterZoom } = await setupCoastlineBarony(page, info.project_id)
@@ -467,7 +473,7 @@ test.describe('Phase 08.2 — BEZ-CONV-05: Bézier edit reaches colored map', ()
             const ring = await fetchBaronyRing(page, info.project_id, COASTLINE_BARONY)
             return ring !== ringBefore
           },
-          { timeout: 90_000, intervals: [2_000, 3_000, 5_000] },
+          { timeout: 180_000, intervals: [3_000, 5_000, 8_000] },
         )
         .toBe(true)
 
