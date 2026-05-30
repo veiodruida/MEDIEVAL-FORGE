@@ -460,20 +460,21 @@ test.describe('Phase 08.2 — BEZ-CONV-05: Bézier edit reaches colored map', ()
       const info = loadProjectInfo()
       const { stateAfterZoom } = await setupCoastlineBarony(page, info.project_id)
 
-      // Capture pre-edit lookup_barony.png SHA-256
-      const baselineSha = await lookupBaronySha(page, info.project_id)
-      expect(baselineSha).toMatch(/^[0-9a-f]{64}$/)
+      // Capture the SHA at the start of the test — may already differ from the original
+      // uat_cache seed if previous tests ran Apply (Tests 2/3 modify the raster).
+      const shaAtTestStart = await lookupBaronySha(page, info.project_id)
+      expect(shaAtTestStart).toMatch(/^[0-9a-f]{64}$/)
 
       const editLog0 = stateAfterZoom.editLogLength
       const { x: ax, y: ay } = stateAfterZoom.firstAnchor!
 
-      // REAL page.mouse drag — use +60,+60 delta so this test produces a different
-      // raster result from Tests 1-3 which use +30,+30. Each test resets the store via
-      // page.goto, so the store sees the original vertices. A +30 drag would produce the
-      // same rasterisation as Test 2 → SHA identical → convergence poll would never pass.
+      // REAL page.mouse drag — use +80,+80 so this test's Apply produces a unique raster.
+      // Tests 2/3 use +30/+45; +80 ensures the anchor moves further, producing pixels
+      // that differ from all prior Apply rasters. The test then checks the SHA changes
+      // relative to the state-at-test-start, not the absolute original.
       await page.mouse.move(ax, ay)
       await page.mouse.down()
-      await page.mouse.move(ax + 60, ay + 60, { steps: 12 })
+      await page.mouse.move(ax + 80, ay + 80, { steps: 16 })
       await page.mouse.up()
 
       await expect
@@ -483,13 +484,14 @@ test.describe('Phase 08.2 — BEZ-CONV-05: Bézier edit reaches colored map', ()
         .toBeGreaterThan(editLog0)
 
       // Click Apply and wait for render cascade.
-      // Use lookup_barony.png SHA diff as convergence signal.
+      // The SHA MUST change from shaAtTestStart (this test's specific +80 drag produces
+      // a new raster different from the +45 drag result left by Test 3).
       await page.getByTestId('bezier-apply-edits-btn').click()
       await expect
         .poll(
           async () => {
             const sha = await lookupBaronySha(page, info.project_id)
-            return sha !== baselineSha
+            return sha !== shaAtTestStart
           },
           { timeout: 180_000, intervals: [3_000, 5_000, 8_000] },
         )
@@ -511,12 +513,12 @@ test.describe('Phase 08.2 — BEZ-CONV-05: Bézier edit reaches colored map', ()
 
       const afterSha = await lookupBaronySha(page, info.project_id)
 
-      // THE LOAD-BEARING ASSERTION: lookup_barony.png SHA-256 differs from pre-edit baseline
+      // THE LOAD-BEARING ASSERTION: lookup_barony.png SHA-256 differs from shaAtTestStart
       // (already confirmed by the poll above; this is the final double-check after export).
       expect(
         afterSha,
-        'APPEARS IN EXPORT: lookup_barony.png after Apply+render must differ from pre-edit baseline',
-      ).not.toBe(baselineSha)
+        'APPEARS IN EXPORT: lookup_barony.png after Apply+render must differ from SHA at test start',
+      ).not.toBe(shaAtTestStart)
     },
   )
 })
