@@ -253,7 +253,15 @@ test.describe('Phase 08.2 — BEZ-CONV-05: Bézier edit reaches colored map', ()
       const { stateAfterZoom } = await setupCoastlineBarony(page, info.project_id)
 
       // Assert BEFORE first drag: overlay absent (editLog empty → Plan 03 guard hides overlay)
-      await expect(page.getByTestId('bezier-edited-contour')).not.toBeVisible()
+      // NOTE: bezier-edited-contour is a Konva <Line> rendered on canvas — not a DOM element.
+      // The Plan 03 overlay guard is: editedRingPts.length >= 6 && editLog.length > 0.
+      // editedContourPointCount is always > 0 when a barony is selected (it reports ring size).
+      // The correct absence check is editLogLength === 0 (the guard condition).
+      const stateBefore = await readBezierState(page)
+      expect(
+        stateBefore?.editLogLength ?? 0,
+        'overlay must be absent before first drag (editLog empty, Plan 03 guard)',
+      ).toBe(0)
 
       const editLog0 = stateAfterZoom.editLogLength
       const { x: ax, y: ay } = stateAfterZoom.firstAnchor!
@@ -272,9 +280,15 @@ test.describe('Phase 08.2 — BEZ-CONV-05: Bézier edit reaches colored map', ()
         .toBeGreaterThan(editLog0)
 
       // Assert AFTER first drag: overlay present (editLog > 0 → Plan 03 guard shows overlay)
-      await expect(page.getByTestId('bezier-edited-contour')).toBeVisible({ timeout: 5_000 })
+      // The editLogLength already grew (asserted above). Confirm it's still > 0 here.
+      // (editedContourPointCount is always > 0 when a barony is selected; the guard is editLog.)
+      const stateAfterDrag = await readBezierState(page)
+      expect(
+        stateAfterDrag?.editLogLength ?? 0,
+        'overlay must be present after first drag (editLog > 0, Plan 03 guard)',
+      ).toBeGreaterThan(0)
 
-      // Apply button must be enabled (editLog > 0)
+      // Apply button must be enabled (editLog > 0) — real DOM button, Playwright-accessible
       await expect(page.getByTestId('bezier-apply-edits-btn')).toBeEnabled({ timeout: 5_000 })
     },
   )
@@ -312,8 +326,13 @@ test.describe('Phase 08.2 — BEZ-CONV-05: Bézier edit reaches colored map', ()
         })
         .toBeGreaterThan(editLog0)
 
-      // Overlay must be present before Apply
-      await expect(page.getByTestId('bezier-edited-contour')).toBeVisible({ timeout: 5_000 })
+      // Overlay must be present before Apply: editLogLength > editLog0 (drag committed)
+      // The guard on the Konva <Line> is editLog.length > 0; we verify via editLogLength.
+      const stateBeforeApply = await readBezierState(page)
+      expect(
+        stateBeforeApply?.editLogLength ?? 0,
+        'editLog must be non-empty before Apply (drag committed op:move)',
+      ).toBeGreaterThan(editLog0)
 
       // Click "Aplicar edições" — triggers snapshot POST + postRender
       await page.getByTestId('bezier-apply-edits-btn').click()
@@ -344,7 +363,13 @@ test.describe('Phase 08.2 — BEZ-CONV-05: Bézier edit reaches colored map', ()
       ).not.toBe(ringBefore)
 
       // Overlay must have cleared (clear-on-converge: editLog reset → Plan 03 guard hides)
-      await expect(page.getByTestId('bezier-edited-contour')).not.toBeVisible({ timeout: 10_000 })
+      // The guard is editLog.length > 0; after Apply success, useBezierApply clears editLog.
+      // Verify via editLogLength === 0 (correct proxy for the Konva Line visibility guard).
+      await expect
+        .poll(async () => (await readBezierState(page))?.editLogLength ?? -1, {
+          timeout: 10_000,
+        })
+        .toBe(0)
     },
   )
 
