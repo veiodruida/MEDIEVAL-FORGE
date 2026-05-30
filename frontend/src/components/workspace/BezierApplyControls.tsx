@@ -17,6 +17,7 @@ import { Badge, Button, Flex, Switch, Text } from '@radix-ui/themes'
 import { useEditorStore } from '../../stores/useEditorStore'
 import { useBezierApply } from '../../hooks/useBezierApply'
 import { usePipelineParams } from '../../stores/usePipelineParams'
+import { useRenderStream } from '../../api/useRenderStream'
 import type { StageView } from '../../api/render'
 
 interface BezierApplyControlsProps {
@@ -37,7 +38,17 @@ export function BezierApplyControls({
 
   const { handleApplyEdits } = useBezierApply(projectId, branchId ?? '')
 
+  // Phase 08.2 Plan 04 Rule 1 fix: subscribe to the SSE render stream so the
+  // RunStore receives the rendering→generated transition and useBezierApply's
+  // subscribe callback can clear editLog (clear-on-converge).
+  // Without this, postRender fires but no SSE consumer is open, so RunStore
+  // stays in 'rendering' indefinitely and editLog is never reset.
+  const renderStream = useRenderStream()
+
   const handleApply = () => {
+    // Subscribe to SSE BEFORE handleApplyEdits calls postRender, mirroring
+    // the pattern in ParameterSidebar/useParameterStudioDispatch (onRenderStarted).
+    renderStream.subscribe(projectId)
     handleApplyEdits(stageView as StageView)
   }
 

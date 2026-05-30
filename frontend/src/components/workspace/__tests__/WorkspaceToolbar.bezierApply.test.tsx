@@ -40,6 +40,14 @@ vi.mock('../../../hooks/useBezierApply', () => ({
   MAX_VERTEX_KEYS_FALLBACK: 40000,
 }))
 
+// Mock useRenderStream — jsdom has no EventSource; BezierApplyControls now uses it
+vi.mock('../../../api/useRenderStream', () => ({
+  useRenderStream: () => ({
+    subscribe: vi.fn(),
+    close: vi.fn(),
+  }),
+}))
+
 // ---------------------------------------------------------------------------
 // Fixtures
 // ---------------------------------------------------------------------------
