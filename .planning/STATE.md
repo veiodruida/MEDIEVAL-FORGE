@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 08.3-04-PLAN.md
-last_updated: "2026-05-30T19:02:55.610Z"
+stopped_at: Completed 08.3-05-PLAN.md
+last_updated: "2026-05-30T19:26:02.232Z"
 last_activity: 2026-05-30
 progress:
   total_phases: 3
   completed_phases: 2
   total_plans: 19
-  completed_plans: 17
-  percent: 89
+  completed_plans: 18
+  percent: 95
 ---
 
 # Project State (v3)
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md
 ## Current Position
 
 Phase: 08.3 (pen-tool-barony-contour-authoring) — EXECUTING
-Plan: 5 of 6
+Plan: 6 of 6
 Status: Ready to execute
 Last activity: 2026-05-30
 
@@ -157,6 +157,8 @@ See `.planning/PROJECT.md` Key Decisions table (D-V3-01 through D-V3-07).
 - [Phase 08.3]: EditOp create fields optional (not required): required fields conflict with index-signature + existing op constructors
 - [Phase 08.3]: DISABLED_TOOLTIP A/D retains Bezier copy (test-locked); S/M get pen-draw copy (new)
 - [Phase 08.3]: barony_floor derived via load_region + setup_baronies (backend-authoritative) — frontend nb not trusted; split + create share the same floor computation
+- [Phase 08.3]: snapToNeighbour radiusPx param added (default=5 preserves BezierEditLayer); pen passes 12 for D-16 12px vertex+edge snap parity
+- [Phase 08.3]: AnyBaronyCandidate union + normalizeCandidate() adapter: CanvasViewer passes effectiveBaronies (BaronyRender[]) to PenDrawLayer without conversion
 
 ### Blockers/Concerns
 
@@ -176,6 +178,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-30T19:02:55.606Z
-Stopped at: Completed 08.3-04-PLAN.md
+Last session: 2026-05-30T19:26:02.229Z
+Stopped at: Completed 08.3-05-PLAN.md
 Resume file: None
