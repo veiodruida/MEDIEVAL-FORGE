@@ -399,7 +399,8 @@ test.describe('Phase 08.2 — BEZ-CONV-05: Bézier edit reaches colored map', ()
       const info = loadProjectInfo()
       const { stateAfterZoom } = await setupCoastlineBarony(page, info.project_id)
 
-      const ringBefore = await fetchBaronyRing(page, info.project_id, COASTLINE_BARONY)
+      // Capture baseline SHA before drag (lookup_barony.png is stable before any edit)
+      const baselineSha = await lookupBaronySha(page, info.project_id)
       const editLog0 = stateAfterZoom.editLogLength
       const { x: ax, y: ay } = stateAfterZoom.firstAnchor!
 
@@ -415,33 +416,35 @@ test.describe('Phase 08.2 — BEZ-CONV-05: Bézier edit reaches colored map', ()
         })
         .toBeGreaterThan(editLog0)
 
-      // Click Apply and wait for convergence
+      // Click Apply and wait for convergence via SHA change (robust: works even if
+      // replay modifies the barony GeoJSON structure, e.g. Gijón ring becomes MultiPolygon).
       await page.getByTestId('bezier-apply-edits-btn').click()
       await expect
         .poll(
           async () => {
-            const ring = await fetchBaronyRing(page, info.project_id, COASTLINE_BARONY)
-            return ring !== ringBefore
+            const sha = await lookupBaronySha(page, info.project_id)
+            return sha !== baselineSha
           },
           { timeout: 180_000, intervals: [3_000, 5_000, 8_000] },
         )
         .toBe(true)
 
-      // Record the ring after Apply
-      const ringAfterApply = await fetchBaronyRing(page, info.project_id, COASTLINE_BARONY)
-      expect(ringAfterApply).not.toBe(ringBefore)
+      // Record the SHA after Apply — this is what should persist after reload
+      const shaAfterApply = await lookupBaronySha(page, info.project_id)
+      expect(shaAfterApply).not.toBe(baselineSha)
 
       // Reload the page
       await page.reload()
       await expect(page.getByTestId('canvas-stage')).toBeVisible({ timeout: 20_000 })
       await expect(page.getByTestId('territory-layer-ready')).toBeAttached({ timeout: 30_000 })
 
-      // Assert boundary PERSISTS after reload (stored in DB branch, reloaded from artifacts)
-      const ringAfterReload = await fetchBaronyRing(page, info.project_id, COASTLINE_BARONY)
+      // Assert boundary PERSISTS after reload: lookup_barony.png SHA matches post-Apply SHA
+      // (the edited artifacts are stored in the output dir, which persists across page reloads).
+      const shaAfterReload = await lookupBaronySha(page, info.project_id)
       expect(
-        ringAfterReload,
-        'SURVIVES RELOAD: barony ring after page reload must match ring after Apply',
-      ).toBe(ringAfterApply)
+        shaAfterReload,
+        'SURVIVES RELOAD: lookup_barony.png SHA after reload must match SHA after Apply',
+      ).toBe(shaAfterApply)
     },
   )
 
