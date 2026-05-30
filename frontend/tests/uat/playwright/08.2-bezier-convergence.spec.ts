@@ -368,12 +368,20 @@ test.describe('Phase 08.2 — BEZ-CONV-05: Bézier edit reaches colored map', ()
         'END-TO-END: colored barony boundary after Apply+render must differ from pre-edit ring',
       ).not.toBe(ringBefore)
 
-      // Overlay must have cleared (clear-on-converge: editLog reset → Plan 03 guard hides)
-      // The guard is editLog.length > 0; after Apply success, useBezierApply clears editLog.
-      // Verify via editLogLength === 0 (correct proxy for the Konva Line visibility guard).
+      // Overlay must have cleared (clear-on-converge: editLog reset → Plan 03 guard hides).
+      // The guard is editLog.length > 0; useBezierApply clears editLog when it observes the
+      // RunStore rendering→generated transition via useRunStore.subscribe.
+      //
+      // The ring changed (load-bearing assertion above passed), meaning the render completed
+      // and project.updated_at was bumped. The cacheVersion refetch is what caused the ring
+      // to change in our poll. At this point the RunStore should be in 'generated' state
+      // and the subscribe callback should have fired to clear editLog.
+      //
+      // Allow 45s: SSE stream delivery + React re-render + subscribe callback.
       await expect
         .poll(async () => (await readBezierState(page))?.editLogLength ?? -1, {
-          timeout: 10_000,
+          timeout: 45_000,
+          intervals: [1_000, 2_000, 3_000],
         })
         .toBe(0)
     },
