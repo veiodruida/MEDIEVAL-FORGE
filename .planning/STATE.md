@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: verifying
-stopped_at: Phase 08.3 context gathered
-last_updated: "2026-05-30T16:33:49.007Z"
+status: executing
+stopped_at: Completed 08.3-01-PLAN.md
+last_updated: "2026-05-30T18:27:04.880Z"
 last_activity: 2026-05-30
 progress:
   total_phases: 3
   completed_phases: 2
-  total_plans: 13
-  completed_plans: 13
-  percent: 100
+  total_plans: 19
+  completed_plans: 14
+  percent: 74
 ---
 
 # Project State (v3)
@@ -21,13 +21,13 @@ progress:
 See: .planning/PROJECT.md
 
 **Core value:** A Game Designer goes from "country + historical period" to a validated, Unity-ready map package — driven by geometry, with LLM as opt-in metadata.
-**Current focus:** Phase 08.2 — bezier-edit-to-map-convergence-backend-replay
+**Current focus:** Phase 08.3 — pen-tool-barony-contour-authoring
 
 ## Current Position
 
-Phase: 08.2 (bezier-edit-to-map-convergence-backend-replay) — EXECUTING
-Plan: 4 of 4
-Status: Phase complete — ready for verification
+Phase: 08.3 (pen-tool-barony-contour-authoring) — EXECUTING
+Plan: 2 of 6
+Status: Ready to execute
 Last activity: 2026-05-30
 
 Progress: [█████████░] 93% (25 of 27 plans complete)
@@ -150,6 +150,9 @@ See `.planning/PROJECT.md` Key Decisions table (D-V3-01 through D-V3-07).
 - [Phase 08.2]: BEZ-CONV-05 UAT approved: real-mouse Bezier edit on coastline barony -> colored boundary moves, overlay clears, survives reload (G8 closed end-to-end)
 - [Phase 08.2]: Known defect deferred: replay_vertex_ring degrades edited barony on second Apply (MultiPolygon from buffer(0) not extracted by sidecar writer) — single Apply intact, G8 closed for first edit
 - [Phase 08.2]: BEZ-CONV-05: buffer(0) MultiPolygon guard — largest-area component over unary_union; second Apply no longer drops barony from baronies.geojson (CLAUDE.md rule #4)
+- [Phase 08.3-01]: Raster overpaint (not KD-tree mutation) is the CREATE mechanism — D-11 re-described
+- [Phase 08.3-01]: compute() tuple return (ndarray, list) — all 4 early returns updated; ocean_mask scoped to (input==-1)&(out==-1)
+- [Phase 08.3-01]: bars list-copied before extension in run_pipeline_incremental to avoid polluting _VORONOI_CACHE reference
 
 ### Blockers/Concerns
 
@@ -169,6 +172,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-30T16:33:49.004Z
-Stopped at: Phase 08.3 context gathered
-Resume file: .planning/phases/08.3-pen-tool-barony-contour-authoring/08.3-CONTEXT.md
+Last session: 2026-05-30T18:27:04.876Z
+Stopped at: Completed 08.3-01-PLAN.md
+Resume file: None
