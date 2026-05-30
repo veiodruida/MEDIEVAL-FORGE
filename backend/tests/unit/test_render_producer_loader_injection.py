@@ -182,6 +182,15 @@ def test_snapshot_loader_returns_captured_data_not_none():
         "snapshot_loader result must have vertices key. "
         "RESEARCH Open Q#2 gate proves vertices survives serialize->deserialize."
     )
+    # NOTE: the assertions above test the by-value capture pattern in isolation.
+    # The REAL Wave 1 gate requires wiring AsyncSessionLocal + latest_snapshot_for_branch.
+    # Plan 02 must replace this stub body with the actual _render_producer mock-DB harness.
+    pytest.fail(
+        "Not implemented yet — Plan 02 must replace this body with a real "
+        "AsyncSessionLocal mock-DB harness that exercises _render_producer's fetch block. "
+        "The by-value capture pattern is correct (verified above) but the test "
+        "does not yet exercise the real _render_producer code path."
+    )
 
 
 @pytest.mark.skip(reason="Wave 1: _render_producer wiring not yet added")
@@ -210,4 +219,14 @@ def test_branch_with_empty_hash_leaves_snapshot_loader_unset():
         "BEZ-CONV-03: empty manual_edit_log_hash must leave cfg.snapshot_loader None. "
         "Plan 02 must guard: if not branch_hash: skip snapshot fetch. "
         "This preserves D-05 zero-edit identity path."
+    )
+    # NOTE: the assertion above tests a local RegionConfig instance in isolation.
+    # The REAL Wave 1 gate requires wiring AsyncSessionLocal + branch row fetch.
+    # Plan 02 must replace this stub body with the actual _render_producer mock-DB harness
+    # where: branch_row.manual_edit_log_hash = "" → cfg.snapshot_loader stays None.
+    pytest.fail(
+        "Not implemented yet — Plan 02 must replace this body with a real "
+        "AsyncSessionLocal mock-DB harness that exercises _render_producer's empty-hash "
+        "guard. The RegionConfig default (None) is correct but the test does not yet "
+        "exercise the real _render_producer code path."
     )
