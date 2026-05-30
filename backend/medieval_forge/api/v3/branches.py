@@ -11,6 +11,8 @@ Security mitigations (threat model 08-03a + 08-03b):
 """
 from __future__ import annotations
 
+import hashlib
+import json
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -175,6 +177,34 @@ async def create_snapshot_endpoint(
         snap = await create_snapshot(db, branch_id, body.payload, body.trigger)
     except SnapshotTooLargeError as exc:
         raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail=str(exc))
+
+    # Phase 08.2 Plan 04 Rule 1 fix: when a manual snapshot contains vertex ops
+    # (op:'move'/'add'/'delete'/'multi_delete' in edit_log), bump branch.manual_edit_log_hash
+    # so _render_producer's hash gate passes and snapshot_loader is injected.
+    #
+    # Invariant preserved: hash non-empty ↔ snapshot exists for this branch.
+    # BEZ-CONV-04 safety: the hash gate in _render_producer is: if branch_row and hash:
+    #   → only set when vertex ops exist in the snapshot.
+    # Landmask-only branches (no vertex ops) keep hash="", skipping replay. ✓
+    _VERTEX_OPS = frozenset({"move", "add", "delete", "multi_delete"})
+    edit_log = body.payload.get("edit_log", [])
+    has_vertex_ops = any(
+        isinstance(e, dict) and e.get("op") in _VERTEX_OPS
+        for e in edit_log
+    )
+    if body.trigger == "manual" and has_vertex_ops:
+        branch = (
+            await db.execute(select(Branch).where(Branch.id == branch_id))
+        ).scalar_one_or_none()
+        if branch is not None:
+            new_count = branch.manual_edit_log_count + 1
+            payload_for_hash = {"edit_log": edit_log, "snap_seq": snap.seq}
+            data = f"{branch_id}:{new_count}:{json.dumps(payload_for_hash, sort_keys=True)}"
+            new_hash = hashlib.sha256(data.encode("utf-8")).hexdigest()[:16]
+            branch.manual_edit_log_count = new_count
+            branch.manual_edit_log_hash = new_hash
+            await db.commit()
+
     return {
         "snapshot_id": snap.id,
         "seq": snap.seq,
