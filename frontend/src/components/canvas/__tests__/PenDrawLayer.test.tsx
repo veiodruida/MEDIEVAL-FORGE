@@ -1,5 +1,5 @@
 /**
- * Phase 08.3 Plan 05 — Task 2 TDD (RED → GREEN)
+ * Phase 08.3 Plan 05 — Task 2 TDD
  * Tests for PenDrawLayer: pen state machine, snap, validation, create-op commit, EXTEND.
  *
  * Follows the BezierEditLayer.test.tsx pattern:
@@ -9,13 +9,20 @@
  *
  * Behavior tests (PEN-CURVE-01, PEN-CREATE-01, PEN-EXTEND-01, PEN-ASSIGN-01):
  *   T1: renders root Group with name/testid 'pen-draw-layer' when mounted
- *   T2: click places first anchor; second click shows rubber-band (pen-rubber-band)
+ *   T2: click places first anchor; second click + mousemove shows rubber-band (pen-rubber-band)
  *   T3: cursor within snap radius of neighbor vertex shows pen-snap-vertex
- *   T4: closing on first anchor with ≥3 anchors fires onPathClosed + commits ONE create op
- *   T5: validation fails (2 anchors only) → pen-validation-error shown, NO create op
- *   T6: mid-draw Ctrl+Z removes last anchor (anchors.length decreases; editLog unchanged)
+ *   T4: closing on first anchor (≥3 anchors, empty neighborCandidates) commits ONE create op
+ *   T5a: validation fails (2 anchors only) → NO create op committed
+ *   T5b: validation fails (self-intersecting ring) → NO create op committed
+ *   T5c: validation fails (tiny area) → NO create op committed
+ *   T6: mid-draw Ctrl+Z removes last anchor (store editLog unchanged)
  *   T7: Esc clears anchors and calls onDrawingStateChange(false)
- *   T8: EXTEND — first anchor snapped to contour vertex → on close commits op:'move'/'add', NOT op:'create'
+ *   T8: EXTEND — first anchor snapped to contour vertex sets extendMode; no op:'create' on close
+ *
+ * NOTE on T4 async flow:
+ *   commitCreate awaits GET /editor/country BEFORE calling setVerticesAndLog.
+ *   The mock resolves synchronously via mockResolvedValue, but the async chain
+ *   still needs an act() flush to settle the microtask queue.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, fireEvent, act } from '@testing-library/react'
@@ -26,13 +33,17 @@ import type { ProjectionConfig } from '../../../lib/projection'
 vi.mock('react-konva', () => {
   const React = require('react')
 
-  // Forward all data-* and event props so tests can inspect them
   const makeNode = (defaultTestId: string) => {
     const Comp: React.FC<Record<string, unknown>> = (props) => {
       const domProps: Record<string, unknown> = {}
       for (const [k, v] of Object.entries(props)) {
-        if (k.startsWith('data-') || k === 'onClick' || k === 'onMouseMove' ||
-            k === 'name' || k === 'children') {
+        if (
+          k.startsWith('data-') ||
+          k === 'onClick' ||
+          k === 'onMouseMove' ||
+          k === 'name' ||
+          k === 'children'
+        ) {
           domProps[k] = v
         }
       }
@@ -42,21 +53,28 @@ vi.mock('react-konva', () => {
     return Comp
   }
 
-  const Layer: React.FC<{ children?: React.ReactNode; name?: string; [k: string]: unknown }> =
-    ({ children, name, ...rest }) =>
-      React.createElement('div', {
-        'data-testid': 'konva-layer',
-        'data-name': name,
-        ...rest,
-      }, children)
+  const Layer: React.FC<{ children?: React.ReactNode; name?: string; [k: string]: unknown }> = ({
+    children,
+    name,
+    ...rest
+  }) =>
+    React.createElement(
+      'div',
+      { 'data-testid': 'konva-layer', 'data-name': name, ...rest },
+      children,
+    )
 
-  const Group: React.FC<{ children?: React.ReactNode; name?: string; 'data-testid'?: string; [k: string]: unknown }> =
-    ({ children, name, 'data-testid': testid, ...rest }) =>
-      React.createElement('div', {
-        'data-testid': testid ?? 'konva-group',
-        'data-name': name,
-        ...rest,
-      }, children)
+  const Group: React.FC<{
+    children?: React.ReactNode
+    name?: string
+    'data-testid'?: string
+    [k: string]: unknown
+  }> = ({ children, name, 'data-testid': testid, ...rest }) =>
+    React.createElement(
+      'div',
+      { 'data-testid': testid ?? 'konva-group', 'data-name': name, ...rest },
+      children,
+    )
 
   return {
     Layer,
@@ -75,47 +93,28 @@ const mockSelectTool = vi.fn()
 let mockEditLog: unknown[] = []
 let mockVertices: Record<string, { lat: number; lon: number }> = {}
 
-vi.mock('../../../stores/useEditorStore', () => ({
-  useEditorStore: (selector: (s: unknown) => unknown) =>
+// getState / setState captured on the mock so PenDrawLayer's imperative calls work
+const mockGetState = vi.fn(() => ({
+  editLog: mockEditLog,
+  vertices: mockVertices,
+  setVerticesAndLog: mockSetVerticesAndLog,
+  selectTool: mockSelectTool,
+}))
+const mockSetState = vi.fn()
+
+vi.mock('../../../stores/useEditorStore', async (importOriginal) => {
+  const actual = (await importOriginal()) as Record<string, unknown>
+  const storeSelector = (selector: (s: unknown) => unknown) =>
     selector({
       editLog: mockEditLog,
       vertices: mockVertices,
       setVerticesAndLog: mockSetVerticesAndLog,
       selectTool: mockSelectTool,
       activeTool: 'P',
-    }),
-  // expose getState for the create-commit path
-  useEditorStore_getState: () => ({
-    editLog: mockEditLog,
-    vertices: mockVertices,
-    setVerticesAndLog: mockSetVerticesAndLog,
-    selectTool: mockSelectTool,
-  }),
-}))
-
-// Make getState available (PenDrawLayer calls useEditorStore.getState().setVerticesAndLog)
-vi.mock('../../../stores/useEditorStore', async (importOriginal) => {
-  const actual = await importOriginal() as Record<string, unknown>
-  const store: Record<string, unknown> = {
-    ...(actual ?? {}),
-    useEditorStore: (selector: (s: unknown) => unknown) =>
-      selector({
-        editLog: mockEditLog,
-        vertices: mockVertices,
-        setVerticesAndLog: mockSetVerticesAndLog,
-        selectTool: mockSelectTool,
-        activeTool: 'P',
-      }),
-  }
-  // Attach getState for imperative calls inside PenDrawLayer
-  ;(store.useEditorStore as unknown as Record<string, unknown>).getState = () => ({
-    editLog: mockEditLog,
-    vertices: mockVertices,
-    setVerticesAndLog: mockSetVerticesAndLog,
-    selectTool: mockSelectTool,
-  })
-  ;(store.useEditorStore as unknown as Record<string, unknown>).setState = vi.fn()
-  return store
+    })
+  ;(storeSelector as unknown as Record<string, unknown>).getState = mockGetState
+  ;(storeSelector as unknown as Record<string, unknown>).setState = mockSetState
+  return { ...(actual ?? {}), useEditorStore: storeSelector }
 })
 
 // ── mock fetch for /editor/country ───────────────────────────────────────────
@@ -123,6 +122,10 @@ const mockFetch = vi.fn()
 global.fetch = mockFetch
 
 // ── projection fixture ────────────────────────────────────────────────────────
+// lon ∈ [-10, 10], lat ∈ [30, 50], mapW=mapH=1000
+// geoToCanvas(lon, lat): x=(lon-lonMin)*lonScale/span*1000; y=(1-(lat-30)/20)*1000
+// At lonScale=cos(40°)≈0.766, span=20*0.766=15.32:
+//   lon=-9 → x≈(1/15.32)*0.766*1000≈50; lat=40 → y=(1-10/20)*1000=500
 const PROJECTION: ProjectionConfig = {
   lonMin: -10,
   lonMax: 10,
@@ -134,7 +137,8 @@ const PROJECTION: ProjectionConfig = {
 }
 
 // ── neighbor candidate fixtures ───────────────────────────────────────────────
-// A simple square barony feature with condado_idx, duchy_id, kingdom_id
+// Vertices at lon=-9,lat=40 → canvas ≈ (50, 500). For T4, we use EMPTY neighbors
+// so no vertex snap triggers extendMode; the neighbor's contour is far from test clicks.
 const NEIGHBOR_FEATURES = [
   {
     type: 'Feature' as const,
@@ -148,9 +152,15 @@ const NEIGHBOR_FEATURES = [
     },
     geometry: {
       type: 'Polygon' as const,
-      coordinates: [[
-        [-9, 40], [-8, 40], [-8, 41], [-9, 41], [-9, 40],
-      ]],
+      coordinates: [
+        [
+          [-9, 40],
+          [-8, 40],
+          [-8, 41],
+          [-9, 41],
+          [-9, 40],
+        ],
+      ],
     },
   },
 ]
@@ -160,8 +170,17 @@ const NEIGHBOR_FEATURES = [
 function resetMocks() {
   mockSetVerticesAndLog.mockReset()
   mockSelectTool.mockReset()
+  mockGetState.mockReset()
+  mockSetState.mockReset()
   mockEditLog = []
   mockVertices = {}
+  // Update mockGetState to return fresh mockEditLog/Vertices
+  mockGetState.mockImplementation(() => ({
+    editLog: mockEditLog,
+    vertices: mockVertices,
+    setVerticesAndLog: mockSetVerticesAndLog,
+    selectTool: mockSelectTool,
+  }))
   mockFetch.mockResolvedValue({
     ok: true,
     json: async () => ({ country: 'PT' }),
@@ -169,13 +188,10 @@ function resetMocks() {
 }
 
 // ── import component AFTER mocks ──────────────────────────────────────────────
-// (Vitest hoists vi.mock calls, so this is safe)
-
 let PenDrawLayer: typeof import('../PenDrawLayer').PenDrawLayer
 
 beforeEach(async () => {
   resetMocks()
-  // Dynamic import to ensure mocks are applied
   vi.resetModules()
   const mod = await import('../PenDrawLayer')
   PenDrawLayer = mod.PenDrawLayer
@@ -184,8 +200,7 @@ beforeEach(async () => {
 // ── tests ─────────────────────────────────────────────────────────────────────
 
 describe('PenDrawLayer (PEN-CURVE-01, PEN-CREATE-01, PEN-EXTEND-01, PEN-ASSIGN-01)', () => {
-
-  // T1: Root Group with name/testid 'pen-draw-layer' renders
+  // T1: Root Group renders with correct testid
   it('T1: renders root Group with name="pen-draw-layer" and data-testid="pen-draw-layer"', () => {
     const { getByTestId } = render(
       <PenDrawLayer
@@ -194,13 +209,13 @@ describe('PenDrawLayer (PEN-CURVE-01, PEN-CREATE-01, PEN-EXTEND-01, PEN-ASSIGN-0
         neighborCandidates={NEIGHBOR_FEATURES}
         onPathClosed={vi.fn()}
         onDrawingStateChange={vi.fn()}
-      />
+      />,
     )
     const layer = getByTestId('pen-draw-layer')
     expect(layer).toBeTruthy()
   })
 
-  // T2: click places first anchor; second click reveals rubber-band
+  // T2: rubber-band appears after placing 2 anchors + mousemove
   it('T2: click places anchor; second click + mousemove shows rubber-band (pen-rubber-band testid)', async () => {
     const { getByTestId, queryByTestId } = render(
       <PenDrawLayer
@@ -209,26 +224,23 @@ describe('PenDrawLayer (PEN-CURVE-01, PEN-CREATE-01, PEN-EXTEND-01, PEN-ASSIGN-0
         neighborCandidates={NEIGHBOR_FEATURES}
         onPathClosed={vi.fn()}
         onDrawingStateChange={vi.fn()}
-      />
+      />,
     )
     const layer = getByTestId('pen-draw-layer')
-    // First click — place first anchor
     await act(async () => {
       fireEvent.click(layer, { clientX: 200, clientY: 300 })
     })
-    // Second click — place second anchor
     await act(async () => {
       fireEvent.click(layer, { clientX: 300, clientY: 400 })
     })
-    // MouseMove — sets cursorPos, which activates the rubber-band
     await act(async () => {
       fireEvent.mouseMove(layer, { clientX: 350, clientY: 450 })
     })
     expect(queryByTestId('pen-rubber-band')).not.toBeNull()
   })
 
-  // T3: cursor within snap radius shows pen-snap-vertex marker
-  it('T3: mouse move near neighbor vertex shows pen-snap-vertex marker', () => {
+  // T3: snap-vertex marker appears on mousemove near a neighbor vertex
+  it('T3: mousemove near neighbor vertex shows pen-snap-vertex marker', async () => {
     const { getByTestId, queryByTestId } = render(
       <PenDrawLayer
         projection={PROJECTION}
@@ -236,96 +248,177 @@ describe('PenDrawLayer (PEN-CURVE-01, PEN-CREATE-01, PEN-EXTEND-01, PEN-ASSIGN-0
         neighborCandidates={NEIGHBOR_FEATURES}
         onPathClosed={vi.fn()}
         onDrawingStateChange={vi.fn()}
-      />
+      />,
     )
-    // Move cursor to world (lat=40, lon=-9) — near the neighbor vertex at (-9, 40)
-    // In canvas px: geoToCanvas(-9, 40, PROJ) ≈ (25, 500)
     const layer = getByTestId('pen-draw-layer')
-    fireEvent.mouseMove(layer, { clientX: 25, clientY: 500 })
-    // Snap marker should be visible (within 12/1 = 12 world units of vertex)
-    const marker = queryByTestId('pen-snap-vertex')
-    // marker is conditional — we assert based on snapping logic
-    // (If the cursor world pos is close enough, it shows)
-    // Since jsdom has no canvas, we verify the component doesn't crash on mouseMove
-    expect(layer).toBeTruthy()
+    // Move to (clientX=50, clientY=500) — canvasToGeo(50,500,PROJ) lands near lon=-9,lat=40
+    // which is the neighbor vertex. Distance ~ 0 world units → within 12/1=12 tol.
+    await act(async () => {
+      fireEvent.mouseMove(layer, { clientX: 50, clientY: 500 })
+    })
+    expect(queryByTestId('pen-snap-vertex')).not.toBeNull()
   })
 
-  // T4: closing path on first anchor with ≥3 anchors fires onPathClosed + commits create op
-  it('T4: close on first anchor (≥3 anchors) fires onPathClosed and commits ONE create op', async () => {
+  // T4: CREATE — close with ≥3 anchors (no neighbor snap) → ONE op:'create' committed
+  it('T4: close on first anchor (≥3 anchors, no neighbor snap) commits ONE op:create with closed ring', async () => {
     const onPathClosed = vi.fn()
-    const onDrawingStateChange = vi.fn()
 
     const { getByTestId } = render(
       <PenDrawLayer
         projection={PROJECTION}
         currentScale={1}
-        neighborCandidates={NEIGHBOR_FEATURES}
-        onPathClosed={onPathClosed}
-        onDrawingStateChange={onDrawingStateChange}
-        projectId="proj-1"
-        branchId="branch-1"
-      />
-    )
-
-    const layer = getByTestId('pen-draw-layer')
-
-    // Place 3 anchors at distinct positions
-    await act(async () => {
-      fireEvent.click(layer, { clientX: 100, clientY: 200 }) // anchor 0
-      fireEvent.click(layer, { clientX: 300, clientY: 200 }) // anchor 1
-      fireEvent.click(layer, { clientX: 200, clientY: 400 }) // anchor 2
-    })
-
-    // Close: click near the first anchor (trigger close)
-    await act(async () => {
-      fireEvent.click(layer, { clientX: 100, clientY: 200, shiftKey: false })
-    })
-
-    // setVerticesAndLog should have been called once with op:'create'
-    // (or onPathClosed called — the component handles commit internally)
-    // In either case, the component should not crash
-    expect(layer).toBeTruthy()
-  })
-
-  // T5: validation fails with 2 anchors → pen-validation-error shown, NO create op
-  it('T5: closing with only 2 anchors shows pen-validation-error, does NOT commit create op', async () => {
-    const onPathClosed = vi.fn()
-
-    const { getByTestId, queryByTestId } = render(
-      <PenDrawLayer
-        projection={PROJECTION}
-        currentScale={1}
-        neighborCandidates={NEIGHBOR_FEATURES}
+        neighborCandidates={[]}  // empty — no snap, pure CREATE mode
         onPathClosed={onPathClosed}
         onDrawingStateChange={vi.fn()}
         projectId="proj-1"
         branchId="branch-1"
-      />
+      />,
     )
-
     const layer = getByTestId('pen-draw-layer')
 
-    // Place only 2 anchors
+    // Clicks in the INTERIOR of the canvas (far from edges and any barony vertices)
+    // clientX/clientY are used directly as canvas px by canvasToGeo in jsdom
+    // Position a triangle far from any snap target (center of canvas area)
     await act(async () => {
-      fireEvent.click(layer, { clientX: 100, clientY: 200 }) // anchor 0
-      fireEvent.click(layer, { clientX: 300, clientY: 200 }) // anchor 1
+      fireEvent.click(layer, { clientX: 400, clientY: 400 }) // anchor 0
+    })
+    await act(async () => {
+      fireEvent.click(layer, { clientX: 600, clientY: 400 }) // anchor 1
+    })
+    await act(async () => {
+      fireEvent.click(layer, { clientX: 500, clientY: 600 }) // anchor 2
+    })
+    // Close: click close to anchor 0 (within PEN_SNAP_PX=12px)
+    await act(async () => {
+      fireEvent.click(layer, { clientX: 401, clientY: 400 })
+    })
+    // Flush async (commitCreate awaits fetch /editor/country before setVerticesAndLog)
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0))
     })
 
-    // Try to close (click near first anchor — but only 2 anchors)
-    await act(async () => {
-      fireEvent.click(layer, { clientX: 100, clientY: 200 })
-    })
-
-    // NO create op committed
-    const createOpCalls = mockSetVerticesAndLog.mock.calls.filter(
-      (args) => args[1]?.op === 'create'
+    // onPathClosed should have been called
+    expect(onPathClosed).toHaveBeenCalled()
+    // setVerticesAndLog must have been called with op:'create'
+    const createCalls = mockSetVerticesAndLog.mock.calls.filter(
+      (args) => (args[1] as { op: string })?.op === 'create',
     )
-    expect(createOpCalls).toHaveLength(0)
+    expect(createCalls).toHaveLength(1)
+    // The ring must be present and closed
+    const ring = (createCalls[0][1] as { ring: unknown[] }).ring
+    expect(Array.isArray(ring)).toBe(true)
+    expect((ring as unknown[]).length).toBeGreaterThanOrEqual(3)
+    // allocated_original_idx must be null at commit time
+    expect((createCalls[0][1] as { allocated_original_idx: unknown }).allocated_original_idx).toBeNull()
+  })
 
-    // Validation error element should appear
-    // (pen-validation-error testid shown on invalid close)
-    // The exact selector depends on implementation; we check it doesn't crash
-    expect(layer).toBeTruthy()
+  // T5a: validation fails (2 anchors only) → NO create op
+  it('T5a: closing with only 2 anchors does NOT commit create op', async () => {
+    const { getByTestId } = render(
+      <PenDrawLayer
+        projection={PROJECTION}
+        currentScale={1}
+        neighborCandidates={[]}
+        onPathClosed={vi.fn()}
+        onDrawingStateChange={vi.fn()}
+        projectId="proj-1"
+        branchId="branch-1"
+      />,
+    )
+    const layer = getByTestId('pen-draw-layer')
+
+    await act(async () => {
+      fireEvent.click(layer, { clientX: 400, clientY: 400 }) // anchor 0
+    })
+    await act(async () => {
+      fireEvent.click(layer, { clientX: 600, clientY: 400 }) // anchor 1
+    })
+    // Try to close (only 2 anchors — fails validation)
+    await act(async () => {
+      fireEvent.click(layer, { clientX: 401, clientY: 400 })
+    })
+
+    const createCalls = mockSetVerticesAndLog.mock.calls.filter(
+      (args) => (args[1] as { op: string })?.op === 'create',
+    )
+    expect(createCalls).toHaveLength(0)
+  })
+
+  // T5b: validation fails (self-intersecting ring — butterfly shape) → NO create op
+  it('T5b: closing with self-intersecting ring does NOT commit create op', async () => {
+    const { getByTestId } = render(
+      <PenDrawLayer
+        projection={PROJECTION}
+        currentScale={1}
+        neighborCandidates={[]}
+        onPathClosed={vi.fn()}
+        onDrawingStateChange={vi.fn()}
+        projectId="proj-1"
+        branchId="branch-1"
+      />,
+    )
+    const layer = getByTestId('pen-draw-layer')
+
+    // Butterfly: (0,0)→(100,100)→(100,0)→(0,100) — segments cross each other
+    // In canvas px (far from snap targets):
+    await act(async () => {
+      fireEvent.click(layer, { clientX: 400, clientY: 400 }) // anchor 0
+    })
+    await act(async () => {
+      fireEvent.click(layer, { clientX: 600, clientY: 600 }) // anchor 1
+    })
+    await act(async () => {
+      fireEvent.click(layer, { clientX: 600, clientY: 400 }) // anchor 2
+    })
+    await act(async () => {
+      fireEvent.click(layer, { clientX: 400, clientY: 600 }) // anchor 3 — creates an X
+    })
+    // Close
+    await act(async () => {
+      fireEvent.click(layer, { clientX: 401, clientY: 400 })
+    })
+
+    const createCalls = mockSetVerticesAndLog.mock.calls.filter(
+      (args) => (args[1] as { op: string })?.op === 'create',
+    )
+    expect(createCalls).toHaveLength(0)
+  })
+
+  // T5c: validation fails (tiny area — collinear/near-zero area ring) → NO create op
+  it('T5c: closing with near-zero area does NOT commit create op', async () => {
+    const { getByTestId } = render(
+      <PenDrawLayer
+        projection={PROJECTION}
+        currentScale={1}
+        neighborCandidates={[]}
+        onPathClosed={vi.fn()}
+        onDrawingStateChange={vi.fn()}
+        projectId="proj-1"
+        branchId="branch-1"
+      />,
+    )
+    const layer = getByTestId('pen-draw-layer')
+
+    // Nearly collinear triangle with tiny area (< MIN_AREA_PX2=200)
+    // Points: (400,400), (401,400), (400,401) — area = 0.5 px² << 200
+    await act(async () => {
+      fireEvent.click(layer, { clientX: 400, clientY: 400 }) // anchor 0
+    })
+    await act(async () => {
+      fireEvent.click(layer, { clientX: 401, clientY: 400 }) // anchor 1 — 1px away
+    })
+    await act(async () => {
+      fireEvent.click(layer, { clientX: 400, clientY: 401 }) // anchor 2 — 1px away
+    })
+    // Close
+    await act(async () => {
+      fireEvent.click(layer, { clientX: 400, clientY: 400 }) // exactly on anchor 0
+    })
+
+    const createCalls = mockSetVerticesAndLog.mock.calls.filter(
+      (args) => (args[1] as { op: string })?.op === 'create',
+    )
+    expect(createCalls).toHaveLength(0)
   })
 
   // T6: mid-draw Ctrl+Z removes last anchor; editLog unchanged
@@ -334,33 +427,28 @@ describe('PenDrawLayer (PEN-CURVE-01, PEN-CREATE-01, PEN-EXTEND-01, PEN-ASSIGN-0
       <PenDrawLayer
         projection={PROJECTION}
         currentScale={1}
-        neighborCandidates={NEIGHBOR_FEATURES}
+        neighborCandidates={[]}
         onPathClosed={vi.fn()}
         onDrawingStateChange={vi.fn()}
-      />
+      />,
     )
-
     const layer = getByTestId('pen-draw-layer')
 
-    // Place 3 anchors
     await act(async () => {
-      fireEvent.click(layer, { clientX: 100, clientY: 200 })
-      fireEvent.click(layer, { clientX: 300, clientY: 200 })
-      fireEvent.click(layer, { clientX: 200, clientY: 400 })
+      fireEvent.click(layer, { clientX: 400, clientY: 400 })
+      fireEvent.click(layer, { clientX: 600, clientY: 400 })
+      fireEvent.click(layer, { clientX: 500, clientY: 600 })
     })
-
-    // Ctrl+Z mid-draw (component-local, not zundo)
+    // Ctrl+Z mid-draw (component-local)
     await act(async () => {
       fireEvent.keyDown(window, { key: 'z', ctrlKey: true, code: 'KeyZ' })
     })
 
-    // Store editLog must remain empty (no setVerticesAndLog called yet)
+    // No store write — setVerticesAndLog must not have been called
     expect(mockSetVerticesAndLog).not.toHaveBeenCalled()
-    // Component should still be mounted (not crashed)
-    expect(layer).toBeTruthy()
   })
 
-  // T7: Esc clears anchors and calls onDrawingStateChange(false)
+  // T7: Esc calls onDrawingStateChange(false)
   it('T7: Esc during drawing calls onDrawingStateChange(false) and discards path', async () => {
     const onDrawingStateChange = vi.fn()
 
@@ -368,60 +456,66 @@ describe('PenDrawLayer (PEN-CURVE-01, PEN-CREATE-01, PEN-EXTEND-01, PEN-ASSIGN-0
       <PenDrawLayer
         projection={PROJECTION}
         currentScale={1}
-        neighborCandidates={NEIGHBOR_FEATURES}
+        neighborCandidates={[]}
         onPathClosed={vi.fn()}
         onDrawingStateChange={onDrawingStateChange}
-      />
+      />,
     )
-
     const layer = getByTestId('pen-draw-layer')
 
-    // Start drawing
     await act(async () => {
-      fireEvent.click(layer, { clientX: 100, clientY: 200 })
-      fireEvent.click(layer, { clientX: 300, clientY: 200 })
+      fireEvent.click(layer, { clientX: 400, clientY: 400 })
+      fireEvent.click(layer, { clientX: 600, clientY: 400 })
     })
-
-    // Press Escape
     await act(async () => {
       fireEvent.keyDown(window, { key: 'Escape', code: 'Escape' })
     })
 
-    // onDrawingStateChange(false) should have been called
     const falseCall = onDrawingStateChange.mock.calls.find((args) => args[0] === false)
     expect(falseCall).toBeDefined()
   })
 
-  // T8: EXTEND — first anchor snapped to contour vertex → commit is NOT op:'create'
-  it('T8: EXTEND mode (first anchor snapped to contour) does NOT log op:create', async () => {
-    // This tests the EXTEND contract: when the first anchor snaps to an existing barony vertex,
-    // closing the path should produce vertex add/move ops, not a new 'create' op.
-    // In unit tests with mocked jsdom, we verify that:
-    //   - setVerticesAndLog is NOT called with op:'create' if EXTEND mode is detected
-    //   - The component handles the extend path without crashing
-
+  // T8: EXTEND — first anchor snaps to neighbor vertex → extendMode detected; no op:'create'
+  // EXTEND graft is acknowledged as a stub (Plan 06 UAT) but the contract is:
+  //   - if extendMode is active, op:'create' must NOT be committed
+  //   - the component must not crash
+  it('T8: EXTEND mode (first anchor snapped to contour vertex) does NOT commit op:create', async () => {
+    // Place first anchor EXACTLY on a neighbor vertex canvas coordinate (~50, 500)
+    // so snap fires (distance 0 < 12 tol at stageScale=1)
     const { getByTestId } = render(
       <PenDrawLayer
         projection={PROJECTION}
         currentScale={1}
-        neighborCandidates={NEIGHBOR_FEATURES}
+        neighborCandidates={NEIGHBOR_FEATURES} // has vertex at lon=-9,lat=40 → ~(50,500)
         onPathClosed={vi.fn()}
         onDrawingStateChange={vi.fn()}
         projectId="proj-1"
         branchId="branch-1"
-        // Simulate first-anchor-snap-to-contour via extendStartBaronyId
-        // (component uses this to detect EXTEND mode when first anchor drops on contour)
-      />
+      />,
     )
-
     const layer = getByTestId('pen-draw-layer')
 
-    // Component renders without crash — EXTEND path is exercised in Plan 06 Playwright UAT
-    // This unit test ensures the component contract: if extendMode is true, no 'create' op
-    expect(layer).toBeTruthy()
-    // No create op from an EXTEND sequence (asserted by absence)
+    // First click exactly on neighbor vertex (canvas px 50, 500) → extendMode=true
+    await act(async () => {
+      fireEvent.click(layer, { clientX: 50, clientY: 500 }) // anchor 0, snapped to barony vertex
+    })
+    await act(async () => {
+      fireEvent.click(layer, { clientX: 300, clientY: 500 }) // anchor 1
+    })
+    await act(async () => {
+      fireEvent.click(layer, { clientX: 200, clientY: 700 }) // anchor 2
+    })
+    // Close
+    await act(async () => {
+      fireEvent.click(layer, { clientX: 51, clientY: 500 }) // near anchor 0
+    })
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0))
+    })
+
+    // MUST NOT have committed op:'create'
     const createCalls = mockSetVerticesAndLog.mock.calls.filter(
-      (c) => c[1]?.op === 'create'
+      (args) => (args[1] as { op: string })?.op === 'create',
     )
     expect(createCalls).toHaveLength(0)
   })
