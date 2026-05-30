@@ -81,6 +81,12 @@ interface BaronyFeature {
     // (pre-Phase 04.1) may lack the field; downstream code falls back to
     // undefined rather than crashing.
     centroid?: [number, number]
+    // Phase 08.3 Plan 02 (PEN-ASSIGN-01): hierarchy fields added to the backend
+    // barony emitter. Optional so old artifacts on disk (pre-08.3) lack them;
+    // downstream falls back to undefined, mirroring the existing `centroid?` pattern.
+    condado_idx?: number
+    duchy_id?: string
+    kingdom_id?: string
   }
 }
 
