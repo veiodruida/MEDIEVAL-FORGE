@@ -425,8 +425,9 @@ def run_pipeline(cfg: RegionConfig, project_id: Optional[str] = None) -> None:
     _emit(cfg, "manual_edit", "start")
     _token("manual_edit")
     _prev_loader = cfg.snapshot_loader  # preserve caller-injected loader
+    barony_name_to_idx = {b["name"]: i for i, b in enumerate(bars)}
     try:
-        result = _manual_edit.compute(result, cfg)
+        result = _manual_edit.compute(result, cfg, barony_name_to_idx=barony_name_to_idx)
     finally:
         cfg.snapshot_loader = _prev_loader  # restore (clear if was None)
     _cache_put("manual_edit", result)
@@ -648,8 +649,9 @@ def run_pipeline_incremental(cfg: RegionConfig, project_id: str) -> list[str]:
         _emit(cfg, "manual_edit", "start")
         print("[INC] manual_edit recomputing...")
         _prev_loader = cfg.snapshot_loader  # preserve caller-injected loader
+        barony_name_to_idx = {b["name"]: i for i, b in enumerate(bars)}
         try:
-            result = _manual_edit.compute(result, cfg)
+            result = _manual_edit.compute(result, cfg, barony_name_to_idx=barony_name_to_idx)
         finally:
             cfg.snapshot_loader = _prev_loader  # restore (T-08-07c-02 serialisability)
         cache_put(project_id, cfg.branch_id, "manual_edit", tokens["manual_edit"], result)
