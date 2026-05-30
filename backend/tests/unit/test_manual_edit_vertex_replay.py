@@ -252,7 +252,6 @@ def test_round_trip_identity_unedited_real_iberia_barony_ring_is_byte_equal_to_r
 # GROUP B: vertex-replay behaviour (skip-marked until Plan 02 lands)
 # ---------------------------------------------------------------------------
 
-@pytest.mark.skip(reason="Wave 1: replay not yet implemented in compute()")
 def test_move_op_re_rasterises_edited_barony_ring_pixels_differ_from_identity():
     """BEZ-CONV-01: move op triggers ring re-rasterisation; mask differs from identity.
 
@@ -305,7 +304,6 @@ def test_move_op_re_rasterises_edited_barony_ring_pixels_differ_from_identity():
     )
 
 
-@pytest.mark.skip(reason="Wave 1: replay not yet implemented in compute()")
 def test_add_op_grows_barony_ring():
     """BEZ-CONV-02: add op appends vertex to ring; mask area grows or shifts."""
     from medieval_forge.services.pipeline.manual_edit import compute
@@ -335,7 +333,6 @@ def test_add_op_grows_barony_ring():
     )
 
 
-@pytest.mark.skip(reason="Wave 1: replay not yet implemented in compute()")
 def test_multi_delete_op_shrinks_barony_ring():
     """BEZ-CONV-02: multi_delete op removes vertex from ring; mask changes."""
     from medieval_forge.services.pipeline.manual_edit import compute
@@ -363,7 +360,6 @@ def test_multi_delete_op_shrinks_barony_ring():
     )
 
 
-@pytest.mark.skip(reason="Wave 1: replay not yet implemented in compute()")
 def test_barony_name_to_idx_built_from_bars_not_frontend():
     """BEZ-CONV-01: compute() uses the passed barony_name_to_idx param (NOT a snapshot field).
 
@@ -406,7 +402,6 @@ def test_barony_name_to_idx_built_from_bars_not_frontend():
 # skip-marked until Wave 1 lands
 # ---------------------------------------------------------------------------
 
-@pytest.mark.skip(reason="Wave 1: BEZ-CONV-04 guard not yet implemented in compute()")
 def test_landmask_only_branch_with_nonempty_hash_returns_byte_identical():
     """BEZ-CONV-04 discriminator: a branch with a non-empty manual_edit_log_hash
     but ZERO vertex ops (only landmask_replace ops) must return byte-identical output.

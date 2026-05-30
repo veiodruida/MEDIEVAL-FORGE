@@ -36,7 +36,35 @@ from shapely.ops import unary_union
 from .contracts import RegionConfig
 
 
-def compute(input_array: np.ndarray, cfg: RegionConfig) -> np.ndarray:
+# ---------------------------------------------------------------------------
+# Plan 08.2-02: coordinate conversion for ring re-rasterisation.
+# geo_to_pixel (contracts.py:185) uses int() truncation, which causes ~34px
+# drift per barony ring.  This helper uses round() + rasterio y-flip so the
+# reconstructed ring is byte-equal to the source ring.  See Wave 0 decision
+# "A1 Coordinate Contract" and test _lonlat_to_rasterio_xy.
+# geo_to_pixel is parity-frozen and MUST NOT be modified.
+# ---------------------------------------------------------------------------
+
+def _lonlat_to_rasterio_xy(lon: float, lat: float, cfg: RegionConfig,
+                            W: int, H: int) -> tuple[float, float]:
+    """Convert WGS84 lon/lat to rasterio world (x, rasterio_y) using round().
+
+    from_bounds(0,0,W,H,W,H) defines a coordinate system where:
+    - x grows left→right (0 = left edge, W = right edge)
+    - rasterio_y grows bottom→top (0 = bottom, H = top)
+
+    py_row (0=top, grows DOWN) is converted: rasterio_y = H - py_row.
+    CRITICAL: round() NOT int() — int() causes ~34px drift (A1 contract).
+    """
+    span = (cfg.lon_max - cfg.lon_min) * cfg.lon_scale
+    x = round((lon - cfg.lon_min) * cfg.lon_scale / span * W)
+    py_row = round((1.0 - (lat - cfg.lat_min) / (cfg.lat_max - cfg.lat_min)) * H)
+    rasterio_y = H - py_row
+    return (x, rasterio_y)
+
+
+def compute(input_array: np.ndarray, cfg: RegionConfig,
+            barony_name_to_idx: dict[str, int] | None = None) -> np.ndarray:
     """D-17 closure: edits are the OUTPUT of this stage (plan 08-07c BLOCKER-1 fix).
 
     Empty log_hash → identity (D-17 carry-forward; Iberia parity stays green).
@@ -46,11 +74,19 @@ def compute(input_array: np.ndarray, cfg: RegionConfig) -> np.ndarray:
     cell-centroid semantics; prevents sub-pixel aliasing that would break
     Unity byOriginalIdx shader).
 
+    Plan 08.2-02: barony_name_to_idx (optional) enables vertex-op replay.
+    Built backend-side from bars[] at both orchestrator call sites — NOT from
+    a snapshot field (A2/A4 eliminated). Only consumed when vertex ops are
+    present (Pitfall 4 — BEZ-CONV-04 discriminator).
+
     Args:
         input_array: int16 barony raster from the 'merge' stage (H×W).
         cfg: RegionConfig with manual_edit_log_hash, manual_edit_log_count,
              branch_id (for loader key), and snapshot_loader (injected by
              orchestrator; MUST NOT be None when log_hash is non-empty).
+        barony_name_to_idx: mapping {barony_name: raster_index} built from
+             bars[] by the orchestrator. Required for vertex-op replay;
+             None disables ring re-rasterisation (zero-edit path safe).
 
     Returns:
         Edited int16 raster (same shape as input_array).
@@ -73,9 +109,19 @@ def compute(input_array: np.ndarray, cfg: RegionConfig) -> np.ndarray:
 
     # Loader is keyed by branch_id (cfg.branch_id already exists per 08-01/contracts.py).
     snapshot = cfg.snapshot_loader(cfg.branch_id)
-    edit_log = snapshot.get("edit_log", [])
+    # Pitfall 0 (belt-and-suspenders): accept both snake_case and camelCase edit_log keys.
+    # snapshots.ts sends editLog (camelCase); the Apply handler normalises to edit_log, but
+    # the auto-snapshot path may use camelCase until Plan 03 lands.
+    edit_log = snapshot.get("edit_log") or snapshot.get("editLog") or []
     if not edit_log:
         return input_array
+
+    # Pitfall 4 (BEZ-CONV-04 discriminator): only enter ring re-rasterisation when the
+    # log contains vertex-level ops. A landmask-only branch (non-empty hash, zero vertex
+    # ops) must return byte-identical output; entering the rasterise-back path would
+    # degrade barony boundaries and break parity on landmask-only branches.
+    _VERTEX_OPS = frozenset({"move", "add", "delete", "multi_delete"})
+    vertex_ops_present = any(op.get("op") in _VERTEX_OPS for op in edit_log)
 
     # 1) Vectorise int16 raster into per-barony polygons.
     #    Use an affine derived from the raster dimensions — pipeline operates in
@@ -98,6 +144,7 @@ def compute(input_array: np.ndarray, cfg: RegionConfig) -> np.ndarray:
     # 2) Apply edit log in order via replay helpers (defined below in this module).
     #    /editor/apply (08-07) validates ops server-side BEFORE persisting, so any
     #    exception here is a bug — propagate it.
+    _geometry_modified = False  # tracks whether any op mutated polygons_by_id
     for op in edit_log:
         op_type = op["op"]
         if op_type == "split":
@@ -110,6 +157,7 @@ def compute(input_array: np.ndarray, cfg: RegionConfig) -> np.ndarray:
             child_id = int(op["allocated_original_idx"])
             polygons_by_id[parent_id] = [new_pieces[0]]
             polygons_by_id.setdefault(child_id, []).append(new_pieces[1])
+            _geometry_modified = True
         elif op_type == "merge":
             a_id, b_id = int(op["firstId"]), int(op["secondId"])
             a_polys = polygons_by_id.get(a_id, [])
@@ -119,14 +167,36 @@ def compute(input_array: np.ndarray, cfg: RegionConfig) -> np.ndarray:
             merged = replay_merge(a_polys[0], b_polys[0])
             polygons_by_id[a_id] = [merged]
             polygons_by_id[b_id] = []  # D-08: loser idx freed but NEVER reused
+            _geometry_modified = True
         elif op_type == "translate":
             poly_id = int(op["polygonId"])
             dLat, dLon = float(op["dLat"]), float(op["dLon"])
             polys = polygons_by_id.get(poly_id, [])
             if polys:
                 polygons_by_id[poly_id] = [replay_translate(p, dLat, dLon) for p in polys]
-        # vertex-level ops (move/add/delete) handled in follow-up plans;
-        # split/merge/translate scaffold the D-17 contract here.
+                _geometry_modified = True
+        # vertex-level ops (move/add/delete/multi_delete) are handled via
+        # ring re-rasterisation AFTER this loop (they carry no usable geometry
+        # in the op payload — the full ring is in snapshot.vertices).
+
+    # 2b) Ring re-rasterisation for vertex ops (Plan 08.2-02).
+    # Only entered when the log contains at least one vertex op AND the caller
+    # provided barony_name_to_idx (the authoritative backend-side mapping from bars[]).
+    # Guard: vertex_ops_present ensures landmask-only branches remain byte-identical
+    # (Pitfall 4 / BEZ-CONV-04).
+    vertices_dict = snapshot.get("vertices") or {}
+    if vertex_ops_present and barony_name_to_idx and vertices_dict:
+        barony_names = {k.split("#")[0] for k in vertices_dict if "#" in k}
+        for bname in barony_names:
+            replay_vertex_ring(bname, barony_name_to_idx, vertices_dict,
+                               polygons_by_id, cfg, W, H)
+        _geometry_modified = True
+
+    # Short-circuit: if no op modified geometry (e.g. landmask-only branch with
+    # non-empty hash — Pitfall 4 / BEZ-CONV-04), return input byte-identical.
+    # This avoids rasterio round-trip loss on branches that only carry landmask_replace.
+    if not _geometry_modified:
+        return input_array
 
     # 3) Rasterise back to int16.
     #    all_touched=False: standard cell-centroid semantics (Gemini LOW review).
@@ -254,4 +324,74 @@ def replay_translate(polygon: Polygon, d_lat: float, d_lon: float) -> Polygon:
     return shapely_translate(polygon, xoff=d_lon, yoff=d_lat)
 
 
-__all__ = ["compute", "manual_edit_token", "replay_split", "replay_merge", "replay_translate"]
+def replay_vertex_ring(
+    barony_name: str,
+    barony_name_to_idx: dict[str, int],
+    vertices_dict: dict[str, dict],
+    polygons_by_id: dict[int, list[Polygon]],
+    cfg: RegionConfig,
+    W: int,
+    H: int,
+) -> None:
+    """Plan 08.2-02: re-rasterise one barony ring from snapshot vertices.
+
+    Rebuilds the Shapely Polygon for `barony_name` from the vertices dict
+    (keys in the form "<baronyName>#<index>") and replaces the entry in
+    polygons_by_id so the rasterise-back step uses the updated geometry.
+
+    Coordinate conversion uses round() + rasterio y-flip (A1 contract).
+    geo_to_pixel (int() truncation) is parity-frozen and MUST NOT be used here.
+
+    Guards:
+    - Returns silently if barony_name not in barony_name_to_idx (unknown name).
+    - Pitfall 2: returns silently if fewer than 3 ring keys (degenerate ring).
+    - Returns silently if Shapely reports invalid or empty geometry.
+
+    Side-effects: mutates polygons_by_id[raster_idx] in-place.
+
+    This is a PURE FUNCTION modulo the polygons_by_id mutation — no DB, no HTTP.
+    """
+    raster_idx = barony_name_to_idx.get(barony_name)
+    if raster_idx is None:
+        return
+
+    ring_keys = sorted(
+        [k for k in vertices_dict if k.startswith(barony_name + "#")],
+        key=lambda x: int(x.split("#")[1]) if "#" in x else 0,
+    )
+
+    # Pitfall 2: degenerate ring guard — need at least 3 distinct vertices
+    if len(ring_keys) < 3:
+        return
+
+    pixel_coords = [
+        _lonlat_to_rasterio_xy(
+            vertices_dict[k]["lon"],
+            vertices_dict[k]["lat"],
+            cfg, W, H,
+        )
+        for k in ring_keys
+    ]
+
+    try:
+        poly = Polygon(pixel_coords)
+        # Attempt to heal self-intersections (e.g. non-convex rings with add/delete
+        # ops that produce a bowtie). buffer(0) is the canonical Shapely fix.
+        # Security: Pitfall 2 guard (len < 3) already rejects degenerate inputs.
+        if not poly.is_valid:
+            poly = poly.buffer(0)
+    except Exception:  # noqa: BLE001 — malformed ring; skip silently
+        return
+
+    if not poly.is_empty and poly.area > 0:
+        polygons_by_id[raster_idx] = [poly]
+
+
+__all__ = [
+    "compute",
+    "manual_edit_token",
+    "replay_split",
+    "replay_merge",
+    "replay_translate",
+    "replay_vertex_ring",
+]
