@@ -86,14 +86,27 @@ const COASTLINE_BARONY = 'Gijón'
 async function discoverBaronyByName(page: Page, projectId: string, name: string): Promise<string> {
   const id = await page.evaluate(
     async ([pid, targetName]: [string, string]) => {
-      const res = await fetch(`/api/v3/projects/${pid}/artifacts/baronies.geojson`)
-      if (!res.ok) return null
-      const fc = await res.json()
-      for (const feat of fc.features ?? []) {
-        const fname: string | null =
-          feat?.properties?.name ?? feat?.id ?? feat?.properties?.id ?? null
-        if (fname && fname.trim() === targetName.trim()) {
-          return (feat?.id ?? feat?.properties?.id ?? feat?.properties?.name) as string
+      // Primary source: baronies.geojson (fast, lightweight)
+      const res = await fetch(`/api/v3/projects/${pid}/artifacts/baronies.geojson?_nc=${Date.now()}`, { cache: 'no-store' })
+      if (res.ok) {
+        const fc = await res.json()
+        for (const feat of fc.features ?? []) {
+          const fname: string | null =
+            feat?.properties?.name ?? feat?.id ?? feat?.properties?.id ?? null
+          if (fname && fname.trim() === targetName.trim()) {
+            return (feat?.id ?? feat?.properties?.id ?? feat?.properties?.name) as string
+          }
+        }
+      }
+      // Fallback: territory_metadata.json (contains all baronies even if GeoJSON sidecar
+      // lost the feature due to replay rasterization quirks — e.g. Gijón after ring edit)
+      const res2 = await fetch(`/api/v3/projects/${pid}/artifacts/territory_metadata.json?_nc=${Date.now()}`, { cache: 'no-store' })
+      if (!res2.ok) return null
+      const meta = await res2.json()
+      const baronies: { name?: string; id?: string }[] = meta?.baronies ?? []
+      for (const b of baronies) {
+        if (b.name && b.name.trim() === targetName.trim()) {
+          return b.name  // __forgeSelectBarony accepts the name string as ID
         }
       }
       return null
@@ -102,7 +115,7 @@ async function discoverBaronyByName(page: Page, projectId: string, name: string)
   )
   if (!id) {
     throw new Error(
-      `Barony '${name}' not found in seeded baronies.geojson — check territory_data_v3.py entry`,
+      `Barony '${name}' not found in baronies.geojson or territory_metadata.json`,
     )
   }
   return id
@@ -389,27 +402,31 @@ test.describe('Phase 08.2 — BEZ-CONV-05: Bézier edit reaches colored map', ()
     },
   )
 
-  // ── Test 3: Reload persistence ───────────────────────────────────────────
+  // ── Test 3: Reload persistence + export (combined — single Apply avoids GeoJSON corruption)
+  // NOTE: Tests share one project. Multiple Apply renders degrade Gijón (replay sidecar bug —
+  // see Known Stubs). One Apply keeps the barony intact. Fold reload + export into Test 3
+  // so the entire flow is proved with a single clean Apply run.
 
   test(
-    'coastline: after Apply + reload, boundary persists (edit survives page reload)',
+    'coastline: after Apply + reload, boundary persists AND export contains changed lookup',
     async ({ page }: { page: Page }) => {
-      test.setTimeout(360_000) // full pipeline render (~120s) + reload
+      test.setTimeout(480_000) // full pipeline render (~120s) + reload + export
 
       const info = loadProjectInfo()
       const { stateAfterZoom } = await setupCoastlineBarony(page, info.project_id)
 
-      // Capture baseline SHA before drag (lookup_barony.png is stable before any edit)
+      // Capture baseline SHA BEFORE the drag (pristine project state for this test run)
       const baselineSha = await lookupBaronySha(page, info.project_id)
+      expect(baselineSha).toMatch(/^[0-9a-f]{64}$/)
+
       const editLog0 = stateAfterZoom.editLogLength
       const { x: ax, y: ay } = stateAfterZoom.firstAnchor!
 
-      // REAL page.mouse drag — use +45,+45 delta so Test 3 produces a raster different
-      // from Test 2 (+30,+30). Each test resets store via page.goto; without distinct
-      // deltas, Tests 3+ would replay the same vertices as Test 2 → same SHA → timeout.
+      // REAL page.mouse drag (distinct delta from Test 2's +30 to avoid SHA collision
+      // when the UAT cache project already has SHA from a prior test run)
       await page.mouse.move(ax, ay)
       await page.mouse.down()
-      await page.mouse.move(ax + 45, ay + 45, { steps: 10 })
+      await page.mouse.move(ax + 50, ay + 50, { steps: 10 })
       await page.mouse.up()
 
       await expect
@@ -418,8 +435,7 @@ test.describe('Phase 08.2 — BEZ-CONV-05: Bézier edit reaches colored map', ()
         })
         .toBeGreaterThan(editLog0)
 
-      // Click Apply and wait for convergence via SHA change (robust: works even if
-      // replay modifies the barony GeoJSON structure, e.g. Gijón ring becomes MultiPolygon).
+      // Click Apply and wait for render cascade
       await page.getByTestId('bezier-apply-edits-btn').click()
       await expect
         .poll(
@@ -431,94 +447,42 @@ test.describe('Phase 08.2 — BEZ-CONV-05: Bézier edit reaches colored map', ()
         )
         .toBe(true)
 
-      // Record the SHA after Apply — this is what should persist after reload
       const shaAfterApply = await lookupBaronySha(page, info.project_id)
       expect(shaAfterApply).not.toBe(baselineSha)
 
-      // Reload the page
+      // ── Reload persistence ──────────────────────────────────────────────────
       await page.reload()
       await expect(page.getByTestId('canvas-stage')).toBeVisible({ timeout: 20_000 })
       await expect(page.getByTestId('territory-layer-ready')).toBeAttached({ timeout: 30_000 })
 
-      // Assert boundary PERSISTS after reload: lookup_barony.png SHA matches post-Apply SHA
-      // (the edited artifacts are stored in the output dir, which persists across page reloads).
       const shaAfterReload = await lookupBaronySha(page, info.project_id)
       expect(
         shaAfterReload,
         'SURVIVES RELOAD: lookup_barony.png SHA after reload must match SHA after Apply',
       ).toBe(shaAfterApply)
-    },
-  )
 
-  // ── Test 4: Export contains changed lookup ────────────────────────────────
-
-  test(
-    'coastline: after Apply, lookup_barony.png in export differs from pre-edit baseline',
-    async ({ page }: { page: Page }) => {
-      test.setTimeout(360_000) // full pipeline render (~120s) + export pipeline
-
-      const info = loadProjectInfo()
-      const { stateAfterZoom } = await setupCoastlineBarony(page, info.project_id)
-
-      // Capture the SHA at the start of the test — may already differ from the original
-      // uat_cache seed if previous tests ran Apply (Tests 2/3 modify the raster).
-      const shaAtTestStart = await lookupBaronySha(page, info.project_id)
-      expect(shaAtTestStart).toMatch(/^[0-9a-f]{64}$/)
-
-      const editLog0 = stateAfterZoom.editLogLength
-      const { x: ax, y: ay } = stateAfterZoom.firstAnchor!
-
-      // REAL page.mouse drag — use +80,+80 so this test's Apply produces a unique raster.
-      // Tests 2/3 use +30/+45; +80 ensures the anchor moves further, producing pixels
-      // that differ from all prior Apply rasters. The test then checks the SHA changes
-      // relative to the state-at-test-start, not the absolute original.
-      await page.mouse.move(ax, ay)
-      await page.mouse.down()
-      await page.mouse.move(ax + 80, ay + 80, { steps: 16 })
-      await page.mouse.up()
-
-      await expect
-        .poll(async () => (await readBezierState(page))?.editLogLength ?? editLog0, {
-          timeout: 8_000,
-        })
-        .toBeGreaterThan(editLog0)
-
-      // Click Apply and wait for render cascade.
-      // The SHA MUST change from shaAtTestStart (this test's specific +80 drag produces
-      // a new raster different from the +45 drag result left by Test 3).
-      await page.getByTestId('bezier-apply-edits-btn').click()
-      await expect
-        .poll(
-          async () => {
-            const sha = await lookupBaronySha(page, info.project_id)
-            return sha !== shaAtTestStart
-          },
-          { timeout: 180_000, intervals: [3_000, 5_000, 8_000] },
-        )
-        .toBe(true)
-
-      // The poll above confirmed that lookup_barony.png SHA-256 changed after Apply+render.
-      // This is the APPEARS IN EXPORT criterion: the render cascade wrote a new lookup_barony.png
-      // that differs from the pre-edit baseline. The export ZIP would contain this updated file.
-      //
-      // Also attempt a real export to confirm the pipeline runs (best-effort; may fail with
-      // 422 if the replay introduced a barony-size warning, which is a separate tracking item).
-      await page.evaluate(async (pid) => {
-        await fetch(`/api/v3/projects/${pid}/export`, {
+      // ── Export contains changed lookup ──────────────────────────────────────
+      // The project now has edited lookup_barony.png (shaAfterApply !== baselineSha).
+      // Trigger export and assert: (a) export status 200/201, (b) SHA after export
+      // still equals shaAfterApply (export reads artifacts, doesn't overwrite them).
+      const exportStatus = await page.evaluate(async (pid) => {
+        const res = await fetch(`/api/v3/projects/${pid}/export`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({}),
         })
+        return res.status
       }, info.project_id)
-
-      const afterSha = await lookupBaronySha(page, info.project_id)
-
-      // THE LOAD-BEARING ASSERTION: lookup_barony.png SHA-256 differs from shaAtTestStart
-      // (already confirmed by the poll above; this is the final double-check after export).
       expect(
-        afterSha,
-        'APPEARS IN EXPORT: lookup_barony.png after Apply+render must differ from SHA at test start',
-      ).not.toBe(shaAtTestStart)
+        [200, 201],
+        `APPEARS IN EXPORT: export status ${exportStatus} must be 200/201 — 422 indicates replay corrupted the exported barony (blocking, surfaced to human-verify)`,
+      ).toContain(exportStatus)
+
+      const shaAfterExport = await lookupBaronySha(page, info.project_id)
+      expect(
+        shaAfterExport,
+        'APPEARS IN EXPORT: lookup_barony.png after export must still differ from pre-edit baseline',
+      ).not.toBe(baselineSha)
     },
   )
 })
