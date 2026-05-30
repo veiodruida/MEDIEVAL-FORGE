@@ -2,6 +2,7 @@ import { Box, Button, Flex, IconButton, Text, Tooltip } from '@radix-ui/themes'
 import { ChevronLeftIcon, MixerHorizontalIcon } from '@radix-ui/react-icons'
 import { Link } from 'react-router-dom'
 import { GenerateStatusBadge } from './GenerateStatusBadge'
+import { BezierApplyControls } from './BezierApplyControls'
 import type { Project } from '../../api/client'
 import type { PipelineStage, RunState } from '../../stores/useRunStore'
 import { usePipelineParams } from '../../stores/usePipelineParams'
@@ -173,6 +174,17 @@ export function WorkspaceToolbar({
               Bound to useEditorStore.activeTool/selectTool — same state as keyboard shortcuts.
               Phase 08.1: disabledTools threads the Bézier-mode-derived A/D disable set. */}
           <EditToolPalette disabledTools={disabledTools} />
+
+          {/* Phase 08.2 Plan 03: Apply Edits control group (Switch + Badge + Apply button).
+              Visibility predicate: editableLayer==='baronies' && activeTerritoryId !== null && activeTool==='V'
+              Placed BETWEEN EditToolPalette and Undo/Redo per UI-SPEC §"Toolbar Layout". */}
+          {bezierMode && project && (
+            <BezierApplyControls
+              projectId={project.id}
+              branchId={activeBranchId}
+              isRunning={isRunning}
+            />
+          )}
 
           {/* Undo/Redo buttons with dynamic tooltip from undoLabels/redoLabels (Gemini review) */}
           <Tooltip content={undoTooltip}>

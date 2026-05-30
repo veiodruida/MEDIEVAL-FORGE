@@ -68,6 +68,8 @@ interface MockState {
   activeTerritoryId: string | null
   activeTool: 'V' | 'A' | 'D' | 'S' | 'M' | null
   vertices: Record<string, { lat: number; lon: number }>
+  // Phase 08.2 Plan 03: editLog included in mock for overlay clear-on-converge guard
+  editLog: unknown[]
 }
 let mockState: MockState
 vi.mock('../../../stores/useEditorStore', () => ({
@@ -103,6 +105,10 @@ beforeEach(() => {
     activeTerritoryId: 'b1',
     activeTool: 'V',
     vertices: ringVertices(),
+    // Phase 08.2 Plan 03: editLog must be non-empty for the overlay guard to pass
+    // (editLog.length > 0 is the clear-on-converge guard added in this plan).
+    // Existing tests that check overlay presence use at least one edit op here.
+    editLog: [{ op: 'move', ts: 1000 }],
   }
 })
 

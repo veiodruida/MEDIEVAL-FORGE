@@ -74,6 +74,8 @@ interface MockState {
   activeTerritoryId: string | null
   activeTool: 'V' | 'A' | 'D' | 'S' | 'M' | null
   vertices: Record<string, { lat: number; lon: number }>
+  // Phase 08.2 Plan 03: editLog required for overlay clear-on-converge guard
+  editLog: unknown[]
 }
 let mockState: MockState
 const setVerticesAndLog = vi.fn()
@@ -128,6 +130,8 @@ beforeEach(() => {
     activeTerritoryId: 'b1',
     activeTool: 'V',
     vertices: ringVertices(),
+    // Phase 08.2 Plan 03: editLog must be non-empty for overlay guard to pass
+    editLog: [{ op: 'move', ts: 1000 }],
   }
 })
 

@@ -244,6 +244,9 @@ export const BezierEditLayer: React.FC<BezierEditLayerProps> = ({ projection, cu
   const activeTerritoryId = useEditorStore((s) => s.activeTerritoryId)
   const activeTool = useEditorStore((s) => s.activeTool)
   const vertices = useEditorStore((s) => s.vertices)
+  // Phase 08.2 Plan 03: overlay clear-on-converge guard (UI-SPEC §"Overlay-clear-on-converge")
+  // Overlay hides when editLog is empty (after Apply cascade clears it via temporal.pause → setState → resume)
+  const editLog = useEditorStore((s) => s.editLog)
 
   const vertexCount = Object.keys(vertices).length
 
@@ -866,8 +869,12 @@ export const BezierEditLayer: React.FC<BezierEditLayerProps> = ({ projection, cu
             amber (#f0c040) + dashed [6,4] + faint amber fill → "unsaved edit" affordance.
           Screen-space stroke via currentScale (Plan 07 pattern): constant ~2.5px on-screen.
           listening=false: the overlay is read-only, never participates in hit-testing.
-          Guard: editedRingPts.length >= 6 requires ≥3 points (T-08.1-08-03 mitigation). */}
-      {editedRingPts.length >= 6 && (
+          Guard: editedRingPts.length >= 6 requires ≥3 points (T-08.1-08-03 mitigation).
+          Phase 08.2 Plan 03: editLog.length > 0 guard (UI-SPEC §"Overlay-clear-on-converge"):
+          overlay hides when editLog is empty (no pending un-converged edits). After a successful
+          Apply cascade, editLog is cleared → overlay hides → only the converged colored raster
+          remains. The "unsaved-edit" affordance is now accurate: absent when raster matches store. */}
+      {editedRingPts.length >= 6 && editLog.length > 0 && (
         <Line
           points={editedRingPts}
           closed
