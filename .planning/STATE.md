@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Phase 08.2 context gathered
-last_updated: "2026-05-29T20:56:07.741Z"
-last_activity: 2026-05-29
+stopped_at: Completed 08.2-01-PLAN.md
+last_updated: "2026-05-30T11:19:16.967Z"
+last_activity: 2026-05-30
 progress:
   total_phases: 2
   completed_phases: 1
-  total_plans: 8
-  completed_plans: 8
-  percent: 100
+  total_plans: 12
+  completed_plans: 9
+  percent: 75
 ---
 
 # Project State (v3)
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md
 
 **Core value:** A Game Designer goes from "country + historical period" to a validated, Unity-ready map package — driven by geometry, with LLM as opt-in metadata.
-**Current focus:** Phase 08.1 — bezier-assisted-barony-contour-editing-ui-layer-bezier-contr
+**Current focus:** Phase 08.2 — bezier-edit-to-map-convergence-backend-replay
 
 ## Current Position
 
-Phase: 08.1
-Plan: Not started
+Phase: 08.2 (bezier-edit-to-map-convergence-backend-replay) — EXECUTING
+Plan: 2 of 4
 Status: Ready to execute
-Last activity: 2026-05-29
+Last activity: 2026-05-30
 
 Progress: [█████████░] 93% (25 of 27 plans complete)
 
@@ -140,6 +140,8 @@ See `.planning/PROJECT.md` Key Decisions table (D-V3-01 through D-V3-07).
 - [Phase 08.1]: G6 fix (option a): live amber-dashed overlay reads store.vertices read-only — phase boundary preserved (backend never sees Bezier), BEZ-IDENTITY-01 safe by construction
 - [Phase 08.1]: op:move has NO Phase-08 precedent on the colored map — only split/merge/translate POST /editor/apply; colored barony converges only via /render; G6 contract is a new live-overlay, not a phantom pattern
 - [Phase 08.1]: editedRingPtsRef: ref synced every render for stale-closure-safe DEV hook access; editedRingSnapshot (not count) is the Playwright geometry-change discriminator
+- [Phase 08.2]: A1 coordinate contract: lon/lat->rasterio_y requires round()+H-flip (NOT int()). Plan 02 replay_vertex_ring must use round(); geo_to_pixel is parity-frozen.
+- [Phase 08.2]: RESEARCH Open Q#2 confirmed: vertices key survives gzip+json round-trip; test locks contract before Wave 1 wires loader.
 
 ### Blockers/Concerns
 
@@ -159,6 +161,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-29T20:56:07.737Z
-Stopped at: Phase 08.2 context gathered
-Resume file: .planning/phases/08.2-bezier-edit-to-map-convergence-backend-replay/08.2-CONTEXT.md
+Last session: 2026-05-30T11:19:16.964Z
+Stopped at: Completed 08.2-01-PLAN.md
+Resume file: None
