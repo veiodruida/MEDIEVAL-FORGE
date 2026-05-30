@@ -41,6 +41,8 @@ export interface WorkspaceToolbarProps {
   onExport: () => void
   statusBadgeOpen: boolean
   onToggleStatusBadge: () => void
+  /** Phase 08.3 Plan 05: true while PenDrawLayer has an in-progress path (from onDrawingStateChange). */
+  penDrawing?: boolean
 }
 
 /**
@@ -61,6 +63,7 @@ export function WorkspaceToolbar({
   onGenerate,
   onExport,
   onToggleStatusBadge,
+  penDrawing = false,
 }: WorkspaceToolbarProps) {
   const sidebarOpen = usePipelineParams((s) => s.sidebarOpen)
   const setSidebarOpen = usePipelineParams((s) => s.setSidebarOpen)
@@ -79,7 +82,10 @@ export function WorkspaceToolbar({
   const activeTool = useEditorStore((s) => s.activeTool)
   const bezierMode =
     editableLayer === 'baronies' && activeTerritoryId !== null && activeTool === 'V'
-  const disabledTools: EditTool[] = bezierMode ? ['A', 'D'] : []
+  // Phase 08.3 Plan 05: disabledTools = UNION of Bézier-mode (A/D) + pen-drawing (A/D/S/M).
+  // When penDrawing=true, all four tools are disabled. When bezierMode (pen not active),
+  // only A/D are disabled. When neither, no tools disabled.
+  const disabledTools: EditTool[] = penDrawing ? ['A', 'D', 'S', 'M'] : bezierMode ? ['A', 'D'] : []
   const canUndo = useEditorStore.temporal.getState().pastStates.length > 0
   const canRedo = useEditorStore.temporal.getState().futureStates.length > 0
 

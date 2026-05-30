@@ -10,6 +10,7 @@ import { DecorationsLayer } from './DecorationsLayer'
 import { InteractionLayer } from './InteractionLayer'
 import { VertexEditLayer } from './VertexEditLayer'
 import { BezierEditLayer } from './BezierEditLayer'
+import { PenDrawLayer } from './PenDrawLayer'
 import { CoordTooltip } from './CoordTooltip'
 import { FitToViewButton } from './FitToViewButton'
 import { HoverTooltip } from './HoverTooltip'
@@ -51,6 +52,9 @@ interface CanvasViewerProps {
   // workspace shell; legacy unit tests that mount CanvasViewer in
   // isolation omit this prop and render canvas-only.
   project?: Project
+  /** Phase 08.3 Plan 05: callback propagated up from PenDrawLayer.onDrawingStateChange.
+   *  WorkspaceToolbar passes this down to derive disabledTools during pen drawing. */
+  onPenDrawingChange?: (isDrawing: boolean) => void
 }
 
 const PADDING_PCT = 0.05
@@ -90,7 +94,7 @@ const PADDING_PCT = 0.05
  * NOTE: Stage is NOT passed scaleX/scaleY props — scale is managed imperatively
  * via stage.scale() so wheel-zoom doesn't get reset on every React re-render.
  */
-export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersion, project }: CanvasViewerProps) {
+export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersion, project, onPenDrawingChange }: CanvasViewerProps) {
   const stageRef = useRef<Konva.Stage | null>(null)
 
   // --- B-1 callback-ref ResizeObserver (verbatim from Pitfall 4) ----------
@@ -178,6 +182,22 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
   // internally and renders null otherwise, so under S/M tools neither layer shows handles
   // (S/M operate at territory level, not per-vertex — see SUMMARY mutual-exclusion note).
   const bezierActive = editableLayer === 'baronies' && activeTerritoryId !== null
+
+  // Phase 08.3 Plan 05: activeTool selector for PenDrawLayer z=6 mount gate.
+  const activeTool = useEditorStore((s) => s.activeTool)
+
+  // Phase 08.3 Plan 05: penDrawing state — driven by PenDrawLayer.onDrawingStateChange.
+  // WorkspaceToolbar reads this via the onPenDrawingChange prop to derive disabledTools.
+  const [penDrawing, setPenDrawing] = useState(false)
+  const handlePenDrawingChange = useCallback(
+    (isDrawing: boolean) => {
+      setPenDrawing(isDrawing)
+      onPenDrawingChange?.(isDrawing)
+    },
+    [onPenDrawingChange],
+  )
+  // Suppress unused-var: penDrawing kept for future CanvasViewer-local gate use
+  void penDrawing
 
   // Phase 08 Plan 16: landmask ring from backend (branch edit-event or NE union)
   const landmaskRing = useLandmaskRing(projectId, activeBranchId ?? undefined)
@@ -780,6 +800,21 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
             editableLayer={editableLayer}
             landmaskCoords={landmaskRing}
             onLandmaskCoordsChange={handleLandmaskCoordsChange}
+          />
+        )}
+        {/* Phase 08.3 Plan 05: PenDrawLayer at z=6 — mounted ONLY when activeTool==='P'.
+            Mutually exclusive with BezierEditLayer's active editing state: after path close,
+            activeTool returns to 'V' and PenDrawLayer unmounts → BezierEditLayer activates (D-04).
+            They are never mounted simultaneously. */}
+        {activeTool === 'P' && (
+          <PenDrawLayer
+            projection={projection}
+            currentScale={currentScale}
+            neighborCandidates={effectiveBaronies ?? []}
+            onPathClosed={() => { /* ring committed inside PenDrawLayer */ }}
+            onDrawingStateChange={handlePenDrawingChange}
+            projectId={projectId}
+            branchId={activeBranchId}
           />
         )}
       </Stage>
