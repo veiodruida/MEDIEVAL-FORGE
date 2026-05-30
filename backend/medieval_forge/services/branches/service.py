@@ -189,18 +189,30 @@ async def restore_snapshot(db: AsyncSession, snapshot_id: str) -> SnapshotPayloa
 # Edit-event helpers (D-35, D-37, T-08-03b-02)
 # ---------------------------------------------------------------------------
 
-async def allocate_next_original_idx(db: AsyncSession, branch_id: str) -> int:
+async def allocate_next_original_idx(
+    db: AsyncSession, branch_id: str, min_floor: int = 0
+) -> int:
     """D-22: atomically increment and return Branch.original_idx_high_water.
 
     Uses a SELECT FOR UPDATE-style pattern: fetch branch, increment in-memory,
     commit. Guarantees uniqueness within a branch (Pitfall 1 mitigate).
     Freed indices are NEVER reused — high_water only goes up.
 
+    Phase 08.3 Plan 01 (BUG 1 fix): optional min_floor param seeds high_water
+    to at least min_floor before incrementing. Pass min_floor=nb so CREATE and
+    split allocations land at idx >= nb, safely outside existing 0..nb-1 range.
+    The models.py column default (0) is intentionally unchanged so
+    test_branch_original_idx_high_water_defaults_to_zero stays green.
+
     Returns the newly allocated original_idx (the NEW high_water value).
     """
     branch = (
         await db.execute(select(Branch).where(Branch.id == branch_id))
     ).scalar_one()
+    # BUG 1 fix: seed high_water to min_floor before incrementing so that the
+    # first allocated idx is >= min_floor (i.e. outside 0..min_floor-1 range).
+    if branch.original_idx_high_water < min_floor:
+        branch.original_idx_high_water = min_floor
     branch.original_idx_high_water += 1
     new_idx = branch.original_idx_high_water
     await db.commit()

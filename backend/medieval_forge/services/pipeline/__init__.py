@@ -427,9 +427,40 @@ def run_pipeline(cfg: RegionConfig, project_id: Optional[str] = None) -> None:
     _prev_loader = cfg.snapshot_loader  # preserve caller-injected loader
     barony_name_to_idx = {b["name"]: i for i, b in enumerate(bars)}
     try:
-        result = _manual_edit.compute(result, cfg, barony_name_to_idx=barony_name_to_idx)
+        result, new_barony_entries = _manual_edit.compute(
+            result, cfg, barony_name_to_idx=barony_name_to_idx
+        )
     finally:
         cfg.snapshot_loader = _prev_loader  # restore (clear if was None)
+    # Phase 08.3 Plan 01 (BUG 2 fix): extend bars/bc/bd/bk/nb before build_hierarchy_maps
+    # so CREATE/split children at idx=nb (or higher) are covered by range(nb).
+    # Build duchy→idx and kingdom→idx maps from the existing dicts (not in scope
+    # from setup_baronies; reconstruct them cheaply here).
+    _d2i = {d: i for i, d in enumerate(duchies.keys())}
+    _k2i = {k: i for i, k in enumerate(kingdoms.keys())}
+    for entry in sorted(new_barony_entries, key=lambda e: e["original_idx"]):
+        idx = entry["original_idx"]
+        # INDEX-AWARE PLACEMENT (no contiguity assumption): pad with harmless
+        # placeholder entries so bars[idx] is the correct position even if prior
+        # splits or dropped npx==0 baronies left gaps.
+        while len(bars) < idx:
+            bars.append({"name": "", "condado_idx": -1, "duchy_id": "", "kingdom_id": ""})
+            bc = np.append(bc, -1)
+            bd = np.append(bd, 0)
+            bk = np.append(bk, 0)
+        assert len(bars) == idx, (
+            f"08.3 placement broke: len(bars)={len(bars)} idx={idx}"
+        )
+        bars.append({
+            "name": entry["name"],
+            "condado_idx": entry["condado_idx"],
+            "duchy_id": entry["duchy_id"],
+            "kingdom_id": entry["kingdom_id"],
+        })
+        bc = np.append(bc, entry["condado_idx"])
+        bd = np.append(bd, _d2i.get(entry["duchy_id"], 0))
+        bk = np.append(bk, _k2i.get(entry["kingdom_id"], 0))
+    nb = len(bars)
     _cache_put("manual_edit", result)
     _emit(cfg, "manual_edit", "done")
 
@@ -649,11 +680,40 @@ def run_pipeline_incremental(cfg: RegionConfig, project_id: str) -> list[str]:
         _emit(cfg, "manual_edit", "start")
         print("[INC] manual_edit recomputing...")
         _prev_loader = cfg.snapshot_loader  # preserve caller-injected loader
+        # Phase 08.3 Plan 01 (BUG 4 fix): copy bars list before extension to avoid
+        # polluting the _VORONOI_CACHE reference on repeated incremental runs.
+        bars = list(bars)
         barony_name_to_idx = {b["name"]: i for i, b in enumerate(bars)}
         try:
-            result = _manual_edit.compute(result, cfg, barony_name_to_idx=barony_name_to_idx)
+            result, new_barony_entries = _manual_edit.compute(
+                result, cfg, barony_name_to_idx=barony_name_to_idx
+            )
         finally:
             cfg.snapshot_loader = _prev_loader  # restore (T-08-07c-02 serialisability)
+        # Phase 08.3 Plan 01 (BUG 2 fix): extend bars/bc/bd/bk/nb before hierarchy.
+        _d2i = {d: i for i, d in enumerate(duchies.keys())}
+        _k2i = {k: i for i, k in enumerate(kingdoms.keys())}
+        for entry in sorted(new_barony_entries, key=lambda e: e["original_idx"]):
+            idx = entry["original_idx"]
+            # INDEX-AWARE PLACEMENT: pad with placeholders if prior splits left gaps.
+            while len(bars) < idx:
+                bars.append({"name": "", "condado_idx": -1, "duchy_id": "", "kingdom_id": ""})
+                bc = np.append(bc, -1)
+                bd = np.append(bd, 0)
+                bk = np.append(bk, 0)
+            assert len(bars) == idx, (
+                f"08.3 INC placement broke: len(bars)={len(bars)} idx={idx}"
+            )
+            bars.append({
+                "name": entry["name"],
+                "condado_idx": entry["condado_idx"],
+                "duchy_id": entry["duchy_id"],
+                "kingdom_id": entry["kingdom_id"],
+            })
+            bc = np.append(bc, entry["condado_idx"])
+            bd = np.append(bd, _d2i.get(entry["duchy_id"], 0))
+            bk = np.append(bk, _k2i.get(entry["kingdom_id"], 0))
+        nb = len(bars)
         cache_put(project_id, cfg.branch_id, "manual_edit", tokens["manual_edit"], result)
         _emit(cfg, "manual_edit", "done")
     else:

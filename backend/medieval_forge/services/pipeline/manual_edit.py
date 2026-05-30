@@ -64,7 +64,7 @@ def _lonlat_to_rasterio_xy(lon: float, lat: float, cfg: RegionConfig,
 
 
 def compute(input_array: np.ndarray, cfg: RegionConfig,
-            barony_name_to_idx: dict[str, int] | None = None) -> np.ndarray:
+            barony_name_to_idx: dict[str, int] | None = None) -> tuple[np.ndarray, list[dict]]:
     """D-17 closure: edits are the OUTPUT of this stage (plan 08-07c BLOCKER-1 fix).
 
     Empty log_hash → identity (D-17 carry-forward; Iberia parity stays green).
@@ -98,7 +98,7 @@ def compute(input_array: np.ndarray, cfg: RegionConfig,
     if not cfg.manual_edit_log_hash:
         # Empty hash → identity pass-through. No copy; same object is returned
         # so downstream numpy views are unaffected and parity tests stay byte-equal.
-        return input_array
+        return input_array, []
 
     if cfg.snapshot_loader is None:
         raise RuntimeError(
@@ -114,7 +114,7 @@ def compute(input_array: np.ndarray, cfg: RegionConfig,
     # the auto-snapshot path may use camelCase until Plan 03 lands.
     edit_log = snapshot.get("edit_log") or snapshot.get("editLog") or []
     if not edit_log:
-        return input_array
+        return input_array, []
 
     # Pitfall 4 (BEZ-CONV-04 discriminator): only enter ring re-rasterisation when the
     # log contains vertex-level ops. A landmask-only branch (non-empty hash, zero vertex
@@ -122,6 +122,8 @@ def compute(input_array: np.ndarray, cfg: RegionConfig,
     # degrade barony boundaries and break parity on landmask-only branches.
     _VERTEX_OPS = frozenset({"move", "add", "delete", "multi_delete"})
     vertex_ops_present = any(op.get("op") in _VERTEX_OPS for op in edit_log)
+    # Phase 08.3 Plan 01: 'create' ops must enter rasterisation even without vertex ops.
+    create_ops_present = any(op.get("op") == "create" for op in edit_log)
 
     # 1) Vectorise int16 raster into per-barony polygons.
     #    Use an affine derived from the raster dimensions — pipeline operates in
@@ -145,6 +147,7 @@ def compute(input_array: np.ndarray, cfg: RegionConfig,
     #    /editor/apply (08-07) validates ops server-side BEFORE persisting, so any
     #    exception here is a bug — propagate it.
     _geometry_modified = False  # tracks whether any op mutated polygons_by_id
+    new_barony_meta: list[dict] = []  # Phase 08.3: metadata for CREATE/split children
     for op in edit_log:
         op_type = op["op"]
         if op_type == "split":
@@ -158,6 +161,18 @@ def compute(input_array: np.ndarray, cfg: RegionConfig,
             polygons_by_id[parent_id] = [new_pieces[0]]
             polygons_by_id.setdefault(child_id, []).append(new_pieces[1])
             _geometry_modified = True
+            # Phase 08.3 Plan 01 (BUG 2 fix for split): append child metadata so
+            # orchestrator can extend bars/bc/bd/bk/nb before build_hierarchy_maps.
+            # Inherit parent's hierarchy from payload (if present) or fall back to
+            # safe defaults so existing split ops without these fields don't crash.
+            parent_meta = op.get("barony_meta", {})
+            new_barony_meta.append({
+                "original_idx": child_id,
+                "name": op.get("childName", f"Split-{child_id}"),
+                "condado_idx": parent_meta.get("condado_idx", -1),
+                "duchy_id": parent_meta.get("duchy_id", ""),
+                "kingdom_id": parent_meta.get("kingdom_id", ""),
+            })
         elif op_type == "merge":
             a_id, b_id = int(op["firstId"]), int(op["secondId"])
             a_polys = polygons_by_id.get(a_id, [])
@@ -175,6 +190,54 @@ def compute(input_array: np.ndarray, cfg: RegionConfig,
             if polys:
                 polygons_by_id[poly_id] = [replay_translate(p, dLat, dLon) for p in polys]
                 _geometry_modified = True
+        elif op_type == "create":
+            # Phase 08.3 Plan 01 (BUG 1 + BUG 2 fix): rasterise new hand-drawn ring.
+            # T-08.3-01-01: ring-length guard (DoS cap enforced upstream in Plan 04).
+            new_idx = int(op["allocated_original_idx"])
+            ring_coords = op.get("ring", [])
+            if len(ring_coords) < 3:
+                continue
+            pixel_coords = [
+                _lonlat_to_rasterio_xy(p["lon"], p["lat"], cfg, W, H)
+                for p in ring_coords
+            ]
+            try:
+                poly = Polygon(pixel_coords)
+                if not poly.is_valid:
+                    poly = poly.buffer(0)
+                    # buffer(0) may fragment into MultiPolygon — largest-area guard
+                    # (08.2-05 pattern; T-08.3-01-03 mitigate).
+                    if isinstance(poly, MultiPolygon):
+                        parts = [g for g in poly.geoms if g.area > 0]
+                        if not parts:
+                            continue
+                        poly = max(parts, key=lambda g: g.area)
+                # D-07 clip: subtract existing neighbours so overlap is zero.
+                # T-08.3-01-03: apply largest-component guard after difference() too.
+                if polygons_by_id:
+                    neighbours_union = unary_union([
+                        p for idx, polys in polygons_by_id.items()
+                        for p in polys
+                        if p is not None and idx != new_idx
+                    ])
+                    if not neighbours_union.is_empty:
+                        poly = poly.difference(neighbours_union)
+                        if isinstance(poly, MultiPolygon):
+                            parts = [g for g in poly.geoms if g.area > 0]
+                            poly = max(parts, key=lambda g: g.area) if parts else None
+                if poly and not poly.is_empty and poly.area > 0:
+                    polygons_by_id[new_idx] = [poly]
+                    barony_meta = op.get("barony_meta", {})
+                    new_barony_meta.append({
+                        "original_idx": new_idx,
+                        "name": barony_meta.get("name", f"Baronato-{new_idx}"),
+                        "condado_idx": barony_meta.get("condado_idx", -1),
+                        "duchy_id": barony_meta.get("duchy_id", ""),
+                        "kingdom_id": barony_meta.get("kingdom_id", ""),
+                    })
+                    _geometry_modified = True
+            except Exception:  # noqa: BLE001 — degenerate ring; skip silently
+                continue
         # vertex-level ops (move/add/delete/multi_delete) are handled via
         # ring re-rasterisation AFTER this loop (they carry no usable geometry
         # in the op payload — the full ring is in snapshot.vertices).
@@ -184,6 +247,8 @@ def compute(input_array: np.ndarray, cfg: RegionConfig,
     # provided barony_name_to_idx (the authoritative backend-side mapping from bars[]).
     # Guard: vertex_ops_present ensures landmask-only branches remain byte-identical
     # (Pitfall 4 / BEZ-CONV-04).
+    # Phase 08.3: create_ops_present does NOT require ring re-rasterisation — the
+    # create branch above already handled rasterisation directly in the loop.
     vertices_dict = snapshot.get("vertices") or {}
     if vertex_ops_present and barony_name_to_idx and vertices_dict:
         barony_names = {k.split("#")[0] for k in vertices_dict if "#" in k}
@@ -195,8 +260,9 @@ def compute(input_array: np.ndarray, cfg: RegionConfig,
     # Short-circuit: if no op modified geometry (e.g. landmask-only branch with
     # non-empty hash — Pitfall 4 / BEZ-CONV-04), return input byte-identical.
     # This avoids rasterio round-trip loss on branches that only carry landmask_replace.
+    # Phase 08.3 Plan 01: tuple return shape — new_barony_meta is empty here (no create ops).
     if not _geometry_modified:
-        return input_array
+        return input_array, []
 
     # 3) Rasterise back to int16.
     #    all_touched=False: standard cell-centroid semantics (Gemini LOW review).
@@ -221,11 +287,18 @@ def compute(input_array: np.ndarray, cfg: RegionConfig,
 
     # Restore ocean (-1) and ignore (9999) sentinels from input where rasterise
     # produced fill — preserves CLAUDE.md rule #5 contract.
-    ocean_mask = (input_array == -1)
+    # Phase 08.3 Plan 01: CREATE pixels may land on positions that were ocean in the
+    # input raster. Only restore ocean/ignore where rasterise also produced fill (-1),
+    # i.e. where no barony (including new CREATE baronies) painted the pixel.
+    ocean_mask = (input_array == -1) & (out == -1)
     ignore_mask = (input_array == 9999)
     out[ocean_mask] = -1
     out[ignore_mask] = 9999
-    return out
+    # Phase 08.3 Plan 01: return tuple (array, sorted new_barony_entries).
+    # Sorted by original_idx so orchestrator extension loop is always sequential
+    # (Q3 / Assumption A4 — two CREATEs before one Apply land at correct indices).
+    sorted_entries = sorted(new_barony_meta, key=lambda e: e["original_idx"])
+    return out, sorted_entries
 
 
 def manual_edit_token(cfg: RegionConfig, upstream_tokens: Iterable[str]) -> str:
