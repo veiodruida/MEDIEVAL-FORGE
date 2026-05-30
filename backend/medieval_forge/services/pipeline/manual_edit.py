@@ -28,7 +28,7 @@ from typing import Iterable
 import numpy as np
 import rasterio.features
 from rasterio.transform import from_bounds
-from shapely.geometry import LineString, Polygon
+from shapely.geometry import LineString, MultiPolygon, Polygon
 from shapely.geometry import shape as shapely_shape
 from shapely.ops import split as shapely_split
 from shapely.ops import unary_union
@@ -380,6 +380,18 @@ def replay_vertex_ring(
         # Security: Pitfall 2 guard (len < 3) already rejects degenerate inputs.
         if not poly.is_valid:
             poly = poly.buffer(0)
+            # buffer(0) can fragment a non-convex ring into multiple pieces, returning a
+            # MultiPolygon. A MultiPolygon stored in polygons_by_id causes the barony to
+            # disappear from baronies.geojson on the SECOND Apply because
+            # build_baronies_geojson_sidecar's masked shapes() extraction cannot recover
+            # it from the accumulated raster — violating CLAUDE.md rule #4
+            # (original_idx in every territory / byOriginalIdx contract).
+            # Fix: take the largest-area component so polygons_by_id always holds a Polygon.
+            if isinstance(poly, MultiPolygon):
+                parts = [g for g in poly.geoms if g.area > 0]
+                if not parts:
+                    return
+                poly = max(parts, key=lambda g: g.area)
     except Exception:  # noqa: BLE001 — malformed ring; skip silently
         return
 
