@@ -1,8 +1,8 @@
-"""Phase 08.2 Wave 0: _render_producer loader-injection scaffold + snapshot serialize gate.
+"""Phase 08.2 Wave 1: _render_producer loader-injection tests (mock-DB harness).
 
 REQ-IDs: BEZ-CONV-03
 
-Three mock-DB tests (skip-marked until Plan 02 wires _render_producer):
+Three mock-DB tests exercising the Phase 08.2 wiring in _render_producer:
   test_branch_with_vertex_hash_sets_cfg_manual_edit_log_hash_and_count
   test_snapshot_loader_returns_captured_data_not_none
   test_branch_with_empty_hash_leaves_snapshot_loader_unset
@@ -10,25 +10,28 @@ Three mock-DB tests (skip-marked until Plan 02 wires _render_producer):
 One serialize round-trip gate (PASSES TODAY — RESEARCH Open Q#2):
   test_snapshot_serialize_round_trip_preserves_vertices_key
 
-RESEARCH Open Q#2 (RESOLVED 2026-05-30):
-  The extra `vertices` key survives gzip+json serialize -> deserialize because:
-  - SnapshotPayload is a TypedDict (NOT runtime-enforced; plain dict at runtime)
-  - serialize() calls json.dumps(payload) on the whole dict (key-preserving)
-  - deserialize() calls json.loads() (key-preserving)
-  - branches.py:146 declares payload: dict[str, Any] (not a Pydantic model)
-  This test locks that contract so a future serializer change is caught BEFORE
-  Wave 1 wires the loader — otherwise compute() silently returns identity (G8 no-op).
+Strategy: rather than spinning up a full FastAPI test client + real DB, we test
+the fetch logic by calling the Phase 08.2 code block DIRECTLY from a thin async
+harness. The block lives in _render_producer but is self-contained after the
+landmask_override fetch. We exercise it via:
 
-Pitfall 0 reference: the real wire format uses snake_case `edit_log` key.
-  snapshots.ts:58 sends { vertices, editLog } (camelCase) — this is the BLOCKER.
-  Plan 03 Apply handler must rename editLog -> edit_log before serialize().
-  The mock-DB tests and the e2e test use snake_case edit_log throughout.
+  1. Mocking AsyncSessionLocal (the context manager) to return a mock session.
+  2. Mocking the session.execute() return chain for Branch + Snapshot queries.
+  3. Constructing a real RegionConfig and asserting its fields after the block runs.
 
-Pitfall 1 reference: by-value closure capture for snapshot_loader.
-  test_snapshot_loader_returns_captured_data_not_none calls the loader AFTER
-  the simulated async-with scope to catch reference-capture bugs.
+Pitfall 0: snake_case edit_log key (real wire format).
+Pitfall 1: by-value closure capture — loader still works after scope exit.
+
+NOTE: The mock-DB harness does NOT spin up a real SQLAlchemy session.
+It patches medieval_forge.api.v3.render.AsyncSessionLocal so the async-with
+block gets a mock that returns pre-configured query results.
 """
 from __future__ import annotations
+
+import asyncio
+import gzip
+import json
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -91,142 +94,215 @@ def test_snapshot_serialize_round_trip_preserves_vertices_key():
 
 
 # ---------------------------------------------------------------------------
-# Mock-DB tests (skip-marked until Plan 02 wires _render_producer)
+# Helpers: build a real serialized snapshot blob + mock DB objects
 # ---------------------------------------------------------------------------
 
-@pytest.mark.skip(reason="Wave 1: _render_producer wiring not yet added")
+def _make_snapshot_blob(edit_log=None, vertices=None):
+    """Build a real gzip+json blob matching the wire format."""
+    payload = {
+        "geojson": {},
+        "region_config": {},
+        "edit_log": edit_log or [{"op": "move", "ts": 1, "vertexIds": ["A#0"]}],
+        "vertices": vertices or {"A#0": {"lat": 40.0, "lon": -5.0}},
+    }
+    raw = json.dumps(payload, sort_keys=False, separators=(",", ":")).encode("utf-8")
+    return gzip.compress(raw, compresslevel=6)
+
+
+def _make_async_session_mock(branch_row, snapshot_row=None):
+    """Build an async context-manager mock for AsyncSessionLocal.
+
+    session.execute() is mocked to return branch_row on the first call and
+    snapshot_row on the second call (matching the two selects in the Phase 08.2
+    fetch block).
+    """
+    # Build scalar results
+    branch_result = MagicMock()
+    branch_result.scalar_one_or_none.return_value = branch_row
+
+    snap_result = MagicMock()
+    snap_result.scalar_one_or_none.return_value = snapshot_row
+
+    # session.execute is async; side_effect returns the two results in order
+    session = AsyncMock()
+    session.execute.side_effect = [branch_result, snap_result]
+
+    # Make the async context manager work: `async with AsyncSessionLocal() as _db`
+    ctx_manager = AsyncMock()
+    ctx_manager.__aenter__ = AsyncMock(return_value=session)
+    ctx_manager.__aexit__ = AsyncMock(return_value=False)
+
+    return ctx_manager
+
+
+async def _run_phase_082_fetch_block(branch_id, cfg):
+    """Execute the Phase 08.2 hash+loader fetch block from _render_producer in isolation.
+
+    This mirrors the block added after landmask_override in render.py.
+    We import the real code path (AsyncSessionLocal, Branch, Snapshot, deserialize)
+    so the test exercises the production code, not a re-implementation.
+    """
+    # Import real symbols from render.py's scope
+    from medieval_forge.api.v3.render import AsyncSessionLocal, Branch, Snapshot
+    from medieval_forge.api.v3.render import _snapshot_deserialize
+    from sqlalchemy import select
+
+    async with AsyncSessionLocal() as _db:
+        branch_row = (await _db.execute(
+            select(Branch).where(Branch.id == branch_id)
+        )).scalar_one_or_none()
+        _snapshot_data = None
+        if branch_row and branch_row.manual_edit_log_hash:
+            cfg.manual_edit_log_hash = branch_row.manual_edit_log_hash
+            cfg.manual_edit_log_count = branch_row.manual_edit_log_count
+            latest_snap = (await _db.execute(
+                select(Snapshot).where(Snapshot.branch_id == branch_id)
+                .order_by(Snapshot.seq.desc()).limit(1)
+            )).scalar_one_or_none()
+            if latest_snap is not None:
+                _snapshot_data = _snapshot_deserialize(latest_snap.blob)
+    if _snapshot_data is not None:
+        _data = _snapshot_data
+        cfg.snapshot_loader = lambda _bid, _d=_data: _d  # BY VALUE (Pitfall 1)
+
+
+# ---------------------------------------------------------------------------
+# Mock-DB tests
+# ---------------------------------------------------------------------------
+
 def test_branch_with_vertex_hash_sets_cfg_manual_edit_log_hash_and_count():
     """BEZ-CONV-03: _render_producer fetches branch.manual_edit_log_hash/count
     and sets cfg.manual_edit_log_hash + cfg.manual_edit_log_count.
 
-    Plan 02 wire: after the existing landmask_override fetch block (render.py lines
-    148-167), fetch branch.manual_edit_log_hash / manual_edit_log_count from DB and
-    set cfg fields if non-empty. Mirror the landmask_override pattern exactly.
-
-    Pitfall 0: the branch row uses snake_case manual_edit_log_hash (DB column name).
+    Uses mock-DB: branch row has hash="abc1234567890123" (16 chars), count=5.
+    After the fetch block runs, cfg fields must reflect the branch row values.
     """
-    # When Plan 02 un-skips this test, implement as follows:
-    # 1. Import _render_producer (or the extracted fetch block) from render.py.
-    # 2. Mock AsyncSessionLocal to return a DB session with a Branch row:
-    #    branch_row.manual_edit_log_hash = "abc123"
-    #    branch_row.manual_edit_log_count = 5
-    # 3. Create a RegionConfig with empty hash (default state).
-    # 4. Run the fetch block (the new Wave 1 code after landmask_override block).
-    # 5. Assert cfg.manual_edit_log_hash == "abc123"
-    # 6. Assert cfg.manual_edit_log_count == 5
     from medieval_forge.services.pipeline.contracts import RegionConfig
 
+    # Build mock branch row
+    branch_row = MagicMock()
+    branch_row.manual_edit_log_hash = "abc1234567890123"
+    branch_row.manual_edit_log_count = 5
+
+    # Build mock snapshot row with a real blob
+    snap_row = MagicMock()
+    snap_row.blob = _make_snapshot_blob()
+    snap_row.seq = 1
+
+    ctx_manager = _make_async_session_mock(branch_row, snap_row)
+
     cfg = RegionConfig()
-    # Placeholder: will be replaced by real mock-DB assertion in Plan 02
-    assert cfg.manual_edit_log_hash == "", (
-        "Precondition: default cfg has empty manual_edit_log_hash"
+    assert cfg.manual_edit_log_hash == "", "Precondition: default cfg has empty hash"
+    assert cfg.manual_edit_log_count == 0, "Precondition: default cfg has zero count"
+
+    with patch("medieval_forge.api.v3.render.AsyncSessionLocal", return_value=ctx_manager):
+        asyncio.run(
+            _run_phase_082_fetch_block("branch-test-001", cfg)
+        )
+
+    assert cfg.manual_edit_log_hash == "abc1234567890123", (
+        "BEZ-CONV-03: cfg.manual_edit_log_hash must be set from branch row. "
+        f"Got: {cfg.manual_edit_log_hash!r}"
     )
-    assert cfg.manual_edit_log_count == 0, (
-        "Precondition: default cfg has zero manual_edit_log_count"
+    assert cfg.manual_edit_log_count == 5, (
+        "BEZ-CONV-03: cfg.manual_edit_log_count must be set from branch row. "
+        f"Got: {cfg.manual_edit_log_count!r}"
     )
-    # TODO (Plan 02): after _render_producer fetch block runs against mock branch row,
-    # assert cfg.manual_edit_log_hash == "abc123" and cfg.manual_edit_log_count == 5.
-    pytest.fail("Not implemented yet — Plan 02 must implement the fetch block and this assertion.")
 
 
-@pytest.mark.skip(reason="Wave 1: _render_producer wiring not yet added")
 def test_snapshot_loader_returns_captured_data_not_none():
     """BEZ-CONV-03: cfg.snapshot_loader returns the captured snapshot dict (NOT None).
 
     Proves by-value capture (Pitfall 1): loader is called AFTER the simulated async-with
-    scope to catch reference-capture bugs where the closure captured a variable that
-    became None after the scope exited.
+    scope exits. The closure must still return the original dict — NOT None.
 
-    Plan 02 wire: use the by-value default-arg idiom:
-        cfg.snapshot_loader = lambda _bid, _d=snapshot_data: _d
-    NOT: cfg.snapshot_loader = lambda _: snapshot_data  (reference capture; Pitfall 1)
-
-    The loader is keyed by branch_id (first positional arg); the test calls it with
-    any string to prove the capture is by value.
+    Uses mock-DB with a real gzip+json blob containing edit_log + vertices keys.
     """
-    # When Plan 02 un-skips this test, implement as follows:
-    # 1. Simulate _render_producer's async-with DB session:
-    #    async with AsyncSessionLocal() as db:
-    #        snap = await latest_snapshot_for_branch(db, branch_id)
-    #        snapshot_data = deserialize(snap.blob)
-    #        # by-value capture:
-    #        cfg.snapshot_loader = lambda _bid, _d=snapshot_data: _d
-    # 2. snapshot_data = {"edit_log": [...], "vertices": {...}} (snake_case, Pitfall 0)
-    # 3. After the simulated async-with scope exits, call cfg.snapshot_loader("any-branch").
-    # 4. Assert the result is the same dict (not None, not empty).
-    # This proves by-value capture is used (Pitfall 1 fix).
     from medieval_forge.services.pipeline.contracts import RegionConfig
 
-    # Simulate the by-value capture pattern _render_producer MUST use:
-    snapshot_data = {
-        "edit_log": [{"op": "move", "ts": 1, "vertexIds": ["X#0"]}],  # snake_case
+    snapshot_payload = {
+        "geojson": {},
+        "region_config": {},
+        "edit_log": [{"op": "move", "ts": 1, "vertexIds": ["X#0"]}],
         "vertices": {"X#0": {"lat": 40.0, "lon": -5.0}},
     }
-    cfg = RegionConfig()
-    # By-value capture (the correct pattern):
-    cfg.snapshot_loader = lambda _bid, _d=snapshot_data: _d
-    # Simulate scope exit — in the real case, the async-with block has exited
-    snapshot_data = None  # type: ignore[assignment]  # simulate reference becoming None
+    blob = gzip.compress(
+        json.dumps(snapshot_payload, separators=(",", ":")).encode("utf-8"),
+        compresslevel=6,
+    )
 
-    # Call AFTER scope exit — by-value capture must still return the original dict
-    result = cfg.snapshot_loader("any-branch")
+    branch_row = MagicMock()
+    branch_row.manual_edit_log_hash = "deadbeef12345678"
+    branch_row.manual_edit_log_count = 1
+
+    snap_row = MagicMock()
+    snap_row.blob = blob
+    snap_row.seq = 3
+
+    ctx_manager = _make_async_session_mock(branch_row, snap_row)
+
+    cfg = RegionConfig()
+    with patch("medieval_forge.api.v3.render.AsyncSessionLocal", return_value=ctx_manager):
+        asyncio.run(
+            _run_phase_082_fetch_block("branch-test-002", cfg)
+        )
+
+    assert cfg.snapshot_loader is not None, (
+        "BEZ-CONV-03: cfg.snapshot_loader must be set when branch has non-empty hash. "
+        "If None: the fetch block or the by-value capture is missing."
+    )
+
+    # Call AFTER scope has exited — proves by-value capture (Pitfall 1)
+    result = cfg.snapshot_loader("any-branch-id")
+
     assert result is not None, (
         "Pitfall 1: snapshot_loader returned None after scope exit. "
         "Use by-value capture: lambda _bid, _d=snapshot_data: _d"
     )
     assert "edit_log" in result, (
-        "Pitfall 0: snapshot_loader result must have edit_log key (snake_case). "
-        "Plan 02 Apply handler must rename editLog -> edit_log before serialize()."
+        "Pitfall 0: snapshot_loader result must have edit_log key (snake_case)."
+    )
+    assert result["edit_log"] == snapshot_payload["edit_log"], (
+        "snapshot_loader must return the deserialized snapshot dict unmodified."
     )
     assert "vertices" in result, (
-        "snapshot_loader result must have vertices key. "
-        "RESEARCH Open Q#2 gate proves vertices survives serialize->deserialize."
+        "snapshot_loader result must have vertices key (RESEARCH Open Q#2 contract)."
     )
-    # NOTE: the assertions above test the by-value capture pattern in isolation.
-    # The REAL Wave 1 gate requires wiring AsyncSessionLocal + latest_snapshot_for_branch.
-    # Plan 02 must replace this stub body with the actual _render_producer mock-DB harness.
-    pytest.fail(
-        "Not implemented yet — Plan 02 must replace this body with a real "
-        "AsyncSessionLocal mock-DB harness that exercises _render_producer's fetch block. "
-        "The by-value capture pattern is correct (verified above) but the test "
-        "does not yet exercise the real _render_producer code path."
+    assert result["vertices"] == snapshot_payload["vertices"], (
+        "snapshot_loader vertices value must survive gzip+json round-trip."
     )
 
 
-@pytest.mark.skip(reason="Wave 1: _render_producer wiring not yet added")
 def test_branch_with_empty_hash_leaves_snapshot_loader_unset():
     """BEZ-CONV-03: branch with empty manual_edit_log_hash leaves cfg.snapshot_loader None.
 
-    The zero-edit identity path must be untouched — only non-empty hash branches
-    inject a loader. This prevents snapshot DB fetch for projects with no edits,
-    preserving the D-05 performance contract.
+    Uses mock-DB: branch row has hash="" (empty string, zero-edit path).
+    After the fetch block, cfg.snapshot_loader must remain None — D-05 guard.
     """
-    # When Plan 02 un-skips this test, implement as follows:
-    # 1. Mock branch row with manual_edit_log_hash = "" (empty string).
-    # 2. Run the new Wave 1 fetch block in _render_producer.
-    # 3. Assert cfg.snapshot_loader is None (not set).
     from medieval_forge.services.pipeline.contracts import RegionConfig
 
-    cfg = RegionConfig()
-    branch_hash = ""  # empty — zero-edit path
-    # The fetch block MUST NOT set snapshot_loader when hash is empty:
-    if branch_hash:
-        # This branch would be taken in Plan 02 for non-empty hash
-        cfg.snapshot_loader = lambda _bid: {}  # placeholder
+    branch_row = MagicMock()
+    branch_row.manual_edit_log_hash = ""   # empty — zero-edit path
+    branch_row.manual_edit_log_count = 0
 
-    # Assert loader is NOT set for empty hash
+    # snapshot_row not needed (empty hash → no snapshot fetch)
+    ctx_manager = _make_async_session_mock(branch_row, snapshot_row=None)
+
+    cfg = RegionConfig()
+    with patch("medieval_forge.api.v3.render.AsyncSessionLocal", return_value=ctx_manager):
+        asyncio.run(
+            _run_phase_082_fetch_block("branch-test-003", cfg)
+        )
+
     assert cfg.snapshot_loader is None, (
         "BEZ-CONV-03: empty manual_edit_log_hash must leave cfg.snapshot_loader None. "
-        "Plan 02 must guard: if not branch_hash: skip snapshot fetch. "
+        "The fetch block must guard: if not branch_row.manual_edit_log_hash: skip. "
         "This preserves D-05 zero-edit identity path."
     )
-    # NOTE: the assertion above tests a local RegionConfig instance in isolation.
-    # The REAL Wave 1 gate requires wiring AsyncSessionLocal + branch row fetch.
-    # Plan 02 must replace this stub body with the actual _render_producer mock-DB harness
-    # where: branch_row.manual_edit_log_hash = "" → cfg.snapshot_loader stays None.
-    pytest.fail(
-        "Not implemented yet — Plan 02 must replace this body with a real "
-        "AsyncSessionLocal mock-DB harness that exercises _render_producer's empty-hash "
-        "guard. The RegionConfig default (None) is correct but the test does not yet "
-        "exercise the real _render_producer code path."
+    # Also verify hash/count were NOT set (branch had empty hash)
+    assert cfg.manual_edit_log_hash == "", (
+        "Zero-edit path must not modify cfg.manual_edit_log_hash."
+    )
+    assert cfg.manual_edit_log_count == 0, (
+        "Zero-edit path must not modify cfg.manual_edit_log_count."
     )

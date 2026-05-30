@@ -37,7 +37,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...database import AsyncSessionLocal, get_db
-from ...models import EditEvent, Project
+from ...models import Branch, EditEvent, Project, Snapshot
+from ...services.branches.snapshot import deserialize as _snapshot_deserialize
 from ...services.paths import is_valid_uuid, project_dir
 from ...services.pipeline import run_pipeline_incremental
 from ...services.pipeline.cache import cache_get
@@ -165,6 +166,30 @@ async def _render_producer(
             coords = latest_lm.payload.get("new_landmask_coords")
             if isinstance(coords, list) and len(coords) >= 3:
                 cfg.landmask_override = [tuple(pt) for pt in coords]
+
+        # Phase 08.2: wire manual_edit hash + snapshot_loader for vertex-op replay.
+        # Mirrors the landmask_override block above. Fetches branch.manual_edit_log_hash/count
+        # and injects cfg.snapshot_loader by value so compute() can load the snapshot
+        # vertices without leaking DB dependencies into the pipeline thread.
+        # By-value capture (Pitfall 1): lambda _bid, _d=data: _d captures data before
+        # the async-with scope exits, so the closure stays valid inside to_thread.
+        async with AsyncSessionLocal() as _db:
+            branch_row = (await _db.execute(
+                select(Branch).where(Branch.id == branch_id)
+            )).scalar_one_or_none()
+            _snapshot_data = None
+            if branch_row and branch_row.manual_edit_log_hash:
+                cfg.manual_edit_log_hash = branch_row.manual_edit_log_hash
+                cfg.manual_edit_log_count = branch_row.manual_edit_log_count
+                latest_snap = (await _db.execute(
+                    select(Snapshot).where(Snapshot.branch_id == branch_id)
+                    .order_by(Snapshot.seq.desc()).limit(1)
+                )).scalar_one_or_none()
+                if latest_snap is not None:
+                    _snapshot_data = _snapshot_deserialize(latest_snap.blob)
+        if _snapshot_data is not None:
+            _data = _snapshot_data
+            cfg.snapshot_loader = lambda _bid, _d=_data: _d  # BY VALUE (Pitfall 1)
 
         loop = asyncio.get_running_loop()
 

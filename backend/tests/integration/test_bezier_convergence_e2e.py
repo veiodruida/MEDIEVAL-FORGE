@@ -127,11 +127,6 @@ def _build_test_raster_and_snapshot(cfg: RegionConfig):
 # End-to-end convergence test (xfail until Plan 02 lands)
 # ---------------------------------------------------------------------------
 
-@pytest.mark.xfail(
-    reason="Wave 1: convergence wiring not yet implemented in compute(). "
-           "Plan 02 adds replay_vertex_ring to compute() and removes this xfail marker.",
-    strict=True,
-)
 def test_bezier_convergence_e2e_edited_barony_mask_differs_from_baseline():
     """G8 closure gate: after vertex-op replay, the edited barony pixel mask DIFFERS
     from the zero-edit baseline.
