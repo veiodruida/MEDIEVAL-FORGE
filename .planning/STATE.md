@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: verifying
-stopped_at: Completed 08.2-04-PLAN.md
-last_updated: "2026-05-30T14:35:20.202Z"
+stopped_at: Completed 08.2-05-PLAN.md
+last_updated: "2026-05-30T15:49:26.873Z"
 last_activity: 2026-05-30
 progress:
   total_phases: 2
   completed_phases: 2
-  total_plans: 12
-  completed_plans: 12
+  total_plans: 13
+  completed_plans: 13
   percent: 100
 ---
 
@@ -148,6 +148,7 @@ See `.planning/PROJECT.md` Key Decisions table (D-V3-01 through D-V3-07).
 - [Phase 08.2]: BezierApplyControls extracted from WorkspaceToolbar (228 LOC + ~50 = exceeds 250 LOC planner limit); subcomponent hosts the data-testid anchors
 - [Phase 08.2]: BEZ-CONV-05 UAT approved: real-mouse Bezier edit on coastline barony -> colored boundary moves, overlay clears, survives reload (G8 closed end-to-end)
 - [Phase 08.2]: Known defect deferred: replay_vertex_ring degrades edited barony on second Apply (MultiPolygon from buffer(0) not extracted by sidecar writer) — single Apply intact, G8 closed for first edit
+- [Phase 08.2]: BEZ-CONV-05: buffer(0) MultiPolygon guard — largest-area component over unary_union; second Apply no longer drops barony from baronies.geojson (CLAUDE.md rule #4)
 
 ### Blockers/Concerns
 
@@ -167,6 +168,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-30T14:35:20.200Z
-Stopped at: Completed 08.2-04-PLAN.md
+Last session: 2026-05-30T15:49:26.870Z
+Stopped at: Completed 08.2-05-PLAN.md
 Resume file: None
