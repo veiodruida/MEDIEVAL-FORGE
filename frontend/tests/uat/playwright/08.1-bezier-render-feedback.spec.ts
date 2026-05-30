@@ -285,6 +285,19 @@ test.describe('Phase 08.1 — G6 reproduction (drag commits, colored map stale)'
 
 test.describe('G6 fix — live overlay reflects the edit', () => {
 
+  // PRECONDITION MIGRATION (Phase 08.2 Plan 01, Task 3c):
+  // Plan 03 adds editLog>0 overlay guard — the overlay is NOT mounted before the first drag
+  // (it only appears after at least one edit). The original Describe 2 precondition
+  // (lines removed: "overlay must be mounted before the drag") would break when Plan 03 lands.
+  //
+  // Migrated flow:
+  //   1. First drag → assert overlay appears (editedContourPointCount > 0 after commit)
+  //   2. Capture snapshotBefore (geometry AFTER first drag)
+  //   3. Second drag → assert snapshotAfter !== snapshotBefore (geometry changed again)
+  //
+  // LOAD-BEARING assertion preserved: geometry difference (not count) is the discriminator.
+  // The snapshotAfter !== snapshotBefore pattern is maintained identically.
+
   test('after a REAL drag at usable zoom, the live edited-contour overlay geometry CHANGES (editedRingSnapshot differs before/after drag) and editedContourPointCount > 0', async ({
     page,
   }) => {
@@ -296,39 +309,59 @@ test.describe('G6 fix — live overlay reflects the edit', () => {
     const { stateAfterZoom } = await setupAndZoom(page, info.project_id)
 
     const { x: ax, y: ay } = stateAfterZoom.firstAnchor!
-
-    // Capture editLog baseline and the GEOMETRY of the overlay BEFORE the drag.
-    // editedRingSnapshot = JSON.stringify(editedRingPts) — the actual flat coord array.
-    // count alone is insufficient (invariant under op:'move'); geometry must change.
     const editLog0 = stateAfterZoom.editLogLength
-    const before = stateAfterZoom.editedContourPointCount
-    const snapshotBefore = stateAfterZoom.editedRingSnapshot
 
-    expect(before, 'overlay must be mounted before the drag (editedContourPointCount > 0)').toBeGreaterThan(0)
-    expect(snapshotBefore, 'editedRingSnapshot must be present before drag').toBeTruthy()
-
-    // REAL page.mouse drag — no __forgeBezierTrigger* involvement
+    // FIRST DRAG: overlay may or may not be mounted before first drag.
+    // After Plan 03 editLog>0 guard lands, overlay will NOT be present before first drag.
+    // This migration removes the "before" precondition and asserts after first drag instead.
     await page.mouse.move(ax, ay)
     await page.mouse.down()
     await page.mouse.move(ax + 30, ay + 30, { steps: 8 })
     await page.mouse.up()
 
-    // Wait for commit (editLog grows) — the overlay re-derives from the updated store
+    // Wait for first drag to commit (editLog grows)
     await expect
       .poll(async () => (await readBezierState(page))?.editLogLength ?? editLog0, { timeout: 8_000 })
       .toBeGreaterThan(editLog0)
 
-    // Read the overlay geometry AFTER the drag committed
+    // Assert overlay appeared after first drag (editLog>0 guard satisfied)
+    const stateAfterFirst = await readBezierState(page)
+    expect(
+      stateAfterFirst?.editedContourPointCount,
+      'overlay must appear after first drag (editLog>0 guard satisfied)',
+    ).toBeGreaterThan(0)
+
+    // Capture snapshotBefore = geometry snapshot AFTER first drag
+    // editedRingSnapshot = JSON.stringify(editedRingPts) — the actual flat coord array.
+    // count alone is insufficient (invariant under op:'move'); geometry must change.
+    const editLog1 = stateAfterFirst!.editLogLength
+    const snapshotBefore = stateAfterFirst?.editedRingSnapshot
+    const countBefore = stateAfterFirst?.editedContourPointCount
+
+    expect(snapshotBefore, 'editedRingSnapshot must be present after first drag').toBeTruthy()
+
+    // SECOND DRAG: move the anchor again — overlay geometry must update
+    await page.mouse.move(ax + 30, ay + 30)
+    await page.mouse.down()
+    await page.mouse.move(ax + 60, ay + 60, { steps: 8 })
+    await page.mouse.up()
+
+    // Wait for second drag to commit
+    await expect
+      .poll(async () => (await readBezierState(page))?.editLogLength ?? editLog1, { timeout: 8_000 })
+      .toBeGreaterThan(editLog1)
+
+    // Read the overlay geometry AFTER the second drag committed
     const stateAfter = await readBezierState(page)
     const snapshotAfter = stateAfter?.editedRingSnapshot
 
-    expect(stateAfter?.editedContourPointCount, 'overlay must still be mounted after drag').toBeGreaterThan(0)
+    expect(stateAfter?.editedContourPointCount, 'overlay must still be mounted after second drag').toBeGreaterThan(0)
 
-    // THE LOAD-BEARING ASSERTION: the overlay geometry CHANGED.
-    // A real drag moves anchor[0] by +30,+30 screen px at 6× zoom; flattening the affected
+    // THE LOAD-BEARING ASSERTION: the overlay geometry CHANGED between first and second drag.
+    // A real drag moves anchor by +30,+30 screen px at 6× zoom; flattening the affected
     // dirty segments produces different (lon,lat) coords → different canvas px → different snapshot.
     // This proves the live overlay tracks the committed Bézier edit — not just count > 0.
-    expect(snapshotAfter, 'editedRingSnapshot must be present after drag').toBeTruthy()
+    expect(snapshotAfter, 'editedRingSnapshot must be present after second drag').toBeTruthy()
     expect(
       snapshotAfter,
       'OVERLAY GEOMETRY MUST CHANGE after a real drag: editedRingSnapshot differs before/after (overlay tracks committed store.vertices)',
@@ -338,6 +371,6 @@ test.describe('G6 fix — live overlay reflects the edit', () => {
     expect(
       stateAfter?.editedContourPointCount,
       'overlay point count must be unchanged after drag (same vertex count, different coords)',
-    ).toBe(before)
+    ).toBe(countBefore)
   })
 })
