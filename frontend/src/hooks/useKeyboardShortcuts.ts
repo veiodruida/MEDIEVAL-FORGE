@@ -71,6 +71,7 @@ export function useKeyboardShortcuts(onFitToView: () => void): void {
         d: 'D',
         s: 'S',
         m: 'M',
+        p: 'P', // Phase 08.3 Plan 03 — pen tool shortcut (PEN-CREATE-01)
       }
       const toolKey = e.key.toLowerCase()
       if (toolKey in TOOL_KEYS && !e.ctrlKey && !e.metaKey && !e.altKey) {

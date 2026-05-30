@@ -23,6 +23,7 @@ import {
   ScissorsIcon,    // Scissors1Icon not in installed version — using ScissorsIcon
   MixIcon,
   Cross2Icon,
+  Pencil1Icon,     // Phase 08.3 Plan 03 — pen tool icon
 } from '@radix-ui/react-icons';
 import type { ReactNode } from 'react';
 import { useEditorStore } from '../../stores/useEditorStore';
@@ -53,6 +54,9 @@ type NamedTool = NonNullable<EditTool>;
 const DISABLED_TOOLTIP: Partial<Record<NamedTool, string>> = {
   A: 'Adicionar vértice indisponível em modo Bézier — alterne para modo raw para adicionar vértices',
   D: 'Excluir vértice indisponível em modo Bézier — alterne para modo raw para excluir vértices',
+  // Phase 08.3 Plan 03 — pen draw mode (WorkspaceToolbar passes ['A','D','S','M'] when penDrawing)
+  S: 'Dividir indisponível enquanto desenhando — feche o caminho primeiro',
+  M: 'Mesclar indisponível enquanto desenhando — feche o caminho primeiro',
 };
 
 const TOOL_DESCRIPTORS: ToolDescriptor[] = [
@@ -85,6 +89,13 @@ const TOOL_DESCRIPTORS: ToolDescriptor[] = [
     testid: 'edit-tool-m',
     icon: <MixIcon />,
     tooltip: 'Mesclar territórios adjacentes (M)',
+  },
+  // Phase 08.3 Plan 03 — pen tool (PEN-CREATE-01)
+  {
+    key: 'P',
+    testid: 'edit-tool-p',
+    icon: <Pencil1Icon />,
+    tooltip: 'Caneta — desenhar contorno de baronato (P)',
   },
   {
     key: 'ESC',
