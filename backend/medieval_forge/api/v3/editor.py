@@ -5,18 +5,25 @@ POST /api/v3/projects/{project_id}/editor/validate
   Read-only: never persists state. Validation logic lives in services/pipeline/topology.py.
 
 POST /api/v3/projects/{project_id}/editor/apply
-  Persists a polygon op (split/merge/translate) to the branch's edit log.
+  Persists a polygon op (split/merge/translate/landmask_replace/create) to the branch's edit log.
   BLOCKER-1 contract (D-17, plan 08-07):
   - Does NOT return mutated geometry.
   - Appends op to edit_events table.
   - Bumps branch.manual_edit_log_count (+1) and branch.manual_edit_log_hash.
-  - For split: allocates next original_idx atomically via allocate_next_original_idx.
+  - For split: allocates next original_idx atomically via allocate_next_original_idx
+    with min_floor=barony_floor (backend-derived, NOT from frontend nb).
+  - For create: validates ring (len in [3, 10000]) + barony_meta; allocates original_idx
+    with min_floor=barony_floor (same backend floor as split — closes split aliasing bug).
   - For merge: server-side re-validates adjacency (touches()); 400 NOT_ADJACENT before
     persisting (no edit_events row, no count bump).
   - Returns {snapshot_id, edits_since_snapshot, new_hash, new_count, allocated_original_idx?}.
-    allocated_original_idx is always present (None for non-split ops).
+    allocated_original_idx is always present (None for non-split/create ops).
 
-Security mitigations (threat model T-08-06a-01..03, T-08-07-01..02):
+GET /api/v3/projects/{project_id}/editor/country?lat=&lon=
+  Returns {"country": "PT"|"ES"} by projecting lat/lon through cfg.border_polygon.
+  D-08: backend-side country inference for PenDrawLayer — avoids duplicating the 40-pt polygon.
+
+Security mitigations (threat model T-08-06a-01..03, T-08-07-01..02, T-08.3-04-01..04):
   T-08-06a-01: Validate endpoint is read-only; /editor/apply re-runs validate
                server-side and never trusts client "already validated" claim.
   T-08-06a-02: Field(..., max_length=100) caps polygons per batch (DoS guard).
@@ -24,6 +31,11 @@ Security mitigations (threat model T-08-06a-01..03, T-08-07-01..02):
                (<3 points) returned as SELF_INTERSECT without raising 500.
   T-08-07-01: /editor/apply for merge re-validates touches() server-side → NOT_ADJACENT.
   T-08-07-02: split uses allocate_next_original_idx (DB transaction) → no idx collision.
+  T-08.3-04-01: create ring capped at 10000 entries (DoS guard, mirror of landmask 50000).
+  T-08.3-04-02: barony_floor is backend-derived (load_region + setup_baronies); frontend nb
+                is NOT trusted — closes the latent split aliasing bug (RESEARCH BUG 1).
+  T-08.3-04-03: barony_meta validated for name + condado_idx in create branch → 400 on missing.
+  T-08.3-04-04: lat/lon coerced by FastAPI float type; point_in_polygon tolerates any float.
 """
 from __future__ import annotations
 
@@ -39,13 +51,16 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...database import get_db
-from ...models import Branch, EditEvent
+from ...models import Branch, EditEvent, Project
 from ...services.branches.service import allocate_next_original_idx, append_edit_event
 from ...services.country_boundaries import get_country_polygon
 from ...services.paths import is_valid_uuid
 from ...services.pipeline.cache import cache_clear_branch
+from ...services.pipeline.contracts import point_in_polygon
 from ...services.pipeline.manual_edit import replay_merge, replay_split
+from ...services.pipeline.region_loader import load_region
 from ...services.pipeline.topology import validate_edit
+from ...services.pipeline.voronoi import setup_baronies
 
 router = APIRouter(prefix="/v3/projects", tags=["v3-editor"])
 
@@ -142,7 +157,7 @@ class ApplyOpBody(BaseModel):
     payload shape: {'new_landmask_coords': [[lon, lat], ...]}
     T-08-08-02: new_landmask_coords capped at 50000 entries via LandmaskReplacePayload.
     """
-    op_type: str = Field(..., pattern=r"^(split|merge|translate|landmask_replace)$")
+    op_type: str = Field(..., pattern=r"^(split|merge|translate|landmask_replace|create)$")
     payload: dict
     branch_id: str = Field(..., min_length=1, max_length=255)
 
@@ -246,12 +261,55 @@ async def apply_op(
                 status_code=400, detail=f"MERGE_INVALID: {exc}"
             ) from exc
 
-    elif body.op_type == "split":
-        # T-08-07-02: allocate next original_idx atomically before persisting.
-        # If split geometry is invalid, we could allocate then fail — but since
-        # geometry validation is the frontend's responsibility (and server-side
-        # replay happens in compute()), we allocate optimistically here.
-        allocated_original_idx = await allocate_next_original_idx(db, body.branch_id)
+    elif body.op_type in ("split", "create"):
+        # T-08.3-04-02 (split + create): backend-authoritative floor — DO NOT trust
+        # frontend 'nb'. The frontend only knows surviving baronies (canvas_sidecars.py
+        # skips npx==0 entries), which may be < real len(bars). Load the project cfg
+        # and recompute the exact barony count via setup_baronies so the allocated idx
+        # is guaranteed >= len(bars) on every run. Closes the latent split aliasing bug
+        # (RESEARCH BUG 1 / Phase 08.3 advisor data-flow catch).
+        project = await db.get(Project, project_id)
+        if project is None or not project.region_key:
+            raise HTTPException(status_code=404, detail="project not found or has no region_key")
+        cfg = load_region(project.region_key)
+        bars, *_ = setup_baronies(cfg)
+        barony_floor = len(bars)
+
+        if body.op_type == "create":
+            # --- T-08.3-04-01: DoS cap on ring length ---
+            ring = body.payload.get("ring")
+            if not isinstance(ring, list):
+                raise HTTPException(
+                    status_code=400,
+                    detail="INVALID_PAYLOAD: create requires ring as a list",
+                )
+            if len(ring) < 3:
+                raise HTTPException(
+                    status_code=400,
+                    detail="INVALID_PAYLOAD: ring must have at least 3 points",
+                )
+            if len(ring) > 10000:
+                raise HTTPException(
+                    status_code=422,
+                    detail="INVALID_PAYLOAD: ring exceeds max_length=10000 (T-08.3-04-01)",
+                )
+            # --- T-08.3-04-03: barony_meta presence validation ---
+            barony_meta = body.payload.get("barony_meta", {})
+            if not barony_meta.get("name"):
+                raise HTTPException(
+                    status_code=400,
+                    detail="INVALID_PAYLOAD: barony_meta.name is required",
+                )
+            if barony_meta.get("condado_idx") is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail="INVALID_PAYLOAD: barony_meta.condado_idx is required",
+                )
+
+        # Allocate idx with backend-derived floor (T-08.3-04-02)
+        allocated_original_idx = await allocate_next_original_idx(
+            db, body.branch_id, min_floor=barony_floor
+        )
 
     elif body.op_type == "landmask_replace":
         # Phase 08 Plan 08 (LANDMASK-01, T-08-08-01, T-08-08-02):
@@ -404,6 +462,42 @@ async def get_landmask_ring(
             status_code=404,
             detail=f"LANDMASK_RING_NOT_AVAILABLE: {exc.__class__.__name__}",
         ) from exc
+
+
+@router.get("/{project_id}/editor/country")
+async def get_editor_country(
+    project_id: str,
+    lat: float,
+    lon: float,
+    db: AsyncSession = Depends(get_db),
+) -> JSONResponse:
+    """D-08: return {'country': 'PT'|'ES'} for a centroid lat/lon.
+
+    Uses cfg.border_polygon + point_in_polygon (ray-casting) to decide which
+    country side the point falls on. Mirrors border.build_border_mask routing:
+    inside border_polygon → 'PT'; outside → 'ES'.
+
+    READ-ONLY endpoint — no writes, no side effects. T-08.3-04-04 mitigated:
+    FastAPI coerces lat/lon to float (422 on non-numeric); point_in_polygon
+    tolerates any finite float with no unbounded work.
+    """
+    if not is_valid_uuid(project_id):
+        raise HTTPException(status_code=400, detail="project_id must be a valid UUID")
+
+    project = await db.get(Project, project_id)
+    if project is None or not project.region_key:
+        raise HTTPException(status_code=404, detail="project not found or has no region_key")
+
+    cfg = load_region(project.region_key)
+
+    # Mirror border.build_border_mask routing: inside border_polygon → PT side.
+    # If border_polygon is empty, point_in_polygon returns False → 'ES' (safe default).
+    if point_in_polygon(lon, lat, cfg.border_polygon):
+        country = "PT"
+    else:
+        country = "ES"
+
+    return JSONResponse(content={"country": country})
 
 
 __all__ = ["router"]

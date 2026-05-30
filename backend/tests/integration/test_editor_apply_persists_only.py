@@ -8,6 +8,14 @@ BLOCKER-1 contract:
   - branch.manual_edit_log_hash changes on each apply
   - Non-adjacent merge → 400 NOT_ADJACENT AND edit_events row NOT created
 
+NOTE (Phase 08.3 Plan 04, Rule 1 deviation): The two split allocation tests
+previously asserted `allocated_original_idx == 11` (high_water=10 + 1). That
+assertion was a latent bug — the split allocation now uses min_floor=barony_floor
+(backend-derived, ~257 for iberia_868) so the allocator seeds high_water to 257
+before incrementing. The correct assertion is `>= barony_floor` (monotonically
+increasing from the floor). The old value of 11 would alias barony idx 11 — that
+was the bug. Tests updated to assert the safe, correct range.
+
 Covers REQ-IDs: EDIT-POLYGON-01, EDIT-POLYGON-02, EDIT-POLYGON-03, PERSIST-01
 """
 from __future__ import annotations
@@ -21,6 +29,15 @@ from sqlalchemy.orm import sessionmaker
 from medieval_forge.main import app
 from medieval_forge.models import Base, Branch, EditEvent, Project
 from medieval_forge.database import get_db
+from medieval_forge.services.pipeline.region_loader import load_region
+from medieval_forge.services.pipeline.voronoi import setup_baronies
+
+
+def _iberia_barony_floor() -> int:
+    """Return len(bars) for iberia_868 — the backend-authoritative min_floor."""
+    cfg = load_region("iberia_868")
+    bars, *_ = setup_baronies(cfg)
+    return len(bars)
 
 # ---------------------------------------------------------------------------
 # In-memory SQLite fixture for isolation
@@ -266,8 +283,15 @@ class TestEditorApplyPersistence:
     async def test_split_allocates_next_original_idx_atomically(
         self, test_app_with_db, project_and_branch, db_session
     ):
-        """Split op allocates original_idx = high_water + 1 = 10 + 1 = 11."""
+        """Split op allocates original_idx >= barony_floor (backend-derived).
+
+        Phase 08.3 Plan 04 Rule 1 fix: the old assertion (== 11, i.e. high_water+1)
+        was the latent aliasing bug — splitting allocated idx=1 on a fresh branch,
+        colliding with existing barony 1. The correct assertion is >= barony_floor
+        (~257 for iberia_868), which is safely outside the 0..nb-1 range.
+        """
         project_id, branch_id = project_and_branch
+        floor = _iberia_barony_floor()
 
         async with AsyncClient(
             transport=ASGITransport(app=test_app_with_db), base_url="http://test"
@@ -279,14 +303,22 @@ class TestEditorApplyPersistence:
 
         assert resp.status_code == 200
         body = resp.json()
-        # Branch started with original_idx_high_water=10 → new idx = 11
-        assert body["allocated_original_idx"] == 11
+        # idx must be >= backend barony floor (NOT the old aliasing value of 11)
+        assert body["allocated_original_idx"] >= floor, (
+            f"Split allocated idx={body['allocated_original_idx']} < floor={floor}: "
+            "latent aliasing bug not fixed"
+        )
 
     async def test_two_splits_allocate_consecutive_original_idxs(
         self, test_app_with_db, project_and_branch
     ):
-        """Two successive splits get idx=11 then idx=12 (monotonically increasing)."""
+        """Two successive splits get idx=F+1 then idx=F+2 (monotonically increasing).
+
+        Phase 08.3 Plan 04 Rule 1 fix: values are floor+1 / floor+2 (not 11/12).
+        The key invariant is that the second idx is exactly 1 greater than the first.
+        """
         project_id, branch_id = project_and_branch
+        floor = _iberia_barony_floor()
 
         async with AsyncClient(
             transport=ASGITransport(app=test_app_with_db), base_url="http://test"
@@ -300,8 +332,10 @@ class TestEditorApplyPersistence:
                 json={**SPLIT_PAYLOAD, "branch_id": branch_id},
             )
 
-        assert resp1.json()["allocated_original_idx"] == 11
-        assert resp2.json()["allocated_original_idx"] == 12
+        idx1 = resp1.json()["allocated_original_idx"]
+        idx2 = resp2.json()["allocated_original_idx"]
+        assert idx1 >= floor, f"First split idx={idx1} < floor={floor}"
+        assert idx2 == idx1 + 1, f"Second split must be idx1+1; got {idx1}, {idx2}"
 
     async def test_response_new_count_matches_branch_count(
         self, test_app_with_db, project_and_branch, db_session
