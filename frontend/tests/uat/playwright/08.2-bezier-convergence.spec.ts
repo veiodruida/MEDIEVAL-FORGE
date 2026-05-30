@@ -404,10 +404,12 @@ test.describe('Phase 08.2 — BEZ-CONV-05: Bézier edit reaches colored map', ()
       const editLog0 = stateAfterZoom.editLogLength
       const { x: ax, y: ay } = stateAfterZoom.firstAnchor!
 
-      // REAL page.mouse drag
+      // REAL page.mouse drag — use +45,+45 delta so Test 3 produces a raster different
+      // from Test 2 (+30,+30). Each test resets store via page.goto; without distinct
+      // deltas, Tests 3+ would replay the same vertices as Test 2 → same SHA → timeout.
       await page.mouse.move(ax, ay)
       await page.mouse.down()
-      await page.mouse.move(ax + 30, ay + 30, { steps: 8 })
+      await page.mouse.move(ax + 45, ay + 45, { steps: 10 })
       await page.mouse.up()
 
       await expect
@@ -465,10 +467,13 @@ test.describe('Phase 08.2 — BEZ-CONV-05: Bézier edit reaches colored map', ()
       const editLog0 = stateAfterZoom.editLogLength
       const { x: ax, y: ay } = stateAfterZoom.firstAnchor!
 
-      // REAL page.mouse drag
+      // REAL page.mouse drag — use +60,+60 delta so this test produces a different
+      // raster result from Tests 1-3 which use +30,+30. Each test resets the store via
+      // page.goto, so the store sees the original vertices. A +30 drag would produce the
+      // same rasterisation as Test 2 → SHA identical → convergence poll would never pass.
       await page.mouse.move(ax, ay)
       await page.mouse.down()
-      await page.mouse.move(ax + 30, ay + 30, { steps: 8 })
+      await page.mouse.move(ax + 60, ay + 60, { steps: 12 })
       await page.mouse.up()
 
       await expect
@@ -478,9 +483,7 @@ test.describe('Phase 08.2 — BEZ-CONV-05: Bézier edit reaches colored map', ()
         .toBeGreaterThan(editLog0)
 
       // Click Apply and wait for render cascade.
-      // Use lookup_barony.png SHA diff as convergence signal (more robust than
-      // fetchBaronyRing which requires Gijón to be present in the GeoJSON —
-      // the replay changes the raster which may alter the barony's GeoJSON structure).
+      // Use lookup_barony.png SHA diff as convergence signal.
       await page.getByTestId('bezier-apply-edits-btn').click()
       await expect
         .poll(
