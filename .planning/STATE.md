@@ -3,11 +3,11 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: verifying
-stopped_at: Completed 08.2-05-PLAN.md
-last_updated: "2026-05-30T15:49:26.873Z"
+stopped_at: Phase 08.3 context gathered
+last_updated: "2026-05-30T16:33:49.007Z"
 last_activity: 2026-05-30
 progress:
-  total_phases: 2
+  total_phases: 3
   completed_phases: 2
   total_plans: 13
   completed_plans: 13
@@ -42,7 +42,8 @@ Progress: [█████████░] 93% (25 of 27 plans complete)
 - Phase 07.2 added: cloud LLM providers (OpenRouter / OpenAI / Gemini) + .env auto-discover + live token streaming + CredentialsManager dialog
 - Phase 08 added: border-vertex-editor — manual SVG-style vertex editing of territory polygons with project branching
 - Phase 08.1 inserted after Phase 08: Bezier-assisted barony contour editing — UI-layer Bezier control points over the existing polygon model, parity-safe (store stays polygon, curve-fit derived for display, only edited segments flatten back) (URGENT — raw vertex handles unusable: hundreds of dots per barony)
-- Phase 08.2 inserted after Phase 08.1: Bézier edit-to-map convergence — backend vertex move/add/delete replay in manual_edit + render cascade so contour edits reach the colored map and export (URGENT — closes G8: 08.1 saves edits to branch but render pipeline drops op:'move', so colored boundary never changes; user-confirmed in browser 2026-05-29)
+- Phase 08.2 inserted after Phase 08.1: Bézier edit-to-map convergence — backend vertex move/add/delete replay in manual_edit + render cascade so contour edits reach the colored map and export (URGENT — closes G8: 08.1 saves edits to branch but render pipeline drops op:'move', so colored boundary never changes; user-confirmed in browser 2026-05-29). Completed 2026-05-30, verified 5/5 (incl. 08.2-05 gap: MultiPolygon→largest-component reduction so second Apply keeps original_idx).
+- Phase 08.3 inserted after Phase 08.2: Pen tool — Photoshop-style barony contour authoring, create new baronies + extend existing (URGENT — 08.2 UAT feedback 2026-05-30: Bézier handle editor too hard to fill the empty space left by editing a neighbor; could not draw clean S-curves. Need click=straight anchor / click-drag=curve handle. Not planned yet — discuss before planning.)
 
 ### Decisions
 
@@ -168,6 +169,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-30T15:49:26.870Z
-Stopped at: Completed 08.2-05-PLAN.md
-Resume file: None
+Last session: 2026-05-30T16:33:49.004Z
+Stopped at: Phase 08.3 context gathered
+Resume file: .planning/phases/08.3-pen-tool-barony-contour-authoring/08.3-CONTEXT.md
