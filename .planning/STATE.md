@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 08.2-01-PLAN.md
-last_updated: "2026-05-30T11:19:16.967Z"
+stopped_at: Completed 08.2-02-PLAN.md
+last_updated: "2026-05-30T11:46:01.725Z"
 last_activity: 2026-05-30
 progress:
   total_phases: 2
   completed_phases: 1
   total_plans: 12
-  completed_plans: 9
-  percent: 75
+  completed_plans: 10
+  percent: 83
 ---
 
 # Project State (v3)
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md
 ## Current Position
 
 Phase: 08.2 (bezier-edit-to-map-convergence-backend-replay) — EXECUTING
-Plan: 2 of 4
+Plan: 3 of 4
 Status: Ready to execute
 Last activity: 2026-05-30
 
@@ -142,6 +142,7 @@ See `.planning/PROJECT.md` Key Decisions table (D-V3-01 through D-V3-07).
 - [Phase 08.1]: editedRingPtsRef: ref synced every render for stale-closure-safe DEV hook access; editedRingSnapshot (not count) is the Playwright geometry-change discriminator
 - [Phase 08.2]: A1 coordinate contract: lon/lat->rasterio_y requires round()+H-flip (NOT int()). Plan 02 replay_vertex_ring must use round(); geo_to_pixel is parity-frozen.
 - [Phase 08.2]: RESEARCH Open Q#2 confirmed: vertices key survives gzip+json round-trip; test locks contract before Wave 1 wires loader.
+- [Phase 08.2]: replay_vertex_ring uses round()+H-flip NOT geo_to_pixel — parity-frozen int() causes 34px drift; buffer(0) heals non-convex rings from add/delete ops; _geometry_modified short-circuit ensures byte-identical on landmask-only path
 
 ### Blockers/Concerns
 
@@ -161,6 +162,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-30T11:19:16.964Z
-Stopped at: Completed 08.2-01-PLAN.md
+Last session: 2026-05-30T11:46:01.722Z
+Stopped at: Completed 08.2-02-PLAN.md
 Resume file: None
