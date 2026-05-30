@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-stopped_at: Completed 08.2-03-PLAN.md
-last_updated: "2026-05-30T12:13:29.428Z"
+status: verifying
+stopped_at: Completed 08.2-04-PLAN.md
+last_updated: "2026-05-30T14:35:20.202Z"
 last_activity: 2026-05-30
 progress:
   total_phases: 2
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 12
-  completed_plans: 11
-  percent: 92
+  completed_plans: 12
+  percent: 100
 ---
 
 # Project State (v3)
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md
 
 Phase: 08.2 (bezier-edit-to-map-convergence-backend-replay) — EXECUTING
 Plan: 4 of 4
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-05-30
 
 Progress: [█████████░] 93% (25 of 27 plans complete)
@@ -146,6 +146,8 @@ See `.planning/PROJECT.md` Key Decisions table (D-V3-01 through D-V3-07).
 - [Phase 08.2]: bezierApplyMode excluded from zundo partialize: UI preference (not edit op), undo must never change mode toggle state
 - [Phase 08.2]: useBezierApply calls postRender directly — NOT via dispatch/diffOverrides (Pitfall 3: diffOverrides({}, lastRendered) is empty on Apply path → silent no-op)
 - [Phase 08.2]: BezierApplyControls extracted from WorkspaceToolbar (228 LOC + ~50 = exceeds 250 LOC planner limit); subcomponent hosts the data-testid anchors
+- [Phase 08.2]: BEZ-CONV-05 UAT approved: real-mouse Bezier edit on coastline barony -> colored boundary moves, overlay clears, survives reload (G8 closed end-to-end)
+- [Phase 08.2]: Known defect deferred: replay_vertex_ring degrades edited barony on second Apply (MultiPolygon from buffer(0) not extracted by sidecar writer) — single Apply intact, G8 closed for first edit
 
 ### Blockers/Concerns
 
@@ -165,6 +167,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-30T12:13:29.423Z
-Stopped at: Completed 08.2-03-PLAN.md
+Last session: 2026-05-30T14:35:20.200Z
+Stopped at: Completed 08.2-04-PLAN.md
 Resume file: None
