@@ -61,7 +61,7 @@ const MIN_AREA_PX2 = 200  // minimum enclosed area in canvas-px (shoelace)
 interface SnapVertexResult { lat: number; lon: number; id: string }
 interface SnapEdgeResultLocal { lat: number; lon: number; edgeEndpointIds: [string, string] }
 
-/** The candidate feature shape from baroniesQ.data. */
+/** GeoJSON Feature shape — from baronies.geojson raw or converted from BaronyRender. */
 export interface BaronyFeatureForSnap {
   type: 'Feature'
   properties: {
@@ -70,6 +70,7 @@ export interface BaronyFeatureForSnap {
     condado_idx?: number
     duchy_id?: string
     kingdom_id?: string
+    condado_id?: string
     centroid?: [number, number]
   }
   geometry: {
@@ -78,11 +79,31 @@ export interface BaronyFeatureForSnap {
   }
 }
 
+/**
+ * BaronyRender shape (from useCanvasArtifacts) — accepted as neighborCandidates
+ * so CanvasViewer can pass effectiveBaronies directly without conversion.
+ * Contains geoRing?: [number, number][] for polygon snap candidate building.
+ */
+export interface BaronyRenderForSnap {
+  id: string
+  name: string
+  condado_id?: string
+  condado_idx?: number
+  duchy_id?: string
+  kingdom_id?: string
+  centroid?: [number, number]
+  geoRing?: [number, number][]
+}
+
+/** Union of the two accepted neighbor-candidate shapes. */
+export type AnyBaronyCandidate = BaronyFeatureForSnap | BaronyRenderForSnap
+
 export interface PenDrawLayerProps {
   projection: ProjectionConfig
   currentScale: number
-  /** Barony features from baroniesQ.data — used for snap candidates + hierarchy inherit. */
-  neighborCandidates: BaronyFeatureForSnap[]
+  /** Barony features from baroniesQ.data — used for snap candidates + hierarchy inherit.
+   *  Accepts either BaronyFeatureForSnap (GeoJSON) or BaronyRenderForSnap (BaronyRender). */
+  neighborCandidates: AnyBaronyCandidate[]
   /** Called when the path is successfully closed with a valid ring. */
   onPathClosed?: (ring: PenAnchor[]) => void
   /** Called when isDrawing state changes (WorkspaceToolbar uses to derive disabledTools). */
@@ -135,35 +156,66 @@ function ringAreaPx2(pts: Array<{ x: number; y: number }>): number {
   return Math.abs(area) / 2
 }
 
+// ── Normalize candidate to a common shape for snap building ──────────────────
+
+interface NormalizedCandidate {
+  id: string
+  ring: number[][] | undefined  // [lon, lat][] coords
+  condado_idx?: number
+  duchy_id?: string
+  kingdom_id?: string
+}
+
+function normalizeCandidate(c: AnyBaronyCandidate): NormalizedCandidate {
+  // BaronyFeatureForSnap (has .type === 'Feature' + .geometry)
+  if ('type' in c && c.type === 'Feature') {
+    const f = c as BaronyFeatureForSnap
+    return {
+      id: f.properties.id,
+      ring: f.geometry.type === 'Polygon' ? f.geometry.coordinates[0] : undefined,
+      condado_idx: f.properties.condado_idx,
+      duchy_id: f.properties.duchy_id,
+      kingdom_id: f.properties.kingdom_id,
+    }
+  }
+  // BaronyRenderForSnap (has .id + optional .geoRing)
+  const r = c as BaronyRenderForSnap
+  return {
+    id: r.id,
+    ring: r.geoRing,  // [lon, lat][] — same coordinate order
+    condado_idx: r.condado_idx,
+    duchy_id: r.duchy_id,
+    kingdom_id: r.kingdom_id,
+  }
+}
+
 // ── Build snap candidates from neighbor features ──────────────────────────────
 
-function buildVertexCandidates(features: BaronyFeatureForSnap[]): SnapCandidate[] {
+function buildVertexCandidates(features: AnyBaronyCandidate[]): SnapCandidate[] {
   const out: SnapCandidate[] = []
   for (const f of features) {
-    if (f.geometry.type !== 'Polygon') continue
-    const ring = f.geometry.coordinates[0]
+    const { id, ring } = normalizeCandidate(f)
     if (!ring) continue
     for (let i = 0; i < ring.length; i++) {
       const pt = ring[i]
       if (!pt) continue
-      out.push({ id: `${f.properties.id}#${i}`, lat: pt[1], lon: pt[0] })
+      out.push({ id: `${id}#${i}`, lat: pt[1], lon: pt[0] })
     }
   }
   return out
 }
 
-function buildEdgeCandidates(features: BaronyFeatureForSnap[]): SnapEdge[] {
+function buildEdgeCandidates(features: AnyBaronyCandidate[]): SnapEdge[] {
   const out: SnapEdge[] = []
   for (const f of features) {
-    if (f.geometry.type !== 'Polygon') continue
-    const ring = f.geometry.coordinates[0]
+    const { id, ring } = normalizeCandidate(f)
     if (!ring) continue
     for (let i = 0; i < ring.length - 1; i++) {
       const a = ring[i], b = ring[i + 1]
       if (!a || !b) continue
       out.push({
-        id1: `${f.properties.id}#${i}`,
-        id2: `${f.properties.id}#${i + 1}`,
+        id1: `${id}#${i}`,
+        id2: `${id}#${i + 1}`,
         a: { lat: a[1], lon: a[0] },
         b: { lat: b[1], lon: b[0] },
       })
@@ -212,6 +264,8 @@ export const PenDrawLayer: React.FC<PenDrawLayerProps> = ({
   const altRef = useRef(false)
   const extendModeRef = useRef(false)
   extendModeRef.current = extendMode
+  const extendBaronyIdRef = useRef<string | null>(null)
+  extendBaronyIdRef.current = extendBaronyId
 
   const isDrawing = anchors.length > 0
 
@@ -346,11 +400,15 @@ export const PenDrawLayer: React.FC<PenDrawLayerProps> = ({
       let kingdom_id = ''
 
       if (neighborBaronyId) {
-        const neighbor = neighborCandidates.find((f) => f.properties.id === neighborBaronyId)
+        const neighbor = neighborCandidates.find((f) => {
+          const n = normalizeCandidate(f)
+          return n.id === neighborBaronyId
+        })
         if (neighbor) {
-          condado_idx = neighbor.properties.condado_idx ?? 0
-          duchy_id = neighbor.properties.duchy_id ?? ''
-          kingdom_id = neighbor.properties.kingdom_id ?? ''
+          const n = normalizeCandidate(neighbor)
+          condado_idx = n.condado_idx ?? 0
+          duchy_id = n.duchy_id ?? ''
+          kingdom_id = n.kingdom_id ?? ''
         }
       }
 
@@ -505,12 +563,22 @@ export const PenDrawLayer: React.FC<PenDrawLayerProps> = ({
             commitExtend(closedAnchors, extendBaronyId)
           } else {
             // Find nearest neighbor barony id for hierarchy inherit
+            // using the first anchor's position to locate the nearest contour
             const neighborId = cur[0]
-              ? neighborCandidates.find((f) =>
-                  f.geometry.coordinates[0]?.some((pt) =>
-                    pt && Math.abs(pt[1] - cur[0].lat) < 0.01 && Math.abs(pt[0] - cur[0].lon) < 0.01
-                  )
-                )?.properties.id ?? null
+              ? (() => {
+                  for (const f of neighborCandidates) {
+                    const n = normalizeCandidate(f)
+                    if (!n.ring) continue
+                    const match = n.ring.some(
+                      (pt) =>
+                        Array.isArray(pt) &&
+                        Math.abs((pt[1] as number) - cur[0].lat) < 0.01 &&
+                        Math.abs((pt[0] as number) - cur[0].lon) < 0.01,
+                    )
+                    if (match) return n.id
+                  }
+                  return null
+                })()
               : null
             await commitCreate(closedAnchors, neighborId)
           }
@@ -551,16 +619,94 @@ export const PenDrawLayer: React.FC<PenDrawLayerProps> = ({
   )
 
   // ── DEV hatch for Playwright (Plan 06) ────────────────────────────────────
+  // Expose refs so trigger functions (registered below) can close over live state.
+  const commitCreateRef = useRef(commitCreate)
+  commitCreateRef.current = commitCreate
+  const commitExtendRef = useRef(commitExtend)
+  commitExtendRef.current = commitExtend
+  const projectionRef = useRef(projection)
+  projectionRef.current = projection
+  const neighborCandidatesRef = useRef(neighborCandidates)
+  neighborCandidatesRef.current = neighborCandidates
+
   useEffect(() => {
     if (!import.meta.env.DEV) return
-    ;(window as unknown as { __forgePenState?: () => unknown }).__forgePenState = () => ({
+
+    const win = window as unknown as {
+      __forgePenState?: () => unknown
+      __forgePenPlaceAnchor?: (lat: number, lon: number) => boolean
+      __forgePenClose?: () => Promise<boolean>
+    }
+
+    // Read-only state getter
+    win.__forgePenState = () => ({
       anchorCount: anchorsRef.current.length,
       isDrawing: anchorsRef.current.length > 0,
       extendMode: extendModeRef.current,
       editLogLength: useEditorStore.getState().editLog.length,
     })
+
+    // Place a straight anchor at geo coordinates (lat, lon). Returns true on success.
+    // Does NOT snap (for deterministic Playwright placement). Does NOT set extendMode.
+    win.__forgePenPlaceAnchor = (lat: number, lon: number): boolean => {
+      const newAnchor: PenAnchor = { lat, lon, type: 'straight' }
+      setAnchors((prev) => [...prev, newAnchor])
+      return true
+    }
+
+    // Close the pen path deterministically (bypasses distance-to-first-anchor check).
+    // Validates the current anchors via D-17 rules; if valid, commits CREATE or EXTEND.
+    // Returns true if close was attempted (false if < 3 anchors or already closed).
+    win.__forgePenClose = async (): Promise<boolean> => {
+      const cur = anchorsRef.current
+      if (cur.length < 3) return false
+
+      // Build canvas-px points for validation
+      const proj = projectionRef.current
+      const pxPts = cur.map((a) => {
+        const [x, y] = geoToCanvas(a.lon, a.lat, proj)
+        return { x, y }
+      })
+
+      // Run D-17 validation
+      if (cur.length < 3) { setValidationError('Mínimo de 3 pontos para fechar o contorno.'); return false }
+      if (hasSelfIntersection(pxPts)) { setValidationError('O contorno se cruza — ajuste os pontos e tente fechar novamente.'); return false }
+      if (ringAreaPx2(pxPts) < MIN_AREA_PX2) { setValidationError('Área muito pequena — o baronato seria removido na limpeza. Amplie o contorno.'); return false }
+
+      setValidationError(null)
+      const closedAnchors = [...cur]
+      setAnchors([])
+
+      if (extendModeRef.current && extendBaronyIdRef.current) {
+        commitExtendRef.current(closedAnchors, extendBaronyIdRef.current)
+      } else {
+        // Nearest neighbor for hierarchy inherit (same as handleClick close path)
+        const candidates = neighborCandidatesRef.current
+        const neighborId = cur[0]
+          ? (() => {
+              for (const f of candidates) {
+                const n = normalizeCandidate(f)
+                if (!n.ring) continue
+                const match = n.ring.some(
+                  (pt) =>
+                    Array.isArray(pt) &&
+                    Math.abs((pt[1] as number) - cur[0].lat) < 0.01 &&
+                    Math.abs((pt[0] as number) - cur[0].lon) < 0.01,
+                )
+                if (match) return n.id
+              }
+              return null
+            })()
+          : null
+        await commitCreateRef.current(closedAnchors, neighborId)
+      }
+      return true
+    }
+
     return () => {
-      delete (window as unknown as { __forgePenState?: unknown }).__forgePenState
+      delete win.__forgePenState
+      delete win.__forgePenPlaceAnchor
+      delete win.__forgePenClose
     }
   }, [anchors.length])
 
