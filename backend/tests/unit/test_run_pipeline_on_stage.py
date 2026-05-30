@@ -25,6 +25,7 @@ from medieval_forge.services.pipeline.region_loader import load_region
 CANONICAL_STAGES = (
     "landmask", "border", "voronoi",
     "median", "fragment", "smooth", "merge",  # Plan 04-01: cleanup → median + fragment split
+    "manual_edit",  # Phase 08 D-17: always-present stage between merge and hierarchy
     "hierarchy", "render", "lookup",
     "metadata", "export",
 )

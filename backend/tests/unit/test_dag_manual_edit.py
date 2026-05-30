@@ -115,7 +115,7 @@ def test_manual_edit_compute_empty_hash_returns_input_byte_equal(minimal_cfg):
     """DAG-02 + D-17: empty log_hash → compute() returns input array byte-equal."""
     arr = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.int16)
     minimal_cfg.manual_edit_log_hash = ""
-    out = manual_edit.compute(arr, minimal_cfg)
+    out, _entries = manual_edit.compute(arr, minimal_cfg)
     # Either the same object (preferred — no copy) or byte-equal values
     assert out is arr or np.array_equal(out, arr), \
         "empty log_hash must produce byte-equal output (identity pass-through)"

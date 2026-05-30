@@ -82,7 +82,7 @@ def test_compute_empty_hash_returns_input_byte_equal():
     arr = _make_raster()
     cfg = _cfg_identity()
 
-    out = compute(arr, cfg)
+    out, _entries = compute(arr, cfg)
 
     assert np.array_equal(out, arr), "identity path must return byte-equal array"
     assert out is arr, "identity path must return same object (no copy)"
@@ -115,7 +115,7 @@ def test_compute_single_translate_op_mutates_raster():
     loader = MagicMock(return_value=_translate_one_op_log())
     cfg = _cfg_with_loader(loader)
 
-    out = compute(arr, cfg)
+    out, _entries = compute(arr, cfg)
 
     assert out.shape == arr.shape, "output shape must match input"
     assert out.dtype == arr.dtype, "output dtype must remain int16"
@@ -135,7 +135,7 @@ def test_compute_empty_edit_log_from_loader_returns_identity():
     loader = MagicMock(return_value={"edit_log": []})
     cfg = _cfg_with_loader(loader)
 
-    out = compute(arr, cfg)
+    out, _entries = compute(arr, cfg)
 
     assert np.array_equal(out, arr), (
         "Empty edit_log from snapshot must produce identity output (D-17 carry-forward)"
@@ -152,8 +152,8 @@ def test_compute_is_deterministic_same_result_across_two_calls():
     loader = MagicMock(return_value=_translate_one_op_log())
     cfg = _cfg_with_loader(loader)
 
-    out1 = compute(arr.copy(), cfg)
-    out2 = compute(arr.copy(), cfg)
+    out1, _ = compute(arr.copy(), cfg)
+    out2, _ = compute(arr.copy(), cfg)
 
     assert np.array_equal(out1, out2), (
         "compute() must be deterministic: same cfg+input must produce same output"
@@ -184,7 +184,7 @@ def test_compute_rasterize_invoked_with_all_touched_false():
         return original_rasterize(*args, **kwargs)
 
     with patch.object(_rf, "rasterize", side_effect=_spy_rasterize):
-        compute(arr, cfg)
+        compute(arr, cfg)  # return value unpacked internally; we only need side effects
 
     assert rasterize_calls, "rasterio.features.rasterize should have been called"
     for call_kwargs in rasterize_calls:

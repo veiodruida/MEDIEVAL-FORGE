@@ -296,7 +296,7 @@ def test_move_op_re_rasterises_edited_barony_ring_pixels_differ_from_identity():
     cfg.snapshot_loader = lambda _bid, _d=snapshot: _d
     barony_name_to_idx = {"B": 3}
 
-    out = compute(arr, cfg, barony_name_to_idx=barony_name_to_idx)
+    out, _ = compute(arr, cfg, barony_name_to_idx=barony_name_to_idx)
 
     assert not np.array_equal(out == 3, arr == 3), (
         "move op must produce a DIFFERENT mask (not identity). "
@@ -327,7 +327,7 @@ def test_add_op_grows_barony_ring():
         },
     }
     cfg.snapshot_loader = lambda _bid, _d=snapshot: _d
-    out = compute(arr, cfg, barony_name_to_idx={"B": 5})
+    out, _ = compute(arr, cfg, barony_name_to_idx={"B": 5})
     assert not np.array_equal(out == 5, arr == 5), (
         "add op must change the barony mask (vertices dict extended)."
     )
@@ -354,7 +354,7 @@ def test_multi_delete_op_shrinks_barony_ring():
         },
     }
     cfg.snapshot_loader = lambda _bid, _d=snapshot: _d
-    out = compute(arr, cfg, barony_name_to_idx={"B": 7})
+    out, _ = compute(arr, cfg, barony_name_to_idx={"B": 7})
     assert not np.array_equal(out == 7, arr == 7), (
         "multi_delete op must change the barony mask (vertices dict shrunk)."
     )
@@ -389,7 +389,7 @@ def test_barony_name_to_idx_built_from_bars_not_frontend():
 
     # barony_name_to_idx supplied as param (backend-built from bars[])
     barony_name_to_idx = {"MyBarony": 9}
-    out = compute(arr, cfg, barony_name_to_idx=barony_name_to_idx)
+    out, _ = compute(arr, cfg, barony_name_to_idx=barony_name_to_idx)
 
     assert not np.array_equal(out == 9, arr == 9), (
         "compute() must use the barony_name_to_idx PARAM (not a snapshot key). "
@@ -441,7 +441,7 @@ def test_landmask_only_branch_with_nonempty_hash_returns_byte_identical():
     cfg.snapshot_loader = lambda _bid, _d=snapshot: _d
 
     barony_name_to_idx = {"A": 1, "B": 2}
-    out = compute(arr, cfg, barony_name_to_idx=barony_name_to_idx)
+    out, _ = compute(arr, cfg, barony_name_to_idx=barony_name_to_idx)
 
     assert np.array_equal(out, arr), (
         "BEZ-CONV-04: landmask-only branch with non-empty hash must return byte-identical "
@@ -726,7 +726,7 @@ def test_two_sequential_applies_same_barony_keep_gijon_in_baronies_geojson_sidec
                       manual_edit_log_count=1)
     cfg1.snapshot_loader = lambda _bid, _d=snapshot1: _d
     barony_name_to_idx = {barony_name: bi}
-    out1 = compute(merge_arr, cfg1, barony_name_to_idx=barony_name_to_idx)
+    out1, _ = compute(merge_arr, cfg1, barony_name_to_idx=barony_name_to_idx)
 
     # 4. Apply 2: accumulated raster (out1) feeds render #2.
     snapshot2 = {
@@ -737,7 +737,7 @@ def test_two_sequential_applies_same_barony_keep_gijon_in_baronies_geojson_sidec
                       manual_edit_log_hash="gijon_apply2_bbb",
                       manual_edit_log_count=2)
     cfg2.snapshot_loader = lambda _bid, _d=snapshot2: _d
-    out2 = compute(out1, cfg2, barony_name_to_idx=barony_name_to_idx)
+    out2, _ = compute(out1, cfg2, barony_name_to_idx=barony_name_to_idx)
 
     # 5. PRIMARY GATE: call the REAL production sidecar over out2.
     #    Construct synthetic bars whose index bi carries name "Gijón".
