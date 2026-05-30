@@ -39,7 +39,7 @@ Plans:
 **Plans:** 1/6 plans executed
 Plans:
 - [x] 08.3-01-PLAN.md — Wave 1 (tdd): backend CREATE convergence — THE CRUX. Fix BUG1 (high-water aliasing, seed min_floor=nb — split path too) + BUG2 (hierarchy coverage gap, extend bars/bc/bd/bk/nb before build_hierarchy_maps); create op = raster OVERPAINT (D-11 deviation, not KD-tree) with clip + largest-component guard; compute() returns tuple; identity/Iberia parity byte-equal [PEN-CREATE-01, PEN-CONV-01, PEN-ASSIGN-01, PEN-EXTEND-01, PEN-PARITY-01]
-- [ ] 08.3-02-PLAN.md — Wave 1: emit condado_idx/duchy_id/kingdom_id on baronies.geojson + BaronyFeature type (resolves RESEARCH Q1 — D-09 inherit-from-neighbor needs these) [PEN-ASSIGN-01]
+- [x] 08.3-02-PLAN.md — Wave 1: emit condado_idx/duchy_id/kingdom_id on baronies.geojson + BaronyFeature type (resolves RESEARCH Q1 — D-09 inherit-from-neighbor needs these) [PEN-ASSIGN-01]
 - [ ] 08.3-03-PLAN.md — Wave 1: store/palette/keyboard contract — EditTool 'P' + EditOp 'create' (single zundo entry, split-style idx patch) + Pen palette button (Pencil1Icon, edit-tool-p) + P shortcut + A/D/S/M disable tooltips [PEN-CREATE-01, PEN-CURVE-01]
 - [ ] 08.3-04-PLAN.md — Wave 2: editor.py create handler (allocate min_floor=nb + persist ring/meta + DoS cap) + split min_floor fix (latent bug) + GET /editor/country (D-08, resolves RESEARCH Q2) [PEN-CREATE-01, PEN-ASSIGN-01]
 - [ ] 08.3-05-PLAN.md — Wave 3: PenDrawLayer (Konva z=6, component-local) + snapToEdge + penFlatten; draw state machine, vertex+edge snap, D-17 validation, single create-op commit (CREATE) / vertex-graft (EXTEND), country+hierarchy inherit; CanvasViewer/WorkspaceToolbar wiring [PEN-CURVE-01, PEN-CREATE-01, PEN-EXTEND-01, PEN-ASSIGN-01]

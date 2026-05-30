@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 08.3-01-PLAN.md
-last_updated: "2026-05-30T18:27:04.880Z"
+stopped_at: Completed 08.3-02-PLAN.md
+last_updated: "2026-05-30T18:36:35.032Z"
 last_activity: 2026-05-30
 progress:
   total_phases: 3
   completed_phases: 2
   total_plans: 19
-  completed_plans: 14
-  percent: 74
+  completed_plans: 15
+  percent: 79
 ---
 
 # Project State (v3)
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md
 ## Current Position
 
 Phase: 08.3 (pen-tool-barony-contour-authoring) — EXECUTING
-Plan: 2 of 6
+Plan: 3 of 6
 Status: Ready to execute
 Last activity: 2026-05-30
 
@@ -153,6 +153,7 @@ See `.planning/PROJECT.md` Key Decisions table (D-V3-01 through D-V3-07).
 - [Phase 08.3-01]: Raster overpaint (not KD-tree mutation) is the CREATE mechanism — D-11 re-described
 - [Phase 08.3-01]: compute() tuple return (ndarray, list) — all 4 early returns updated; ocean_mask scoped to (input==-1)&(out==-1)
 - [Phase 08.3-01]: bars list-copied before extension in run_pipeline_incremental to avoid polluting _VORONOI_CACHE reference
+- [Phase 08.3]: duchy lookup via cfg.duchies (not param) in build_baronies_geojson_sidecar — same dict already on RegionConfig; no signature change needed
 
 ### Blockers/Concerns
 
@@ -172,6 +173,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-30T18:27:04.876Z
-Stopped at: Completed 08.3-01-PLAN.md
+Last session: 2026-05-30T18:36:35.029Z
+Stopped at: Completed 08.3-02-PLAN.md
 Resume file: None
