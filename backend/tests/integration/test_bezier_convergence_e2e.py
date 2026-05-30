@@ -150,7 +150,9 @@ def test_bezier_convergence_e2e_edited_barony_mask_differs_from_baseline():
 
     # BASELINE: zero-edit run (empty hash -> identity path)
     cfg_baseline = replace(cfg, manual_edit_log_hash="", manual_edit_log_count=0)
-    baseline = compute(arr.copy(), cfg_baseline)
+    # Phase 08.3 Plan 01 (Rule 1 fix): compute() returns (ndarray, list) tuple since Plan 01.
+    # Unpack to get the array; empty new_barony_entries for baseline (zero-edit path).
+    baseline, _ = compute(arr.copy(), cfg_baseline)
     assert np.array_equal(baseline, arr), "Baseline must be identity (empty hash)"
 
     # EDITED: inject snapshot directly (mimics _render_producer by-value pattern)
@@ -163,7 +165,8 @@ def test_bezier_convergence_e2e_edited_barony_mask_differs_from_baseline():
     cfg_edited.snapshot_loader = lambda _bid, _d=snapshot: _d
 
     # Plan 02 wave: compute() gains barony_name_to_idx param
-    result = compute(arr.copy(), cfg_edited, barony_name_to_idx=barony_name_to_idx)
+    # Phase 08.3 Plan 01 (Rule 1 fix): unpack tuple return from compute()
+    result, _ = compute(arr.copy(), cfg_edited, barony_name_to_idx=barony_name_to_idx)
 
     COASTAL_BI = 1
     baseline_mask = baseline == COASTAL_BI
