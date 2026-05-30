@@ -38,18 +38,15 @@ export function BezierApplyControls({
 
   const { handleApplyEdits } = useBezierApply(projectId, branchId ?? '')
 
-  // Phase 08.2 Plan 04 Rule 1 fix: subscribe to the SSE render stream so the
-  // RunStore receives the rendering→generated transition and useBezierApply's
-  // subscribe callback can clear editLog (clear-on-converge).
-  // Without this, postRender fires but no SSE consumer is open, so RunStore
-  // stays in 'rendering' indefinitely and editLog is never reset.
+  // Phase 08.2 Plan 04 Rule 1 fix: subscribe to the SSE render stream AFTER
+  // postRender returns (queue exists), not before. Pass renderStream.subscribe as
+  // the onRenderStarted callback to handleApplyEdits — it fires right after
+  // trigger_render creates _RUN_QUEUES[project_id], so the stream GET finds a live queue.
+  // Subscribing before postRender returns results in 404 (queue not yet created).
   const renderStream = useRenderStream()
 
   const handleApply = () => {
-    // Subscribe to SSE BEFORE handleApplyEdits calls postRender, mirroring
-    // the pattern in ParameterSidebar/useParameterStudioDispatch (onRenderStarted).
-    renderStream.subscribe(projectId)
-    handleApplyEdits(stageView as StageView)
+    handleApplyEdits(stageView as StageView, () => renderStream.subscribe(projectId))
   }
 
   return (

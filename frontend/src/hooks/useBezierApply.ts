@@ -52,6 +52,7 @@ async function runApply(
   branchId: string,
   stageView: StageView | undefined,
   pendingApplyRef: React.MutableRefObject<boolean>,
+  onRenderStarted?: (runId: string) => void,
 ): Promise<void> {
   const { vertices, editLog } = useEditorStore.getState()
 
@@ -103,7 +104,13 @@ async function runApply(
     return
   }
 
-  // Step 3: transition RunStore to rendering
+  // Step 3: notify caller that render started (so caller can subscribe to SSE stream).
+  // MUST fire AFTER postRender returns — at this point trigger_render has created
+  // the SSE queue (_RUN_QUEUES[project_id]), so subscribing now finds a live queue.
+  // Subscribing BEFORE postRender returns results in 404 (queue not yet created).
+  onRenderStarted?.(run_id)
+
+  // Step 4: transition RunStore to rendering
   useRunStore.getState().startRender(run_id)
 }
 
@@ -112,10 +119,11 @@ async function runApply(
 // ---------------------------------------------------------------------------
 
 export interface UseBezierApplyReturn {
-  /** Manual Apply: POST snapshot then postRender directly. */
-  handleApplyEdits: (stageView?: StageView) => Promise<void>
+  /** Manual Apply: POST snapshot then postRender directly.
+   *  onRenderStarted fires AFTER postRender returns (queue exists); use it to subscribe to SSE. */
+  handleApplyEdits: (stageView?: StageView, onRenderStarted?: (runId: string) => void) => Promise<void>
   /** Auto-immediate Apply: same flow as handleApplyEdits, called after each edit. */
-  triggerAutoApply: (stageView?: StageView) => Promise<void>
+  triggerAutoApply: (stageView?: StageView, onRenderStarted?: (runId: string) => void) => Promise<void>
 }
 
 export function useBezierApply(
@@ -155,14 +163,20 @@ export function useBezierApply(
     }
   }, [])
 
-  const handleApplyEdits = async (stageView?: StageView): Promise<void> => {
-    await runApply(projectId, branchId, stageView, pendingApplyRef)
+  const handleApplyEdits = async (
+    stageView?: StageView,
+    onRenderStarted?: (runId: string) => void,
+  ): Promise<void> => {
+    await runApply(projectId, branchId, stageView, pendingApplyRef, onRenderStarted)
   }
 
-  const triggerAutoApply = async (stageView?: StageView): Promise<void> => {
+  const triggerAutoApply = async (
+    stageView?: StageView,
+    onRenderStarted?: (runId: string) => void,
+  ): Promise<void> => {
     // Auto-immediate: same flow as manual, posts a FRESH snapshot each time
     // (does NOT rely on the 25-edit auto-snapshot cadence — RESEARCH §492-497)
-    await runApply(projectId, branchId, stageView, pendingApplyRef)
+    await runApply(projectId, branchId, stageView, pendingApplyRef, onRenderStarted)
   }
 
   return { handleApplyEdits, triggerAutoApply }
