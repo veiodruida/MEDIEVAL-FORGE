@@ -222,6 +222,14 @@ def build_baronies_geojson_sidecar(
         lon = cx / raster_w * span / cfg.lon_scale + cfg.lon_min
         lat = cfg.lat_max - cy / raster_h * (cfg.lat_max - cfg.lat_min)
         lonlat_geom = _pixel_geom_to_lonlat(mapping(u), cfg, raster_w, raster_h)
+        # Derive duchy_id and kingdom_id from the condado tuple (same derivation
+        # as the condado emitter at ~128-129): condado tuple index 4 is duchy_id.
+        duchy_id = ""
+        kingdom_id = ""
+        if 0 <= condado_idx < len(cfg.condados):
+            condado_tuple = cfg.condados[condado_idx]
+            duchy_id = condado_tuple[4] if len(condado_tuple) > 4 else ""
+            kingdom_id = cfg.duchies[duchy_id][0] if duchy_id in cfg.duchies else ""
         features.append({
             "type": "Feature",
             "id": bname,
@@ -230,6 +238,9 @@ def build_baronies_geojson_sidecar(
                 "id": bname,
                 "name": bname,
                 "condado_id": condado_id,
+                "condado_idx": condado_idx,
+                "duchy_id": duchy_id,
+                "kingdom_id": kingdom_id,
                 "centroid": [lon, lat],
                 "pixel_count": npx,
             },
