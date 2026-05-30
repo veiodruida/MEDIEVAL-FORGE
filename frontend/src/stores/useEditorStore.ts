@@ -22,7 +22,7 @@ import { temporal } from 'zundo';
 // Types
 // ---------------------------------------------------------------------------
 
-export type EditTool = 'V' | 'A' | 'D' | 'S' | 'M' | null;
+export type EditTool = 'V' | 'A' | 'D' | 'S' | 'M' | 'P' | null;
 export type LandmaskMode = 'manual' | 'auto-immediate';
 /** Phase 08 Plan 16: which polygon layer is currently being edited. */
 export type EditableLayer = 'baronies' | 'landmask';
@@ -34,11 +34,26 @@ export interface EditOp {
     | 'move' | 'add' | 'delete' | 'split' | 'merge' | 'translate'
     | 'simplify' | 'multi_delete'
     // Phase 08 Plan 08 — landmask ops (WARNING-6 chokepoint, D-35)
-    | 'landmask_vertex_move' | 'landmask_vertex_add' | 'landmask_vertex_delete';
+    | 'landmask_vertex_move' | 'landmask_vertex_add' | 'landmask_vertex_delete'
+    // Phase 08.3 Plan 03 — pen tool create op (PEN-CREATE-01)
+    | 'create';
   ts: number;
   vertexIds?: string[];
   lat?: number;
   lon?: number;
+  // Phase 08.3 Plan 03: create op fields (optional — only present when op==='create')
+  /** Closed polygon ring: Array<{lat, lon}>, first === last. Null until path is closed. */
+  ring?: Array<{ lat: number; lon: number }>;
+  /** Null at commit time; server allocates during Apply cascade (mirrors split lines 279-289). */
+  allocated_original_idx?: number | null;
+  /** Hierarchy metadata for the new barony (condado/duchy/kingdom/country). */
+  barony_meta?: {
+    name: string;
+    condado_idx: number;
+    duchy_id: string;
+    kingdom_id: string;
+    country: 'PT' | 'ES';
+  };
   // Additional op-specific fields supplied by polygon ops (split/merge/translate)
   [key: string]: unknown;
 }
