@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 08.2-02-PLAN.md
-last_updated: "2026-05-30T11:46:01.725Z"
+stopped_at: Completed 08.2-03-PLAN.md
+last_updated: "2026-05-30T12:13:29.428Z"
 last_activity: 2026-05-30
 progress:
   total_phases: 2
   completed_phases: 1
   total_plans: 12
-  completed_plans: 10
-  percent: 83
+  completed_plans: 11
+  percent: 92
 ---
 
 # Project State (v3)
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md
 ## Current Position
 
 Phase: 08.2 (bezier-edit-to-map-convergence-backend-replay) — EXECUTING
-Plan: 3 of 4
+Plan: 4 of 4
 Status: Ready to execute
 Last activity: 2026-05-30
 
@@ -143,6 +143,9 @@ See `.planning/PROJECT.md` Key Decisions table (D-V3-01 through D-V3-07).
 - [Phase 08.2]: A1 coordinate contract: lon/lat->rasterio_y requires round()+H-flip (NOT int()). Plan 02 replay_vertex_ring must use round(); geo_to_pixel is parity-frozen.
 - [Phase 08.2]: RESEARCH Open Q#2 confirmed: vertices key survives gzip+json round-trip; test locks contract before Wave 1 wires loader.
 - [Phase 08.2]: replay_vertex_ring uses round()+H-flip NOT geo_to_pixel — parity-frozen int() causes 34px drift; buffer(0) heals non-convex rings from add/delete ops; _geometry_modified short-circuit ensures byte-identical on landmask-only path
+- [Phase 08.2]: bezierApplyMode excluded from zundo partialize: UI preference (not edit op), undo must never change mode toggle state
+- [Phase 08.2]: useBezierApply calls postRender directly — NOT via dispatch/diffOverrides (Pitfall 3: diffOverrides({}, lastRendered) is empty on Apply path → silent no-op)
+- [Phase 08.2]: BezierApplyControls extracted from WorkspaceToolbar (228 LOC + ~50 = exceeds 250 LOC planner limit); subcomponent hosts the data-testid anchors
 
 ### Blockers/Concerns
 
@@ -162,6 +165,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-30T11:46:01.722Z
-Stopped at: Completed 08.2-02-PLAN.md
+Last session: 2026-05-30T12:13:29.423Z
+Stopped at: Completed 08.2-03-PLAN.md
 Resume file: None

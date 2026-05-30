@@ -21,10 +21,10 @@ Plans:
 
 **Requirements**: BEZ-CONV-01 (move replay in manual_edit), BEZ-CONV-02 (add/delete replay), BEZ-CONV-03 (render cascade trigger + baroniesQ refetch post-edit), BEZ-CONV-04 (Iberia parity 10/10 unchanged on zero-edit path), BEZ-CONV-05 (UAT: real-mouse Bézier edit → colored barony boundary changes + survives reload + appears in export) — proposed spine, to be formalized in /gsd-plan-phase.
 **Depends on:** Phase 08.1
-**Plans:** 1/4 plans executed
+**Plans:** 3/4 plans executed
 
 Plans:
 - [x] 08.2-01-PLAN.md — Wave 0: test scaffolds — round-trip identity gate (passes now) + landmask-only parity guard + REAL-wire-format e2e gate (xfail) + BEZ-CONV-05 coastline UAT scaffold + 08.1 overlay-spec migration [BEZ-CONV-01..05]
 - [x] 08.2-02-PLAN.md — Wave 1: backend convergence — replay_vertex_ring re-rasterisation in compute() (move/add/delete) + barony_name_to_idx built backend-side from bars + _render_producer by-value snapshot_loader injection; flips e2e gate green, parity 10/10 stays [BEZ-CONV-01, BEZ-CONV-02, BEZ-CONV-03, BEZ-CONV-04]
-- [ ] 08.2-03-PLAN.md — Wave 1 (parallel): frontend Apply trigger — bezierApplyMode store field + useBezierApply (snapshot POST snake_case edit_log, direct postRender, no barony_name_to_idx) + WorkspaceToolbar Apply button/Switch/Badge + editLog>0 overlay clear-on-converge [BEZ-CONV-03]
+- [x] 08.2-03-PLAN.md — Wave 1 (parallel): frontend Apply trigger — bezierApplyMode store field + useBezierApply (snapshot POST snake_case edit_log, direct postRender, no barony_name_to_idx) + WorkspaceToolbar Apply button/Switch/Badge + editLog>0 overlay clear-on-converge [BEZ-CONV-03]
 - [ ] 08.2-04-PLAN.md — Wave 2: BEZ-CONV-05 real-mouse coastline UAT (boundary changes + overlay clears + survives reload + appears in export) + human-verify checkpoint [BEZ-CONV-05]
