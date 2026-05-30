@@ -51,7 +51,7 @@ import numpy as np
 import pytest
 import rasterio.features
 from rasterio.transform import from_bounds
-from shapely.geometry import Polygon
+from shapely.geometry import MultiPolygon, Polygon
 
 from medieval_forge.services.pipeline.contracts import RegionConfig, geo_to_pixel
 
@@ -517,4 +517,246 @@ def test_lonlat_to_rasterio_xy_round_convention_byte_exact_for_integer_source_co
         f"First 5 mismatches (idx, src, recon): {mismatches[:5]}\n"
         f"CRITICAL: Plan 02's replay_vertex_ring MUST use round() NOT int() in "
         f"the lon/lat -> pixel conversion. See test module docstring."
+    )
+
+
+# ---------------------------------------------------------------------------
+# Plan 08.2-05: BEZ-CONV-05 regression — second Apply must not drop barony
+# ---------------------------------------------------------------------------
+
+def test_second_apply_self_intersecting_ring_reduces_to_polygon_not_multipolygon_in_polygons_by_id():
+    """BEZ-CONV-05 unit guard: a deliberately self-intersecting (bowtie/figure-8) ring
+    fed through replay_vertex_ring must store a Polygon in polygons_by_id, never a
+    MultiPolygon.
+
+    This is the DEPENDABLE, DETERMINISTIC RED gate for the BEZ-CONV-05 fix.
+
+    On UN-FIXED code: buffer(0) on the self-intersecting ring produces a MultiPolygon,
+    which is stored directly in polygons_by_id — this test FAILS.
+    On FIXED code (Task 1): the MultiPolygon is reduced to its largest-area Polygon
+    component before storage — this test PASSES.
+
+    Geometry construction:
+    The figure-8 ring uses 6 vertices in iberia_868 lon/lat coordinates that map
+    (via _lonlat_to_rasterio_xy with round()) to rasterio pixel coords:
+      (0,0), (10,10), (20,0), (20,20), (10,10), (0,20)
+    Vertices B#1 and B#4 share the same lon/lat (-8.920, 37.240), creating the
+    crossing point of the figure-8. Polygon(these_coords).is_valid == False and
+    buffer(0) produces a MultiPolygon (verified: two triangular components, area=100 each).
+    """
+    from medieval_forge.services.pipeline.manual_edit import replay_vertex_ring
+    from medieval_forge.services.pipeline.region_loader import load_region
+
+    # 1. 50×50 int16 raster with barony 11 occupying rows 10-39, cols 10-39.
+    arr = np.full((50, 50), -1, dtype=np.int16)
+    arr[10:40, 10:40] = 11
+
+    cfg = load_region("iberia_868")
+    cfg = replace(cfg,
+                  manual_edit_log_hash="bowtie0000000abc",
+                  manual_edit_log_count=1)
+
+    # 2. Figure-8 lon/lat vertices: map to rasterio pixels (0,0),(10,10),(20,0),(20,20),(10,10),(0,20)
+    #    The crossing at pixel (10,10) makes Polygon.is_valid == False.
+    #    B#1 and B#4 intentionally share the same lon/lat to create the figure-8 crossing.
+    vertices = {
+        "B#0": {"lat": 35.400000, "lon": -13.200000},  # pixel (0,  0)
+        "B#1": {"lat": 37.240000, "lon":  -8.920000},  # pixel (10, 10) — crossing point
+        "B#2": {"lat": 35.400000, "lon":  -4.640000},  # pixel (20,  0)
+        "B#3": {"lat": 39.080000, "lon":  -4.640000},  # pixel (20, 20)
+        "B#4": {"lat": 37.240000, "lon":  -8.920000},  # pixel (10, 10) — same as B#1 (figure-8)
+        "B#5": {"lat": 39.080000, "lon": -13.200000},  # pixel (0,  20)
+    }
+
+    # 3. Verify the constructed ring is genuinely self-intersecting so buffer(0) fires.
+    from medieval_forge.services.pipeline.manual_edit import _lonlat_to_rasterio_xy
+    W, H = 50, 50
+    ring_keys = sorted(vertices.keys(), key=lambda k: int(k.split("#")[1]))
+    pixel_coords = [_lonlat_to_rasterio_xy(vertices[k]["lon"], vertices[k]["lat"], cfg, W, H)
+                    for k in ring_keys]
+    test_poly = Polygon(pixel_coords)
+    assert test_poly.is_valid is False, (
+        f"Test setup error: the figure-8 ring must be self-intersecting "
+        f"(is_valid=False) so buffer(0) fires. Got is_valid=True — "
+        f"pixel_coords={pixel_coords}. Check lon/lat values."
+    )
+
+    # 4. Snapshot with a move op so vertex_ops_present fires.
+    snapshot = {
+        "edit_log": [{"op": "move", "ts": 1, "vertexIds": ["B#1"]}],
+        "vertices": vertices,
+    }
+    cfg.snapshot_loader = lambda _bid, _d=snapshot: _d
+
+    # 5. Call replay_vertex_ring directly with fresh polygons_by_id.
+    polygons_by_id: dict = {}
+    barony_name_to_idx = {"B": 11}
+
+    replay_vertex_ring("B", barony_name_to_idx, vertices, polygons_by_id, cfg, W, H)
+
+    # 6. Assert: barony 11 is stored, and it's a Polygon, NEVER a MultiPolygon.
+    assert 11 in polygons_by_id, (
+        "replay_vertex_ring must populate polygons_by_id[11] for barony 'B'. "
+        "Check that the figure-8 ring is valid enough to pass the area>0 guard."
+    )
+    stored = polygons_by_id[11]
+    assert all(isinstance(p, Polygon) and not isinstance(p, MultiPolygon) for p in stored), (
+        f"BEZ-CONV-05 RED GATE: polygons_by_id[11] must hold [Polygon], not [MultiPolygon]. "
+        f"Got: {[type(p).__name__ for p in stored]}. "
+        f"Fix: in replay_vertex_ring, after buffer(0), check isinstance(poly, MultiPolygon) "
+        f"and reduce to max(poly.geoms, key=lambda g: g.area) before storing."
+    )
+
+
+def test_two_sequential_applies_same_barony_keep_gijon_in_baronies_geojson_sidecar(
+    iberia_merge_and_sidecar,
+    tmp_path,
+):
+    """BEZ-CONV-05 symptom-level regression: two sequential Applies to the same barony
+    (Gijón) must NOT drop the barony's Feature from baronies.geojson.
+
+    Reproduces the real defect through compute()'s rasterise round-trip AND the
+    production build_baronies_geojson_sidecar extraction, using the real Iberia raster.
+
+    DEFECT PATH:
+    1st Apply: replay_vertex_ring produces MultiPolygon (buffer(0) + no guard).
+               Stored in polygons_by_id, rasterised (pixels may still appear).
+    2nd Apply: accumulated raster (out1) fed into compute() again with another
+               self-intersecting ring. rasterio.features.shapes over out1 may not
+               recover a clean polygon for the already-degraded barony, so it
+               disappears from build_baronies_geojson_sidecar's extraction.
+    RESULT: Gijón absent from baronies.geojson — CLAUDE.md rule #4 violated.
+
+    The two compute() calls are NOT collapsed (that collapse is SUMMARY-04 deviation #1
+    which made the suite blind to this defect). Each Apply uses a distinct self-intersecting
+    reordering of the Gijón ring so the two renders genuinely differ.
+    """
+    from dataclasses import replace as dc_replace
+
+    from medieval_forge.services.pipeline.manual_edit import (
+        _lonlat_to_rasterio_xy,
+        compute,
+    )
+    from medieval_forge.services.canvas_sidecars import build_baronies_geojson_sidecar
+
+    merge_arr, bj, base_cfg = iberia_merge_and_sidecar
+    H, W = merge_arr.shape
+
+    # 1. Find Gijón feature and its raster index bi from centroid.
+    barony_name = "Gijón"
+    target = next((f for f in bj["features"] if f["id"] == barony_name), None)
+    if target is None:
+        available = [f["id"] for f in bj["features"][:10]]
+        pytest.fail(
+            f"Barony '{barony_name}' not found in baronies.geojson. "
+            f"Available (first 10): {available}"
+        )
+
+    centroid = target["properties"]["centroid"]
+    lon_c, lat_c = centroid
+    px_c, py_c = geo_to_pixel(lon_c, lat_c, base_cfg)
+    bi = int(merge_arr[py_c, px_c])
+    assert bi >= 0, f"Centroid of '{barony_name}' maps to ocean (bi={bi})"
+
+    # 2. Get the real Gijón ring (lon/lat) from the sidecar.
+    geom = target["geometry"]
+    if geom["type"] == "Polygon":
+        ring = geom["coordinates"][0]
+    elif geom["type"] == "MultiPolygon":
+        rings = [p[0] for p in geom["coordinates"]]
+        ring = max(rings, key=len)
+    else:
+        pytest.fail(f"Unexpected geometry type: {geom['type']}")
+
+    def make_self_intersecting_snapshot(ring, hash_val, swap_i, swap_j):
+        """Reorder two anchors of the ring to create a self-intersecting polygon.
+
+        By swapping two non-adjacent vertices (other than index 0) in the ring,
+        the resulting polygon typically self-intersects when the swapped vertices
+        are far apart in the ring ordering.
+        """
+        # Build vertices dict from ring, swap two indices to cause crossing
+        verts = {}
+        ring_body = ring[:-1]  # drop closing repeat
+        swapped = list(range(len(ring_body)))
+        # Swap two non-adjacent positions to create an edge crossing
+        swapped[swap_i], swapped[swap_j] = swapped[swap_j], swapped[swap_i]
+        for out_i, src_i in enumerate(swapped):
+            coord = ring_body[src_i]
+            verts[f"{barony_name}#{out_i}"] = {"lon": coord[0], "lat": coord[1]}
+        return verts
+
+    # Pick swap indices well apart in the ring to guarantee crossing
+    ring_len = len(ring) - 1  # excluding closing vertex
+    swap_a_i, swap_a_j = max(1, ring_len // 4), max(2, ring_len // 2)
+    swap_b_i, swap_b_j = max(1, ring_len // 3), max(2, 3 * ring_len // 4)
+
+    verts_apply1 = make_self_intersecting_snapshot(ring, "gijon_apply1_aaa", swap_a_i, swap_a_j)
+    verts_apply2 = make_self_intersecting_snapshot(ring, "gijon_apply2_bbb", swap_b_i, swap_b_j)
+
+    # Verify both vertex sets produce self-intersecting rings in pixel space.
+    def assert_self_intersecting(verts, label):
+        keys = sorted(verts.keys(), key=lambda k: int(k.split("#")[1]))
+        px_coords = [_lonlat_to_rasterio_xy(verts[k]["lon"], verts[k]["lat"], base_cfg, W, H)
+                     for k in keys]
+        poly = Polygon(px_coords)
+        if poly.is_valid:
+            # Swapped vertices happened to not cross — try a larger swap
+            pytest.skip(
+                f"Ring swap {label} did not produce a self-intersecting polygon "
+                f"(ring_len={ring_len}, swap indices used). "
+                f"buffer(0) will not fire. Test inconclusive — adjust swap indices."
+            )
+        return poly
+
+    ring1_poly = assert_self_intersecting(verts_apply1, "apply1")
+    ring2_poly = assert_self_intersecting(verts_apply2, "apply2")
+
+    # 3. Apply 1: compute(merge_arr, cfg_apply1, barony_name_to_idx)
+    snapshot1 = {
+        "edit_log": [{"op": "move", "ts": 1, "vertexIds": [f"{barony_name}#1"]}],
+        "vertices": verts_apply1,
+    }
+    cfg1 = dc_replace(base_cfg,
+                      manual_edit_log_hash="gijon_apply1_aaa",
+                      manual_edit_log_count=1)
+    cfg1.snapshot_loader = lambda _bid, _d=snapshot1: _d
+    barony_name_to_idx = {barony_name: bi}
+    out1 = compute(merge_arr, cfg1, barony_name_to_idx=barony_name_to_idx)
+
+    # 4. Apply 2: accumulated raster (out1) feeds render #2.
+    snapshot2 = {
+        "edit_log": [{"op": "move", "ts": 2, "vertexIds": [f"{barony_name}#2"]}],
+        "vertices": verts_apply2,
+    }
+    cfg2 = dc_replace(base_cfg,
+                      manual_edit_log_hash="gijon_apply2_bbb",
+                      manual_edit_log_count=2)
+    cfg2.snapshot_loader = lambda _bid, _d=snapshot2: _d
+    out2 = compute(out1, cfg2, barony_name_to_idx=barony_name_to_idx)
+
+    # 5. PRIMARY GATE: call the REAL production sidecar over out2.
+    #    Construct synthetic bars whose index bi carries name "Gijón".
+    bars = [{"name": f"_b{i}", "condado_idx": 0} for i in range(bi + 1)]
+    bars[bi] = {"name": barony_name, "condado_idx": 0}
+
+    import json as _json
+    gj_path, _ = build_baronies_geojson_sidecar(
+        result=out2,
+        bars=bars,
+        cfg=base_cfg,
+        barony_cmap={},
+        out_dir=str(tmp_path),
+    )
+    with open(gj_path, encoding="utf-8") as f:
+        bj_out = _json.load(f)
+
+    feature_ids = {feat["id"] for feat in bj_out["features"]}
+    assert barony_name in feature_ids, (
+        f"BEZ-CONV-05 regression: {barony_name} (bi={bi}) dropped from baronies.geojson "
+        f"after a second Apply — replay_vertex_ring stored a MultiPolygon (buffer(0) not "
+        f"reduced to largest component), so build_baronies_geojson_sidecar's masked "
+        f"shapes() extraction skipped it. DO NOT skip or collapse to one Apply "
+        f"(SUMMARY-04 deviation #1). "
+        f"Surviving ids (first 10): {sorted(feature_ids)[:10]}"
     )
