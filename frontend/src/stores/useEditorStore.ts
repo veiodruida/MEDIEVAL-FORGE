@@ -26,6 +26,8 @@ export type EditTool = 'V' | 'A' | 'D' | 'S' | 'M' | null;
 export type LandmaskMode = 'manual' | 'auto-immediate';
 /** Phase 08 Plan 16: which polygon layer is currently being edited. */
 export type EditableLayer = 'baronies' | 'landmask';
+/** Phase 08.2 Plan 03: mode for the Bézier Apply convergence trigger. */
+export type BezierApplyMode = 'manual' | 'auto-immediate';
 
 export interface EditOp {
   op:
@@ -72,6 +74,9 @@ interface EditorState {
   // Counter for D-37 auto-snapshot cadence (NOT in zundo history — counts forward only)
   editsSinceSnapshot: number;
 
+  // Phase 08.2 Plan 03: Bézier Apply mode (NOT in zundo history — UI preference, not an edit op)
+  bezierApplyMode: BezierApplyMode;
+
   // Gemini review (UX): op-type label stacks mirroring pastStates / futureStates.
   // NOT inside zundo partialize — mutated explicitly in lockstep with commits +
   // undo/redo via temporal.subscribe so 08-09 toolbar can show "Undo Split" vs "Undo".
@@ -104,6 +109,8 @@ interface EditorActions {
   setLandmaskMode: (m: LandmaskMode) => void;
   /** Phase 08 Plan 16: flip baronies↔landmask. NOT undoable (excluded from partialize). */
   setEditableLayer: (l: EditableLayer) => void;
+  /** Phase 08.2 Plan 03: toggle Bézier Apply mode. NOT undoable (UI preference). */
+  setBezierApplyMode: (mode: BezierApplyMode) => void;
 
   // Undoable (vertex/polygon ops) — all funnel through setVerticesAndLog
   moveVertex: (id: string, lat: number, lon: number) => void;
@@ -179,6 +186,7 @@ export const useEditorStore = create<EditorState & EditorActions>()(
       activeBranchId: null,
       landmaskMode: 'manual',
       editableLayer: 'baronies',
+      bezierApplyMode: 'manual',
       activeTool: null,
       activeTerritoryId: null,
       selectedVertexIds: [],
@@ -195,6 +203,7 @@ export const useEditorStore = create<EditorState & EditorActions>()(
       setActiveBranchId: (id) => set({ activeBranchId: id }),
       setLandmaskMode: (m) => set({ landmaskMode: m }),
       setEditableLayer: (l) => set({ editableLayer: l }),
+      setBezierApplyMode: (mode) => set({ bezierApplyMode: mode }),
 
       // Undoable actions — all delegate to setVerticesAndLog (chokepoint)
       moveVertex: (id, lat, lon) => {
@@ -450,6 +459,7 @@ export const useEditorStore = create<EditorState & EditorActions>()(
     {
       // D-25: history scope = editor ops only.
       // selectedVertexIds + activeTool + editsSinceSnapshot + undoLabels/redoLabels
+      // + bezierApplyMode (Phase 08.2 Plan 03 — UI preference, not an edit op)
       // are deliberately excluded.
       partialize: (s) => ({ vertices: s.vertices, editLog: s.editLog }),
       limit: 100, // D-25 history cap
