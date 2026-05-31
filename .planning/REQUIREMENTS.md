@@ -113,3 +113,16 @@ Source: `.planning/phases/08-border-vertex-editor-manual-svg-style-vertex-editin
 | D-37 | PERSIST-02 | 08-03b, 08-04 |
 
 Every D-XX maps to at least one REQ-ID and at least one plan. Full fidelity preserved.
+
+---
+
+## Phase 08.3 — Pen Tool Barony Contour Authoring
+
+Source: `.planning/phases/08.3-pen-tool-barony-contour-authoring/08.3-CONTEXT.md` (decisions D-19..D-27).
+
+### Carve / Enclave Operations
+
+| ID | Description | Source Decisions |
+|----|-------------|------------------|
+| CARVE-ENCLAVE-01 | A closed loop drawn fully inside barony X becomes a new barony N = drawn ∩ X, with X reshaped to a polygon-with-hole (X − N); N inherits X's condado/duchy/kingdom and a server-allocated original_idx (never reused, >= barony_floor) | D-23, D-24, D-26, D-27 |
+| CARVE-HOLE-RT-01 | The parent's interior ring (hole) survives the full round-trip store → reload → re-Apply (both pure-carve and carve+parent-Bézier-edit), and no -1/9999 sentinel is created inside X's exterior by the difference() operation | D-25, D-27 |

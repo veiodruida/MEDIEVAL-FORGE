@@ -157,7 +157,7 @@ class ApplyOpBody(BaseModel):
     payload shape: {'new_landmask_coords': [[lon, lat], ...]}
     T-08-08-02: new_landmask_coords capped at 50000 entries via LandmaskReplacePayload.
     """
-    op_type: str = Field(..., pattern=r"^(split|merge|translate|landmask_replace|create)$")
+    op_type: str = Field(..., pattern=r"^(split|merge|translate|landmask_replace|create|carve)$")
     payload: dict
     branch_id: str = Field(..., min_length=1, max_length=255)
 
@@ -261,7 +261,7 @@ async def apply_op(
                 status_code=400, detail=f"MERGE_INVALID: {exc}"
             ) from exc
 
-    elif body.op_type in ("split", "create"):
+    elif body.op_type in ("split", "create", "carve"):
         # T-08.3-04-02 (split + create): backend-authoritative floor — DO NOT trust
         # frontend 'nb'. The frontend only knows surviving baronies (canvas_sidecars.py
         # skips npx==0 entries), which may be < real len(bars). Load the project cfg
@@ -306,7 +306,46 @@ async def apply_op(
                     detail="INVALID_PAYLOAD: barony_meta.condado_idx is required",
                 )
 
-        # Allocate idx with backend-derived floor (T-08.3-04-02)
+        elif body.op_type == "carve":
+            # T-08.3-07-01: DoS cap on ring (mirrors create caps)
+            # T-08.3-07-02: parent_id required — server resolves parent geometry from raster
+            # T-08.3-07-03: barony_meta.condado_idx required — D-26 default-to-parent assignment
+            parent_id = body.payload.get("parent_id")
+            if parent_id is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail="INVALID_PAYLOAD: carve requires parent_id",
+                )
+            ring = body.payload.get("ring")
+            if not isinstance(ring, list):
+                raise HTTPException(
+                    status_code=400,
+                    detail="INVALID_PAYLOAD: carve requires ring as a list",
+                )
+            if len(ring) < 3:
+                raise HTTPException(
+                    status_code=400,
+                    detail="INVALID_PAYLOAD: ring must have at least 3 points",
+                )
+            if len(ring) > 10000:
+                raise HTTPException(
+                    status_code=422,
+                    detail="INVALID_PAYLOAD: ring exceeds max_length=10000 (T-08.3-07-01)",
+                )
+            # barony_meta: name + condado_idx required (D-26 default-to-parent, NOT -1 stub)
+            barony_meta = body.payload.get("barony_meta", {})
+            if not barony_meta.get("name"):
+                raise HTTPException(
+                    status_code=400,
+                    detail="INVALID_PAYLOAD: barony_meta.name is required",
+                )
+            if barony_meta.get("condado_idx") is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail="INVALID_PAYLOAD: barony_meta.condado_idx is required",
+                )
+
+        # Allocate idx with backend-derived floor (T-08.3-04-02 / T-08.3-07-03)
         allocated_original_idx = await allocate_next_original_idx(
             db, body.branch_id, min_floor=barony_floor
         )
