@@ -257,6 +257,12 @@ export const PenDrawLayer: React.FC<PenDrawLayerProps> = ({
   const [validationError, setValidationError] = useState<string | null>(null)
   const [snapVertexMarker, setSnapVertexMarker] = useState<{ x: number; y: number } | null>(null)
   const [snapEdgeMarker, setSnapEdgeMarker] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null)
+  // Live tangent preview while dragging out a curve anchor's handles (PEN-CURVE-01).
+  const [dragPreview, setDragPreview] = useState<{
+    anchor: [number, number]
+    cp1: [number, number]
+    cp2: [number, number]
+  } | null>(null)
 
   const anchorsRef = useRef<PenAnchor[]>([])
   anchorsRef.current = anchors
@@ -266,6 +272,15 @@ export const PenDrawLayer: React.FC<PenDrawLayerProps> = ({
   extendModeRef.current = extendMode
   const extendBaronyIdRef = useRef<string | null>(null)
   extendBaronyIdRef.current = extendBaronyId
+
+  // ── Photoshop pen gesture state (press → optional drag → release) ─────────
+  // A release with < DRAG_THRESHOLD_PX of movement = straight (corner) anchor;
+  // a press-drag-release = curve (smooth) anchor whose tangent follows the drag.
+  const isPointerDownRef = useRef(false)
+  const pendingAnchorRef = useRef<{ lat: number; lon: number } | null>(null)
+  const dragStartedRef = useRef(false)
+  const pendingCloseRef = useRef(false)
+  const DRAG_THRESHOLD_PX = 4
 
   const isDrawing = anchors.length > 0
 
@@ -384,6 +399,25 @@ export const PenDrawLayer: React.FC<PenDrawLayerProps> = ({
     (e: Konva.KonvaEventObject<MouseEvent>) => {
       const world = eventToWorld(e)
       if (!world) return
+
+      // Dragging out a curve anchor's tangent handles (Photoshop pen, PEN-CURVE-01).
+      if (isPointerDownRef.current && pendingAnchorRef.current) {
+        const pa = pendingAnchorRef.current
+        const [ax, ay] = geoToCanvas(pa.lon, pa.lat, projection)
+        const [dx, dy] = geoToCanvas(world.lon, world.lat, projection)
+        const screenDist = Math.hypot(dx - ax, dy - ay) * safeScale
+        if (screenDist > DRAG_THRESHOLD_PX) {
+          dragStartedRef.current = true
+          const dLat = world.lat - pa.lat
+          const dLon = world.lon - pa.lon
+          const cp1 = geoToCanvas(pa.lon + dLon, pa.lat + dLat, projection) // outgoing
+          const cp2 = geoToCanvas(pa.lon - dLon, pa.lat - dLat, projection) // mirror (incoming)
+          setDragPreview({ anchor: [ax, ay], cp1, cp2 })
+          setCursorPos({ x: dx, y: dy })
+        }
+        return
+      }
+
       const [cx, cy] = geoToCanvas(world.lon, world.lat, projection)
       setCursorPos({ x: cx, y: cy })
 
@@ -543,102 +577,131 @@ export const PenDrawLayer: React.FC<PenDrawLayerProps> = ({
     [],
   )
 
-  // ── Click handler (place anchor or close path) ────────────────────────────
-  const handleClick = useCallback(
-    async (e: Konva.KonvaEventObject<MouseEvent>) => {
+  // ── Close the current path (validate + commit create/extend) ──────────────
+  // Shared by the mouse-up close gesture and the DEV __forgePenClose hook.
+  const closePath = useCallback(
+    async (): Promise<boolean> => {
+      const cur = anchorsRef.current
+      const pxPts = cur.map((a) => {
+        const [x, y] = geoToCanvas(a.lon, a.lat, projection)
+        return { x, y }
+      })
+      const err = validate(pxPts)
+      if (err) {
+        setValidationError(err)
+        return false
+      }
+      setValidationError(null)
+      const closedAnchors = [...cur]
+      setAnchors([])
+      setExtendMode(false)
+      setFirstAnchorSnap(null)
+      setDragPreview(null)
+
+      onPathClosed?.(closedAnchors)
+
+      if (extendModeRef.current && extendBaronyIdRef.current) {
+        commitExtend(closedAnchors, extendBaronyIdRef.current)
+      } else {
+        // Nearest-neighbor barony for hierarchy inherit (first anchor's contour).
+        const neighborId = closedAnchors[0]
+          ? (() => {
+              for (const f of neighborCandidates) {
+                const n = normalizeCandidate(f)
+                if (!n.ring) continue
+                const match = n.ring.some(
+                  (pt) =>
+                    Array.isArray(pt) &&
+                    Math.abs((pt[1] as number) - closedAnchors[0].lat) < 0.01 &&
+                    Math.abs((pt[0] as number) - closedAnchors[0].lon) < 0.01,
+                )
+                if (match) return n.id
+              }
+              return null
+            })()
+          : null
+        await commitCreate(closedAnchors, neighborId)
+      }
+      return true
+    },
+    [projection, validate, onPathClosed, commitExtend, commitCreate, neighborCandidates],
+  )
+
+  // ── Pointer-down: begin an anchor (close gesture, or start press/drag) ────
+  const handleMouseDown = useCallback(
+    (e: Konva.KonvaEventObject<MouseEvent>) => {
       const world = eventToWorld(e)
       if (!world) return
-
       const cur = anchorsRef.current
-
-      // Resolve snap for this drop point
       const resolved = resolveSnap(world)
 
-      // Check if clicking on/near the first anchor (close gesture)
+      // Close gesture: press on/near the first anchor (≥2 anchors placed).
       if (cur.length >= 2) {
         const [fx, fy] = geoToCanvas(cur[0].lon, cur[0].lat, projection)
         const [cx, cy] = geoToCanvas(resolved.lon, resolved.lat, projection)
-        const dx = cx - fx, dy = cy - fy
-        const distPx = Math.sqrt(dx * dx + dy * dy)
-
-        if (distPx <= PEN_SNAP_PX) {
-          // Close path: run validation
-          const pxPts = cur.map((a) => {
-            const [x, y] = geoToCanvas(a.lon, a.lat, projection)
-            return { x, y }
-          })
-
-          const err = validate(pxPts)
-          if (err) {
-            setValidationError(err)
-            return
-          }
-
-          setValidationError(null)
-          const closedAnchors = [...cur]
-          setAnchors([])
-          setExtendMode(false)
-          setFirstAnchorSnap(null)
-
-          onPathClosed?.(closedAnchors)
-
-          if (extendModeRef.current && extendBaronyId) {
-            commitExtend(closedAnchors, extendBaronyId)
-          } else {
-            // Find nearest neighbor barony id for hierarchy inherit
-            // using the first anchor's position to locate the nearest contour
-            const neighborId = cur[0]
-              ? (() => {
-                  for (const f of neighborCandidates) {
-                    const n = normalizeCandidate(f)
-                    if (!n.ring) continue
-                    const match = n.ring.some(
-                      (pt) =>
-                        Array.isArray(pt) &&
-                        Math.abs((pt[1] as number) - cur[0].lat) < 0.01 &&
-                        Math.abs((pt[0] as number) - cur[0].lon) < 0.01,
-                    )
-                    if (match) return n.id
-                  }
-                  return null
-                })()
-              : null
-            await commitCreate(closedAnchors, neighborId)
-          }
+        if (Math.hypot(cx - fx, cy - fy) <= PEN_SNAP_PX) {
+          pendingCloseRef.current = true
           return
         }
       }
+      pendingCloseRef.current = false
 
-      // Place a new anchor (straight by default; drag would make it curve)
-      const newAnchor: PenAnchor = {
-        lat: resolved.lat,
-        lon: resolved.lon,
-        type: 'straight',
-      }
-
-      // Detect EXTEND mode: first anchor snapped to existing vertex
+      // EXTEND mode: first anchor snapped to an existing barony vertex.
       if (cur.length === 0 && resolved.snapVertex) {
         const snapVtx = resolved.snapVertex as SnapVertexResult
         setExtendMode(true)
         setFirstAnchorSnap(snapVtx)
-        // Extract barony id from vertex key `<baronyId>#<n>`
-        const baronyId = snapVtx.id.split('#')[0] ?? null
-        setExtendBaronyId(baronyId)
+        setExtendBaronyId(snapVtx.id.split('#')[0] ?? null)
       }
 
+      pendingAnchorRef.current = { lat: resolved.lat, lon: resolved.lon }
+      isPointerDownRef.current = true
+      dragStartedRef.current = false
+    },
+    [eventToWorld, resolveSnap, projection],
+  )
+
+  // ── Pointer-up: commit the pending anchor (straight or curve) or close ────
+  const handleMouseUp = useCallback(
+    async (e: Konva.KonvaEventObject<MouseEvent>) => {
+      // Close gesture queued on the matching mouse-down.
+      if (pendingCloseRef.current) {
+        pendingCloseRef.current = false
+        isPointerDownRef.current = false
+        pendingAnchorRef.current = null
+        dragStartedRef.current = false
+        setDragPreview(null)
+        await closePath()
+        return
+      }
+
+      const pa = pendingAnchorRef.current
+      const wasDrag = dragStartedRef.current
+      isPointerDownRef.current = false
+      pendingAnchorRef.current = null
+      dragStartedRef.current = false
+      setDragPreview(null)
+      if (!pa) return
+
+      const world = eventToWorld(e)
+      let newAnchor: PenAnchor
+      if (wasDrag && world) {
+        // Smooth anchor: outgoing handle (cp1) follows the drag; incoming (cp2) mirrors it.
+        const dLat = world.lat - pa.lat
+        const dLon = world.lon - pa.lon
+        newAnchor = {
+          lat: pa.lat,
+          lon: pa.lon,
+          type: 'curve',
+          cp1: { lat: pa.lat + dLat, lon: pa.lon + dLon },
+          cp2: { lat: pa.lat - dLat, lon: pa.lon - dLon },
+        }
+      } else {
+        newAnchor = { lat: pa.lat, lon: pa.lon, type: 'straight' }
+      }
       setAnchors((prev) => [...prev, newAnchor])
     },
-    [
-      eventToWorld,
-      resolveSnap,
-      projection,
-      validate,
-      onPathClosed,
-      extendBaronyId,
-      commitCreate,
-      commitExtend,
-      neighborCandidates,
-    ],
+    [eventToWorld, closePath],
   )
 
   // ── DEV hatch for Playwright (Plan 06) ────────────────────────────────────
@@ -658,12 +721,14 @@ export const PenDrawLayer: React.FC<PenDrawLayerProps> = ({
     const win = window as unknown as {
       __forgePenState?: () => unknown
       __forgePenPlaceAnchor?: (lat: number, lon: number) => boolean
+      __forgePenPlaceCurveAnchor?: (lat: number, lon: number, dLat: number, dLon: number) => boolean
       __forgePenClose?: () => Promise<boolean>
     }
 
     // Read-only state getter
     win.__forgePenState = () => ({
       anchorCount: anchorsRef.current.length,
+      curveAnchorCount: anchorsRef.current.filter((a) => a.type === 'curve').length,
       isDrawing: anchorsRef.current.length > 0,
       extendMode: extendModeRef.current,
       editLogLength: useEditorStore.getState().editLog.length,
@@ -673,6 +738,20 @@ export const PenDrawLayer: React.FC<PenDrawLayerProps> = ({
     // Does NOT snap (for deterministic Playwright placement). Does NOT set extendMode.
     win.__forgePenPlaceAnchor = (lat: number, lon: number): boolean => {
       const newAnchor: PenAnchor = { lat, lon, type: 'straight' }
+      setAnchors((prev) => [...prev, newAnchor])
+      return true
+    }
+
+    // Place a CURVE (smooth) anchor: tangent (dLat,dLon) sets the outgoing handle (cp1)
+    // and its mirror the incoming handle (cp2) — same math as the press-drag-release path.
+    win.__forgePenPlaceCurveAnchor = (lat, lon, dLat, dLon): boolean => {
+      const newAnchor: PenAnchor = {
+        lat,
+        lon,
+        type: 'curve',
+        cp1: { lat: lat + dLat, lon: lon + dLon },
+        cp2: { lat: lat - dLat, lon: lon - dLon },
+      }
       setAnchors((prev) => [...prev, newAnchor])
       return true
     }
@@ -729,6 +808,7 @@ export const PenDrawLayer: React.FC<PenDrawLayerProps> = ({
     return () => {
       delete win.__forgePenState
       delete win.__forgePenPlaceAnchor
+      delete win.__forgePenPlaceCurveAnchor
       delete win.__forgePenClose
     }
   }, [anchors.length])
@@ -753,7 +833,8 @@ export const PenDrawLayer: React.FC<PenDrawLayerProps> = ({
       <Group
         name="pen-draw-layer"
         data-testid="pen-draw-layer"
-        onClick={handleClick}
+        onMouseDown={handleMouseDown}
+        onMouseUp={handleMouseUp}
         onMouseMove={handleMouseMove}
         onContextMenu={(e) => {
           // Right-click deletes the last placed anchor (user request 2026-05-31).
@@ -777,6 +858,25 @@ export const PenDrawLayer: React.FC<PenDrawLayerProps> = ({
           listening={true}
           data-testid="pen-hit-area"
         />
+
+        {/* Live tangent preview while dragging out a curve anchor (PEN-CURVE-01). */}
+        {dragPreview && (
+          <>
+            <Line
+              points={[
+                dragPreview.cp2[0], dragPreview.cp2[1],
+                dragPreview.anchor[0], dragPreview.anchor[1],
+                dragPreview.cp1[0], dragPreview.cp1[1],
+              ]}
+              stroke={HANDLE_FILL}
+              strokeWidth={1 / safeScale}
+              listening={false}
+              data-testid="pen-drag-tangent"
+            />
+            <Circle x={dragPreview.cp1[0]} y={dragPreview.cp1[1]} radius={handleRadius} fill={HANDLE_FILL} listening={false} />
+            <Circle x={dragPreview.cp2[0]} y={dragPreview.cp2[1]} radius={handleRadius} fill={HANDLE_FILL} listening={false} />
+          </>
+        )}
 
         {/* Validation error overlay (D-17) */}
         {validationError && (

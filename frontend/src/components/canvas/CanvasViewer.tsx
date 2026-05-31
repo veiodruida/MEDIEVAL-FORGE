@@ -185,10 +185,7 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
   // (raw vertex handles). BezierEditLayer self-gates on the V tool internally and renders
   // null otherwise, so under S/M tools neither layer shows handles (S/M operate at
   // territory level, not per-vertex — see SUMMARY mutual-exclusion note).
-  // Phase 08.3 (UAT fix): exclude activeTool==='P' so BezierEditLayer and PenDrawLayer are
-  // never mounted simultaneously (the 08.3-05 SUMMARY claimed this; the gate now enforces it).
-  const bezierActive =
-    editableLayer === 'baronies' && activeTerritoryId !== null && activeTool !== 'P'
+  const bezierActive = editableLayer === 'baronies' && activeTerritoryId !== null
 
   // Phase 08.3 Plan 05: penDrawing state — driven by PenDrawLayer.onDrawingStateChange.
   // WorkspaceToolbar reads this via the onPenDrawingChange prop to derive disabledTools.
@@ -798,7 +795,10 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
             ~4 Bézier anchors. In landmask mode (or no barony selected) VertexEditLayer mounts
             as before. Exactly ONE of the two is mounted at z=5 — never both (double handlers),
             never neither (feature unreachable): the T-08.1-04-01 mitigation. */}
-        {bezierActive ? (
+        {/* Phase 08.3 (UAT fix): while the pen tool is active, mount NEITHER edit layer.
+            Without this guard the ternary falls through to VertexEditLayer, dumping hundreds
+            of raw vertex handles over the map the moment a barony is selected in pen mode. */}
+        {activeTool === 'P' ? null : bezierActive ? (
           <BezierEditLayer projection={projection} currentScale={currentScale} />
         ) : (
           <VertexEditLayer

@@ -197,6 +197,24 @@ beforeEach(async () => {
   PenDrawLayer = mod.PenDrawLayer
 })
 
+// ── gesture helpers (Photoshop pen: press → optional drag → release) ───────────
+// A press+release with no movement = straight anchor; a press+move+release = curve.
+function place(layer: HTMLElement, clientX: number, clientY: number) {
+  fireEvent.mouseDown(layer, { clientX, clientY })
+  fireEvent.mouseUp(layer, { clientX, clientY })
+}
+function dragCurve(
+  layer: HTMLElement,
+  clientX: number,
+  clientY: number,
+  dx: number,
+  dy: number,
+) {
+  fireEvent.mouseDown(layer, { clientX, clientY })
+  fireEvent.mouseMove(layer, { clientX: clientX + dx, clientY: clientY + dy })
+  fireEvent.mouseUp(layer, { clientX: clientX + dx, clientY: clientY + dy })
+}
+
 // ── tests ─────────────────────────────────────────────────────────────────────
 
 describe('PenDrawLayer (PEN-CURVE-01, PEN-CREATE-01, PEN-EXTEND-01, PEN-ASSIGN-01)', () => {
@@ -228,10 +246,10 @@ describe('PenDrawLayer (PEN-CURVE-01, PEN-CREATE-01, PEN-EXTEND-01, PEN-ASSIGN-0
     )
     const layer = getByTestId('pen-draw-layer')
     await act(async () => {
-      fireEvent.click(layer, { clientX: 200, clientY: 300 })
+      place(layer, 200, 300)
     })
     await act(async () => {
-      fireEvent.click(layer, { clientX: 300, clientY: 400 })
+      place(layer, 300, 400)
     })
     await act(async () => {
       fireEvent.mouseMove(layer, { clientX: 350, clientY: 450 })
@@ -276,21 +294,21 @@ describe('PenDrawLayer (PEN-CURVE-01, PEN-CREATE-01, PEN-EXTEND-01, PEN-ASSIGN-0
     )
     const layer = getByTestId('pen-draw-layer')
 
-    // Clicks in the INTERIOR of the canvas (far from edges and any barony vertices)
+    // Anchors in the INTERIOR of the canvas (far from edges and any barony vertices)
     // clientX/clientY are used directly as canvas px by canvasToGeo in jsdom
-    // Position a triangle far from any snap target (center of canvas area)
+    // Press+release with no movement = straight anchor. Triangle far from any snap target.
     await act(async () => {
-      fireEvent.click(layer, { clientX: 400, clientY: 400 }) // anchor 0
+      place(layer, 400, 400) // anchor 0
     })
     await act(async () => {
-      fireEvent.click(layer, { clientX: 600, clientY: 400 }) // anchor 1
+      place(layer, 600, 400) // anchor 1
     })
     await act(async () => {
-      fireEvent.click(layer, { clientX: 500, clientY: 600 }) // anchor 2
+      place(layer, 500, 600) // anchor 2
     })
-    // Close: click close to anchor 0 (within PEN_SNAP_PX=12px)
+    // Close: press close to anchor 0 (within PEN_SNAP_PX=12px)
     await act(async () => {
-      fireEvent.click(layer, { clientX: 401, clientY: 400 })
+      place(layer, 401, 400)
     })
     // Flush async (commitCreate awaits fetch /editor/country before setVerticesAndLog)
     await act(async () => {
@@ -328,14 +346,14 @@ describe('PenDrawLayer (PEN-CURVE-01, PEN-CREATE-01, PEN-EXTEND-01, PEN-ASSIGN-0
     const layer = getByTestId('pen-draw-layer')
 
     await act(async () => {
-      fireEvent.click(layer, { clientX: 400, clientY: 400 }) // anchor 0
+      place(layer, 400, 400) // anchor 0
     })
     await act(async () => {
-      fireEvent.click(layer, { clientX: 600, clientY: 400 }) // anchor 1
+      place(layer, 600, 400) // anchor 1
     })
     // Try to close (only 2 anchors — fails validation)
     await act(async () => {
-      fireEvent.click(layer, { clientX: 401, clientY: 400 })
+      place(layer, 401, 400)
     })
 
     const createCalls = mockSetVerticesAndLog.mock.calls.filter(
@@ -362,20 +380,20 @@ describe('PenDrawLayer (PEN-CURVE-01, PEN-CREATE-01, PEN-EXTEND-01, PEN-ASSIGN-0
     // Butterfly: (0,0)→(100,100)→(100,0)→(0,100) — segments cross each other
     // In canvas px (far from snap targets):
     await act(async () => {
-      fireEvent.click(layer, { clientX: 400, clientY: 400 }) // anchor 0
+      place(layer, 400, 400) // anchor 0
     })
     await act(async () => {
-      fireEvent.click(layer, { clientX: 600, clientY: 600 }) // anchor 1
+      place(layer, 600, 600) // anchor 1
     })
     await act(async () => {
-      fireEvent.click(layer, { clientX: 600, clientY: 400 }) // anchor 2
+      place(layer, 600, 400) // anchor 2
     })
     await act(async () => {
-      fireEvent.click(layer, { clientX: 400, clientY: 600 }) // anchor 3 — creates an X
+      place(layer, 400, 600) // anchor 3 — creates an X
     })
     // Close
     await act(async () => {
-      fireEvent.click(layer, { clientX: 401, clientY: 400 })
+      place(layer, 401, 400)
     })
 
     const createCalls = mockSetVerticesAndLog.mock.calls.filter(
@@ -402,17 +420,17 @@ describe('PenDrawLayer (PEN-CURVE-01, PEN-CREATE-01, PEN-EXTEND-01, PEN-ASSIGN-0
     // Nearly collinear triangle with tiny area (< MIN_AREA_PX2=200)
     // Points: (400,400), (401,400), (400,401) — area = 0.5 px² << 200
     await act(async () => {
-      fireEvent.click(layer, { clientX: 400, clientY: 400 }) // anchor 0
+      place(layer, 400, 400) // anchor 0
     })
     await act(async () => {
-      fireEvent.click(layer, { clientX: 401, clientY: 400 }) // anchor 1 — 1px away
+      place(layer, 401, 400) // anchor 1 — 1px away
     })
     await act(async () => {
-      fireEvent.click(layer, { clientX: 400, clientY: 401 }) // anchor 2 — 1px away
+      place(layer, 400, 401) // anchor 2 — 1px away
     })
     // Close
     await act(async () => {
-      fireEvent.click(layer, { clientX: 400, clientY: 400 }) // exactly on anchor 0
+      place(layer, 400, 400) // exactly on anchor 0
     })
 
     const createCalls = mockSetVerticesAndLog.mock.calls.filter(
@@ -435,9 +453,9 @@ describe('PenDrawLayer (PEN-CURVE-01, PEN-CREATE-01, PEN-EXTEND-01, PEN-ASSIGN-0
     const layer = getByTestId('pen-draw-layer')
 
     await act(async () => {
-      fireEvent.click(layer, { clientX: 400, clientY: 400 })
-      fireEvent.click(layer, { clientX: 600, clientY: 400 })
-      fireEvent.click(layer, { clientX: 500, clientY: 600 })
+      place(layer, 400, 400)
+      place(layer, 600, 400)
+      place(layer, 500, 600)
     })
     // Ctrl+Z mid-draw (component-local)
     await act(async () => {
@@ -464,8 +482,8 @@ describe('PenDrawLayer (PEN-CURVE-01, PEN-CREATE-01, PEN-EXTEND-01, PEN-ASSIGN-0
     const layer = getByTestId('pen-draw-layer')
 
     await act(async () => {
-      fireEvent.click(layer, { clientX: 400, clientY: 400 })
-      fireEvent.click(layer, { clientX: 600, clientY: 400 })
+      place(layer, 400, 400)
+      place(layer, 600, 400)
     })
     await act(async () => {
       fireEvent.keyDown(window, { key: 'Escape', code: 'Escape' })
@@ -495,19 +513,19 @@ describe('PenDrawLayer (PEN-CURVE-01, PEN-CREATE-01, PEN-EXTEND-01, PEN-ASSIGN-0
     )
     const layer = getByTestId('pen-draw-layer')
 
-    // First click exactly on neighbor vertex (canvas px 50, 500) → extendMode=true
+    // First press exactly on neighbor vertex (canvas px 50, 500) → extendMode=true
     await act(async () => {
-      fireEvent.click(layer, { clientX: 50, clientY: 500 }) // anchor 0, snapped to barony vertex
+      place(layer, 50, 500) // anchor 0, snapped to barony vertex
     })
     await act(async () => {
-      fireEvent.click(layer, { clientX: 300, clientY: 500 }) // anchor 1
+      place(layer, 300, 500) // anchor 1
     })
     await act(async () => {
-      fireEvent.click(layer, { clientX: 200, clientY: 700 }) // anchor 2
+      place(layer, 200, 700) // anchor 2
     })
     // Close
     await act(async () => {
-      fireEvent.click(layer, { clientX: 51, clientY: 500 }) // near anchor 0
+      place(layer, 51, 500) // near anchor 0
     })
     await act(async () => {
       await new Promise((r) => setTimeout(r, 0))
@@ -536,8 +554,8 @@ describe('PenDrawLayer (PEN-CURVE-01, PEN-CREATE-01, PEN-EXTEND-01, PEN-ASSIGN-0
     const layer = getByTestId('pen-draw-layer')
 
     await act(async () => {
-      fireEvent.click(layer, { clientX: 400, clientY: 400 }) // anchor 0
-      fireEvent.click(layer, { clientX: 600, clientY: 400 }) // anchor 1
+      place(layer, 400, 400) // anchor 0
+      place(layer, 600, 400) // anchor 1
     })
     // 2 anchors → closeable highlight present
     expect(queryByTestId('pen-first-anchor')).not.toBeNull()
@@ -550,5 +568,80 @@ describe('PenDrawLayer (PEN-CURVE-01, PEN-CREATE-01, PEN-EXTEND-01, PEN-ASSIGN-0
 
     // Pure local edit — never touches the store / zundo
     expect(mockSetVerticesAndLog).not.toHaveBeenCalled()
+  })
+
+  // T10: PEN-CURVE-01 — press-drag-release past the threshold shows the tangent preview
+  // (the live curve handle) mid-drag. This is the Photoshop click-drag gesture that was
+  // previously unimplemented (only straight anchors existed).
+  it('T10: press-drag past threshold renders the curve tangent preview (pen-drag-tangent)', async () => {
+    const { getByTestId, queryByTestId } = render(
+      <PenDrawLayer
+        projection={PROJECTION}
+        currentScale={1}
+        neighborCandidates={[]}
+        onPathClosed={vi.fn()}
+        onDrawingStateChange={vi.fn()}
+      />,
+    )
+    const layer = getByTestId('pen-draw-layer')
+
+    // Press, then drag 40px (> DRAG_THRESHOLD_PX=4 at scale 1) — tangent preview must appear.
+    await act(async () => {
+      fireEvent.mouseDown(layer, { clientX: 400, clientY: 400 })
+      fireEvent.mouseMove(layer, { clientX: 440, clientY: 440 })
+    })
+    expect(queryByTestId('pen-drag-tangent')).not.toBeNull()
+
+    // Release ends the drag — preview clears.
+    await act(async () => {
+      fireEvent.mouseUp(layer, { clientX: 440, clientY: 440 })
+    })
+    expect(queryByTestId('pen-drag-tangent')).toBeNull()
+  })
+
+  // T11: PEN-CURVE-01 — a closed path containing a curve anchor flattens to a sampled ring.
+  // A curve segment contributes ~12 sampled points (vs 1 for a straight join), so the
+  // committed ring is much longer than the 4-point all-straight triangle.
+  it('T11: close with a curve anchor commits a create op whose ring is bezier-sampled', async () => {
+    const { getByTestId } = render(
+      <PenDrawLayer
+        projection={PROJECTION}
+        currentScale={1}
+        neighborCandidates={[]}
+        onPathClosed={vi.fn()}
+        onDrawingStateChange={vi.fn()}
+        projectId="proj-1"
+        branchId="branch-1"
+      />,
+    )
+    const layer = getByTestId('pen-draw-layer')
+
+    // anchor 0 = curve (drag out a tangent), anchors 1 & 2 = straight, then close.
+    await act(async () => {
+      dragCurve(layer, 400, 400, 40, 0) // curve anchor with horizontal tangent
+    })
+    await act(async () => {
+      place(layer, 600, 400) // anchor 1
+    })
+    await act(async () => {
+      place(layer, 500, 600) // anchor 2
+    })
+    await act(async () => {
+      place(layer, 401, 400) // close near anchor 0
+    })
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0))
+    })
+
+    const createCalls = mockSetVerticesAndLog.mock.calls.filter(
+      (args) => (args[1] as { op: string })?.op === 'create',
+    )
+    expect(createCalls).toHaveLength(1)
+    const ring = (createCalls[0][1] as { ring: Array<{ lat: number; lon: number }> }).ring
+    // Curve segments around anchor 0 are sampled → far more than the 4-point straight ring.
+    expect(ring.length).toBeGreaterThan(10)
+    // Ring is closed (first === last).
+    expect(ring[0].lat).toBeCloseTo(ring[ring.length - 1].lat, 6)
+    expect(ring[0].lon).toBeCloseTo(ring[ring.length - 1].lon, 6)
   })
 })
