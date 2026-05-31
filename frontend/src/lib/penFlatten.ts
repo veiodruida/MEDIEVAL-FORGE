@@ -102,3 +102,62 @@ export function flattenPenPath(
 
   return ring;
 }
+
+/**
+ * Flatten the OPEN pen path (segments 0..N-2 only — no closing/wrap segment) for the
+ * live on-screen preview while drawing. Uses the exact same per-segment cubic sampling
+ * as flattenPenPath, so what the user sees mid-draw equals the committed ring's shape
+ * (minus the not-yet-drawn closing segment). Straight segments contribute their start
+ * anchor; curve segments are bezier-sampled. The final anchor is always appended.
+ *
+ * @param anchors    PenAnchor[] (>= 1).
+ * @param projection ProjectionConfig for geo↔canvas conversion.
+ * @returns Open {lat, lon}[] polyline (NOT closed).
+ */
+export function flattenPenPathOpen(
+  anchors: PenAnchor[],
+  projection: ProjectionConfig,
+): Array<{ lat: number; lon: number }> {
+  const N = anchors.length;
+  if (N === 0) return [];
+  if (N === 1) return [{ lat: anchors[0].lat, lon: anchors[0].lon }];
+
+  const out: Array<{ lat: number; lon: number }> = [];
+
+  for (let i = 0; i < N - 1; i++) {
+    const anchor = anchors[i];
+    const next = anchors[i + 1];
+    const [p0x, p0y] = geoToCanvas(anchor.lon, anchor.lat, projection);
+    const [p3x, p3y] = geoToCanvas(next.lon, next.lat, projection);
+    const hasCurveHandles = anchor.cp1 != null || next.cp2 != null;
+
+    if (hasCurveHandles) {
+      const c1 = anchor.cp1
+        ? geoToCanvas(anchor.cp1.lon, anchor.cp1.lat, projection)
+        : ([p0x, p0y] as [number, number]);
+      const c2 = next.cp2
+        ? geoToCanvas(next.cp2.lon, next.cp2.lat, projection)
+        : ([p3x, p3y] as [number, number]);
+      const cubic: [[number, number], [number, number], [number, number], [number, number]] = [
+        [p0x, p0y],
+        c1,
+        c2,
+        [p3x, p3y],
+      ];
+      const flat = flattenSegment(cubic, 12, projection);
+      // Emit all but the last point (next segment starts at p3); the final anchor is
+      // appended once after the loop.
+      for (let k = 0; k < flat.length - 1; k++) {
+        const [lon, lat] = flat[k];
+        out.push({ lat, lon });
+      }
+    } else {
+      out.push({ lat: anchor.lat, lon: anchor.lon });
+    }
+  }
+
+  // Append the last anchor (open path endpoint).
+  out.push({ lat: anchors[N - 1].lat, lon: anchors[N - 1].lon });
+
+  return out;
+}

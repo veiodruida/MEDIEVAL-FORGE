@@ -6,7 +6,7 @@
  * Returns a closed ring (first point == last point, or explicitly appended).
  */
 import { describe, it, expect } from 'vitest';
-import { flattenPenPath } from './penFlatten';
+import { flattenPenPath, flattenPenPathOpen } from './penFlatten';
 import type { PenAnchor } from './penFlatten';
 
 // ---- minimal projection for flattenSegment (lat/lon pass-through space) -----
@@ -108,5 +108,56 @@ describe('flattenPenPath (PEN-CURVE-01)', () => {
     expect(ring.length).toBeGreaterThanOrEqual(4);
     // Verify ring closure
     expect(ring[ring.length - 1].lat).toBeCloseTo(ring[0].lat, 4);
+  });
+});
+
+describe('flattenPenPathOpen (PEN-CURVE-01 live preview)', () => {
+  it('T7: open path is NOT closed — last point is the final anchor, not the first', () => {
+    const anchors: PenAnchor[] = [
+      { lat: 40, lon: -8, type: 'straight' },
+      { lat: 41, lon: -7, type: 'straight' },
+      { lat: 40, lon: -6, type: 'straight' },
+    ];
+    const open = flattenPenPathOpen(anchors, PROJECTION);
+    // Last point is the final anchor (40, -6), not the first anchor (40, -8).
+    expect(open[open.length - 1].lat).toBeCloseTo(40, 4);
+    expect(open[open.length - 1].lon).toBeCloseTo(-6, 4);
+    // Open path does NOT wrap back to the first point.
+    const first = open[0];
+    const last = open[open.length - 1];
+    expect(Math.abs(last.lon - first.lon)).toBeGreaterThan(0.5);
+  });
+
+  it('T8: a curve segment is bezier-sampled (more points than the 2 straight endpoints)', () => {
+    const anchors: PenAnchor[] = [
+      {
+        lat: 40,
+        lon: -8,
+        type: 'curve',
+        cp1: { lat: 40.8, lon: -8 },
+        cp2: { lat: 40.8, lon: -7 },
+      },
+      { lat: 41, lon: -7, type: 'straight' },
+    ];
+    const open = flattenPenPathOpen(anchors, PROJECTION);
+    // One curve segment → sampled into many intermediate points, not just 2 endpoints.
+    expect(open.length).toBeGreaterThan(3);
+  });
+
+  it('T9: open preview shares the non-closing segments with the closed ring', () => {
+    // Both functions must sample the same per-segment cubic so display == committed shape.
+    const anchors: PenAnchor[] = [
+      { lat: 40, lon: -8, type: 'curve', cp1: { lat: 40.5, lon: -8.5 }, cp2: { lat: 40.5, lon: -7.5 } },
+      { lat: 41, lon: -7, type: 'straight' },
+      { lat: 40, lon: -6, type: 'straight' },
+    ];
+    const open = flattenPenPathOpen(anchors, PROJECTION);
+    const closed = flattenPenPath(anchors, PROJECTION);
+    // The open preview must be a strict prefix-shape of the closed ring's leading segments:
+    // its first sampled point matches the closed ring's first sampled point.
+    expect(open[0].lat).toBeCloseTo(closed[0].lat, 6);
+    expect(open[0].lon).toBeCloseTo(closed[0].lon, 6);
+    // Open path is shorter than the closed ring (no closing segment + no wrap dup).
+    expect(open.length).toBeLessThan(closed.length);
   });
 });

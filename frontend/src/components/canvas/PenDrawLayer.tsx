@@ -32,7 +32,7 @@ import { Layer, Group, Line, Circle, Rect, Text } from 'react-konva'
 import { useEditorStore } from '../../stores/useEditorStore'
 import { snapToNeighbour, snapToEdge } from '../../lib/snap'
 import type { SnapCandidate, SnapEdge } from '../../lib/snap'
-import { flattenPenPath } from '../../lib/penFlatten'
+import { flattenPenPath, flattenPenPathOpen } from '../../lib/penFlatten'
 import type { PenAnchor } from '../../lib/penFlatten'
 import { geoToCanvas, canvasToGeo } from '../../lib/projection'
 import type { ProjectionConfig } from '../../lib/projection'
@@ -41,7 +41,8 @@ import type { ProjectionConfig } from '../../lib/projection'
 const ANCHOR_STRAIGHT_FILL = '#4a9eff'   // blue — straight anchor Rect
 const ANCHOR_CURVE_FILL = '#4a9eff'      // blue — curve anchor Circle
 const FIRST_ANCHOR_STROKE = '#f0c040'    // amber — first anchor closeable highlight
-const RUBBER_BAND_STROKE = '#f0c040'     // amber — rubber-band line
+const RUBBER_BAND_STROKE = '#f0c040'     // amber — rubber-band line (pending segment to cursor)
+const CURVE_STROKE = '#22c55e'           // green — live committed-path curve (matches Bézier outline)
 const HANDLE_FILL = '#e879f9'            // magenta — cp1/cp2 handle circles
 const TETHER_STROKE = '#94a3b8'          // slate-gray — handle tether lines
 const SNAP_VERTEX_STROKE = '#eab308'     // yellow — snap vertex marker
@@ -908,19 +909,26 @@ export const PenDrawLayer: React.FC<PenDrawLayerProps> = ({
           )
         })()}
 
-        {/* Path segments between placed anchors */}
+        {/* Live curve between placed anchors. Phase 08.3 (UAT fix #2): the path is the
+            ACTUAL bezier (sampled from each anchor's cp1/cp2 via flattenPenPathOpen), not a
+            straight polyline — so the curve is visible WHILE drawing, like Photoshop. Uses the
+            same per-segment sampling as the committed ring (flattenPenPath), so display ==
+            committed shape by construction. Open path; the pending last-anchor→cursor segment
+            stays a straight rubber-band above. */}
         {anchors.length >= 2 && (() => {
+          const curve = flattenPenPathOpen(anchors, projection)
           const pts: number[] = []
-          for (const a of anchors) {
-            const [x, y] = geoToCanvas(a.lon, a.lat, projection)
+          for (const p of curve) {
+            const [x, y] = geoToCanvas(p.lon, p.lat, projection)
             pts.push(x, y)
           }
           return (
             <Line
               points={pts}
-              stroke={RUBBER_BAND_STROKE}
+              stroke={CURVE_STROKE}
               strokeWidth={curveWidth}
               listening={false}
+              data-testid="pen-path-curve"
             />
           )
         })()}

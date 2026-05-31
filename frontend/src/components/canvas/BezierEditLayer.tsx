@@ -239,6 +239,13 @@ export const BezierEditLayer: React.FC<BezierEditLayerProps> = ({ projection, cu
   const hitPathWidth = HITPATH_BASE_PX / safeScale
   const tetherWidth = TETHER_BASE_PX / safeScale
   const curveWidth = CURVE_BASE_PX / safeScale
+  // Phase 08.3 (UAT fix #1a): grow the INVISIBLE hit area of anchors/handles so the small
+  // ~9px nodes are easy to grab with a real mouse. hitStrokeWidth enlarges Konva's hit
+  // region around the shape without changing its drawn size.
+  const ANCHOR_HIT_PX = 22
+  const HANDLE_HIT_PX = 22
+  const anchorHit = ANCHOR_HIT_PX / safeScale
+  const handleHit = HANDLE_HIT_PX / safeScale
 
   const editableLayer = useEditorStore((s) => s.editableLayer)
   const activeTerritoryId = useEditorStore((s) => s.activeTerritoryId)
@@ -464,6 +471,14 @@ export const BezierEditLayer: React.FC<BezierEditLayerProps> = ({ projection, cu
 
   const handleDragEnd = useCallback(
     (kind: DragKind, idx: number, e: Konva.KonvaEventObject<DragEvent>) => {
+      // Phase 08.3 (UAT fix #1): trust the LAST drag-move position (previewRef.px), not
+      // e.target at dragEnd. The handles/anchors are React-controlled draggables (x/y bound
+      // to displayAnchors); re-rendering their position from previewAnchors on every move
+      // fights Konva's internal drag so `e.target.x()` can report the PRE-drag position at
+      // dragEnd — which made control-handle edits commit a no-op and visually snap back
+      // ("a forma que escolhi volta ao anterior"). previewRef.px was set from e.target on
+      // each move while the values were still live, so it holds the true dropped position.
+      const previewPx = previewRef.current?.px ?? null
       previewRef.current = null
       setPreviewAnchors(null)
       const curAnchors = anchorsRef.current
@@ -473,7 +488,8 @@ export const BezierEditLayer: React.FC<BezierEditLayerProps> = ({ projection, cu
       if (orderedKeys.length === 0) return
 
       // Konva center px of the dragged node (anchor Rect is top-left anchored → +anchorHalf).
-      let finalPx = draggedCenterPx(kind, e.target.x(), e.target.y(), anchorHalfRef.current)
+      let finalPx =
+        previewPx ?? draggedCenterPx(kind, e.target.x(), e.target.y(), anchorHalfRef.current)
 
       // Snap (anchors only) — convert px → geo, snap to neighbour barony vertex, then use
       // the snapped position. Control-handle drags SKIP snap entirely (RESEARCH constraint 2).
@@ -573,28 +589,27 @@ export const BezierEditLayer: React.FC<BezierEditLayerProps> = ({ projection, cu
         vertexIds: changedIds,
       })
 
-      // 6) Recompute display state from the updated store + refresh indices.
+      // 6) Keep the user's EXACT anchors+handles as the display source of truth.
+      //    Phase 08.3 (UAT fix #1): the previous code re-fit the flattened polygon back
+      //    to cubics via fitCurve here — a lossy round-trip that re-chose its own control
+      //    points and snapped the user's handle ~60px off target ("a forma que escolhi não
+      //    fica, volta ao anterior"). The committed store polygon is a dense, faithful
+      //    sampling of `working`'s cubic (≈40 pts/segment for Grado), so display (working
+      //    cubic) and commit (dense sample of it) already agree — there is nothing to
+      //    re-derive. We keep `working` so the handle stays exactly where the user dropped
+      //    it. (Re-fit still happens on the next fit-on-entry when the barony is reselected.)
       const updated = useEditorStore.getState().vertices
-      const refit = deriveAnchorsFromStore(
-        Object.fromEntries(
-          Object.entries(updated).filter(([k]) => keyBarony(k) === baronyId),
-        ),
-        projection,
-      )
-      const refitKeys = sortRingKeys(
+      const baronyKeys = sortRingKeys(
         Object.keys(updated).filter((k) => keyBarony(k) === baronyId),
       )
       originalRef.current = {
-        coords: refitKeys.map((k) => [updated[k].lon, updated[k].lat]),
-        pxPts: refitKeys.map((k) => geoToCanvas(updated[k].lon, updated[k].lat, projection)),
-        orderedKeys: refitKeys,
+        coords: baronyKeys.map((k) => [updated[k].lon, updated[k].lat]),
+        pxPts: baronyKeys.map((k) => geoToCanvas(updated[k].lon, updated[k].lat, projection)),
+        orderedKeys: baronyKeys,
         baronyId,
       }
-      setAnchors(refit)
-      // WR-02: clamp activeAnchorIdx so it never silently points past the new array length.
-      // After a commit-refit that yields fewer cubics, a stale activeAnchorIdx would make
-      // displayAnchors[activeAnchorIdx] undefined and the handles/tethers disappear silently.
-      setActiveAnchorIdx((cur) => (cur === null ? null : Math.min(cur, refit.length - 1)))
+      setAnchors(working)
+      setActiveAnchorIdx((cur) => (cur === null ? null : Math.min(cur, working.length - 1)))
       setDirtyCount(0)
       rebuildSharedIndex(updated)
       rebuildSnapCandidates(updated, baronyId)
@@ -954,6 +969,7 @@ export const BezierEditLayer: React.FC<BezierEditLayerProps> = ({ projection, cu
             width={anchorSize}
             height={anchorSize}
             fill={fill}
+            hitStrokeWidth={anchorHit}
             draggable
             onClick={() => setActiveAnchorIdx(a.idx)}
             onDragStart={() => setActiveAnchorIdx(a.idx)}
@@ -995,6 +1011,7 @@ export const BezierEditLayer: React.FC<BezierEditLayerProps> = ({ projection, cu
                 y={a.cp1Px[1]}
                 radius={handleRadius}
                 fill={HANDLE_FILL}
+                hitStrokeWidth={handleHit}
                 draggable
                 onDragMove={(e: Konva.KonvaEventObject<DragEvent>) => handleDragMove('cp1', a.idx, e)}
                 onDragEnd={(e: Konva.KonvaEventObject<DragEvent>) => handleDragEnd('cp1', a.idx, e)}
@@ -1006,6 +1023,7 @@ export const BezierEditLayer: React.FC<BezierEditLayerProps> = ({ projection, cu
                 y={a.cp2Px[1]}
                 radius={handleRadius}
                 fill={HANDLE_FILL}
+                hitStrokeWidth={handleHit}
                 draggable
                 onDragMove={(e: Konva.KonvaEventObject<DragEvent>) => handleDragMove('cp2', a.idx, e)}
                 onDragEnd={(e: Konva.KonvaEventObject<DragEvent>) => handleDragEnd('cp2', a.idx, e)}
