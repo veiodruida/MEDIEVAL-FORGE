@@ -54,6 +54,11 @@ const STATUS_FILL = '#f0c040'            // amber — status hint text
 // ── D-16 snap radius for pen tool ────────────────────────────────────────────
 const PEN_SNAP_PX = 12  // screen-px snap radius for pen tool
 
+// Double-click-to-close: the two clicks of a real double-click land within a few
+// screen-px of each other. Drop a trailing anchor this close to its predecessor so
+// the closing ring has no zero-length spur (user request 2026-05-31).
+const DBLCLICK_DEDUP_PX = 8  // screen-px
+
 // ── D-17 area threshold ───────────────────────────────────────────────────────
 const MIN_AREA_PX2 = 200  // minimum enclosed area in canvas-px (shoelace)
 
@@ -674,10 +679,12 @@ export const PenDrawLayer: React.FC<PenDrawLayerProps> = ({
   )
 
   // ── Close the current path (validate + commit create/extend) ──────────────
-  // Shared by the mouse-up close gesture and the DEV __forgePenClose hook.
+  // Shared by the mouse-up close gesture, the double-click close, and the DEV
+  // __forgePenClose hook. `explicitAnchors` lets a caller (double-click) pass a
+  // deduped set without waiting for a setAnchors state flush.
   const closePath = useCallback(
-    async (): Promise<boolean> => {
-      const cur = anchorsRef.current
+    async (explicitAnchors?: PenAnchor[]): Promise<boolean> => {
+      const cur = explicitAnchors ?? anchorsRef.current
       const pxPts = cur.map((a) => {
         const [x, y] = geoToCanvas(a.lon, a.lat, projection)
         return { x, y }
@@ -800,6 +807,41 @@ export const PenDrawLayer: React.FC<PenDrawLayerProps> = ({
       setAnchors((prev) => [...prev, newAnchor])
     },
     [eventToWorld, closePath],
+  )
+
+  // ── Double-click: close the contour (user request 2026-05-31) ─────────────
+  // Closing by clicking exactly on the small first anchor is fiddly at fit-scale.
+  // A double-click anywhere closes the ring: the two clicks of the dbl already
+  // placed up to two near-coincident anchors via handleMouseUp; drop the trailing
+  // duplicate so the ring has no zero-length spur, then close on the first anchor.
+  const handleDblClick = useCallback(
+    async (e: Konva.KonvaEventObject<MouseEvent>) => {
+      e.evt?.preventDefault?.()
+      e.cancelBubble = true
+      // Cancel any pending anchor / drag / queued single-click close from the dbl cycles.
+      isPointerDownRef.current = false
+      pendingAnchorRef.current = null
+      dragStartedRef.current = false
+      pendingCloseRef.current = false
+      setDragPreview(null)
+
+      let cur = anchorsRef.current
+      if (cur.length >= 2) {
+        const a = cur[cur.length - 1]
+        const b = cur[cur.length - 2]
+        const [ax, ay] = geoToCanvas(a.lon, a.lat, projection)
+        const [bx, by] = geoToCanvas(b.lon, b.lat, projection)
+        if (Math.hypot(ax - bx, ay - by) <= DBLCLICK_DEDUP_PX / safeScale) {
+          cur = cur.slice(0, -1)
+        }
+      }
+      if (cur.length < 3) {
+        setValidationError('Mínimo de 3 pontos para fechar. Clique mais pontos e dê duplo-clique para fechar o contorno.')
+        return
+      }
+      await closePath(cur)
+    },
+    [projection, safeScale, closePath],
   )
 
   // ── DEV hatch for Playwright (Plan 06) ────────────────────────────────────
@@ -942,6 +984,7 @@ export const PenDrawLayer: React.FC<PenDrawLayerProps> = ({
         onMouseDown={handleMouseDown}
         onMouseUp={handleMouseUp}
         onMouseMove={handleMouseMove}
+        onDblClick={handleDblClick}
         onContextMenu={(e) => {
           // Right-click deletes the last placed anchor (user request 2026-05-31).
           // Suppress the browser context menu so right-click is a pure edit gesture.
