@@ -175,16 +175,20 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
   const editableLayer = useEditorStore((s) => s.editableLayer)
   const landmaskMode = useEditorStore((s) => s.landmaskMode)
 
+  // Phase 08.3 Plan 05: activeTool selector — drives PenDrawLayer z=6 mount gate AND
+  // the bezierActive mutual-exclusion below (read before bezierActive so the gate can
+  // suppress BezierEditLayer while the pen tool is active).
+  const activeTool = useEditorStore((s) => s.activeTool)
+
   // Phase 08.1 (BEZ-UAT-01): z=5 mutual-exclusion gate. When a barony is selected on
   // the baronies layer, mount BezierEditLayer (curve anchors) instead of VertexEditLayer
-  // (raw vertex handles). NOTE: this gate intentionally omits the activeTool==='V' check
-  // that WorkspaceToolbar's bezierMode uses — BezierEditLayer self-gates on the V tool
-  // internally and renders null otherwise, so under S/M tools neither layer shows handles
-  // (S/M operate at territory level, not per-vertex — see SUMMARY mutual-exclusion note).
-  const bezierActive = editableLayer === 'baronies' && activeTerritoryId !== null
-
-  // Phase 08.3 Plan 05: activeTool selector for PenDrawLayer z=6 mount gate.
-  const activeTool = useEditorStore((s) => s.activeTool)
+  // (raw vertex handles). BezierEditLayer self-gates on the V tool internally and renders
+  // null otherwise, so under S/M tools neither layer shows handles (S/M operate at
+  // territory level, not per-vertex — see SUMMARY mutual-exclusion note).
+  // Phase 08.3 (UAT fix): exclude activeTool==='P' so BezierEditLayer and PenDrawLayer are
+  // never mounted simultaneously (the 08.3-05 SUMMARY claimed this; the gate now enforces it).
+  const bezierActive =
+    editableLayer === 'baronies' && activeTerritoryId !== null && activeTool !== 'P'
 
   // Phase 08.3 Plan 05: penDrawing state — driven by PenDrawLayer.onDrawingStateChange.
   // WorkspaceToolbar reads this via the onPenDrawingChange prop to derive disabledTools.
@@ -616,6 +620,10 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
   // e.target === e.target.getStage(). Race-free under React StrictMode.
   const handleStageClick = useCallback(
     (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
+      // Phase 08.3 (UAT fix): while the pen tool is active, the PenDrawLayer hit-Rect
+      // owns empty-canvas clicks (anchor placement). Do not clear the selection here or
+      // the in-progress draw context (selected neighbor barony) would be wiped mid-path.
+      if (useEditorStore.getState().activeTool === 'P') return
       if (e.target === e.target.getStage()) {
         // Clear both selection tiers at once — empty-stage click should land
         // on the placeholder regardless of which mode the inspector was in.
@@ -737,7 +745,9 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
         ref={stageRef}
         width={viewportW}
         height={viewportH}
-        draggable
+        // Phase 08.3 (UAT fix): disable Stage pan while the pen tool is active, otherwise
+        // the Stage drag swallows the pointer and PenDrawLayer never receives mousedown.
+        draggable={activeTool !== 'P'}
         dragBoundFunc={dragBound}
         onWheel={handleWheel}
         onClick={handleStageClick}

@@ -345,8 +345,24 @@ export const PenDrawLayer: React.FC<PenDrawLayerProps> = ({
   // Accepts both KonvaEventObject (real) and React.MouseEvent (jsdom/test mock).
   const eventToWorld = useCallback(
     (e: Konva.KonvaEventObject<MouseEvent>): { lat: number; lon: number } | null => {
-      // KonvaEventObject has .evt (native MouseEvent); React.MouseEvent has .clientX directly.
-      // Handle both shapes for test-mock compatibility.
+      // Phase 08.3 (UAT fix): canvasToGeo expects MAP-SPACE pixels (0..mapW, 0..mapH), not
+      // screen coords. getRelativePointerPosition() returns the pointer already mapped through
+      // the Stage transform (pan + zoom) into layer/map space — the same space BezierEditLayer
+      // uses (08.1-07 G7 fix). Using raw evt.clientX/Y here put anchors in the wrong place.
+      const stage = (() => {
+        try {
+          return (e.target?.getStage?.() ?? null) as Konva.Stage | null
+        } catch {
+          return null
+        }
+      })()
+      const rel = stage?.getRelativePointerPosition?.()
+      if (rel) {
+        const [lon, lat] = canvasToGeo(rel.x, rel.y, projection)
+        return { lat, lon }
+      }
+      // jsdom/unit-test fallback: Konva mock has no Stage; React.MouseEvent carries clientX/Y,
+      // which the tests pre-map into map space.
       const raw = e as unknown as { evt?: MouseEvent; clientX?: number; clientY?: number }
       const clientX = raw.evt?.clientX ?? raw.clientX ?? 0
       const clientY = raw.evt?.clientY ?? raw.clientY ?? 0
@@ -733,6 +749,21 @@ export const PenDrawLayer: React.FC<PenDrawLayerProps> = ({
         onClick={handleClick}
         onMouseMove={handleMouseMove}
       >
+        {/* Phase 08.3 (UAT fix): full map-space hit Rect. Konva only bubbles pointer events
+            to this Group when a child SHAPE is the hit target — an empty-space click otherwise
+            targets the Stage and never reaches handleClick. A transparent fill is still added
+            to the hit graph (the hit canvas keys on shape identity, not fill alpha), so this
+            Rect catches clicks/moves anywhere over the map without painting anything. */}
+        <Rect
+          x={0}
+          y={0}
+          width={projection.mapW}
+          height={projection.mapH}
+          fill="transparent"
+          listening={true}
+          data-testid="pen-hit-area"
+        />
+
         {/* Validation error overlay (D-17) */}
         {validationError && (
           <>
