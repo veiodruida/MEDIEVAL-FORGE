@@ -644,4 +644,45 @@ describe('PenDrawLayer (PEN-CURVE-01, PEN-CREATE-01, PEN-EXTEND-01, PEN-ASSIGN-0
     expect(ring[0].lat).toBeCloseTo(ring[ring.length - 1].lat, 6)
     expect(ring[0].lon).toBeCloseTo(ring[ring.length - 1].lon, 6)
   })
+
+  // T12: PEN-CURVE-01 live preview — WHILE dragging out the 2nd anchor's tangent, the green
+  // curve (pen-path-curve) must already render, bending toward the not-yet-committed anchor.
+  // This is the user-reported gap (2026-05-31): "não consigo ver como ficará a forma da bezier
+  // quando eu soltar." Before the fix the curve only used committed anchors, so mid-drag with a
+  // single committed anchor nothing rendered. The straight rubber-band is also hidden mid-drag.
+  it('T12: mid-drag of 2nd anchor renders the live bezier curve and hides the straight rubber-band', async () => {
+    const { getByTestId, queryByTestId } = render(
+      <PenDrawLayer
+        projection={PROJECTION}
+        currentScale={1}
+        neighborCandidates={[]}
+        onPathClosed={vi.fn()}
+        onDrawingStateChange={vi.fn()}
+      />,
+    )
+    const layer = getByTestId('pen-draw-layer')
+
+    // anchor 0 placed (straight). With a single committed anchor, no curve preview yet.
+    await act(async () => {
+      place(layer, 400, 400)
+    })
+    expect(queryByTestId('pen-path-curve')).toBeNull()
+
+    // Press the 2nd anchor at (600,400) and drag 40px out — past DRAG_THRESHOLD_PX=4.
+    // previewAnchors = [anchor0, in-progress curve anchor] → live curve must render NOW.
+    await act(async () => {
+      fireEvent.mouseDown(layer, { clientX: 600, clientY: 400 })
+      fireEvent.mouseMove(layer, { clientX: 640, clientY: 400 })
+    })
+    expect(queryByTestId('pen-path-curve')).not.toBeNull()
+    // Tangent handles visible; straight rubber-band suppressed during the drag.
+    expect(queryByTestId('pen-drag-tangent')).not.toBeNull()
+    expect(queryByTestId('pen-rubber-band')).toBeNull()
+
+    // Release commits the curve anchor → 2 committed anchors → curve persists.
+    await act(async () => {
+      fireEvent.mouseUp(layer, { clientX: 640, clientY: 400 })
+    })
+    expect(queryByTestId('pen-path-curve')).not.toBeNull()
+  })
 })

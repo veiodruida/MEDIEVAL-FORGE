@@ -259,10 +259,13 @@ export const PenDrawLayer: React.FC<PenDrawLayerProps> = ({
   const [snapVertexMarker, setSnapVertexMarker] = useState<{ x: number; y: number } | null>(null)
   const [snapEdgeMarker, setSnapEdgeMarker] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null)
   // Live tangent preview while dragging out a curve anchor's handles (PEN-CURVE-01).
+  // curveAnchor carries the in-progress anchor in GEO space so the live green curve can
+  // include the bend toward this not-yet-committed anchor (Photoshop-style preview).
   const [dragPreview, setDragPreview] = useState<{
     anchor: [number, number]
     cp1: [number, number]
     cp2: [number, number]
+    curveAnchor: PenAnchor
   } | null>(null)
 
   const anchorsRef = useRef<PenAnchor[]>([])
@@ -413,7 +416,16 @@ export const PenDrawLayer: React.FC<PenDrawLayerProps> = ({
           const dLon = world.lon - pa.lon
           const cp1 = geoToCanvas(pa.lon + dLon, pa.lat + dLat, projection) // outgoing
           const cp2 = geoToCanvas(pa.lon - dLon, pa.lat - dLat, projection) // mirror (incoming)
-          setDragPreview({ anchor: [ax, ay], cp1, cp2 })
+          // In-progress anchor in geo space — fed to flattenPenPathOpen so the green curve
+          // shows the incoming bend toward this anchor LIVE, before mouse-up (Photoshop preview).
+          const curveAnchor: PenAnchor = {
+            lat: pa.lat,
+            lon: pa.lon,
+            type: 'curve',
+            cp1: { lat: pa.lat + dLat, lon: pa.lon + dLon },
+            cp2: { lat: pa.lat - dLat, lon: pa.lon - dLon },
+          }
+          setDragPreview({ anchor: [ax, ay], cp1, cp2, curveAnchor })
           setCursorPos({ x: dx, y: dy })
         }
         return
@@ -894,8 +906,9 @@ export const PenDrawLayer: React.FC<PenDrawLayerProps> = ({
           </>
         )}
 
-        {/* Rubber-band: last anchor → cursor */}
-        {anchors.length >= 1 && cursorPos !== null && (() => {
+        {/* Rubber-band: last anchor → cursor. Hidden while dragging out a curve anchor —
+            the live green curve below already shows the bend toward the dragged anchor. */}
+        {anchors.length >= 1 && cursorPos !== null && !dragPreview && (() => {
           const [lx, ly] = geoToCanvas(anchors[anchors.length - 1].lon, anchors[anchors.length - 1].lat, projection)
           return (
             <Line
@@ -915,8 +928,14 @@ export const PenDrawLayer: React.FC<PenDrawLayerProps> = ({
             same per-segment sampling as the committed ring (flattenPenPath), so display ==
             committed shape by construction. Open path; the pending last-anchor→cursor segment
             stays a straight rubber-band above. */}
-        {anchors.length >= 2 && (() => {
-          const curve = flattenPenPathOpen(anchors, projection)
+        {(() => {
+          // While dragging, append the in-progress curve anchor so the green curve bends
+          // toward it LIVE (before mouse-up). Otherwise show the committed open path.
+          const previewAnchors = dragPreview
+            ? [...anchors, dragPreview.curveAnchor]
+            : anchors
+          if (previewAnchors.length < 2) return null
+          const curve = flattenPenPathOpen(previewAnchors, projection)
           const pts: number[] = []
           for (const p of curve) {
             const [x, y] = geoToCanvas(p.lon, p.lat, projection)
