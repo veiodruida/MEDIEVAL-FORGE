@@ -243,6 +243,9 @@ def build_baronies_geojson_sidecar(
                 "kingdom_id": kingdom_id,
                 "centroid": [lon, lat],
                 "pixel_count": npx,
+                # Phase 08.3 Plan 07: raster index for carve parent_id resolution.
+                # bi == the raster index used by manual_edit.compute() (CLAUDE.md #4/#7).
+                "barony_idx": bi,
             },
         })
 

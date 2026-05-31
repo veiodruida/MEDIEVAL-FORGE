@@ -36,7 +36,9 @@ export interface EditOp {
     // Phase 08 Plan 08 — landmask ops (WARNING-6 chokepoint, D-35)
     | 'landmask_vertex_move' | 'landmask_vertex_add' | 'landmask_vertex_delete'
     // Phase 08.3 Plan 03 — pen tool create op (PEN-CREATE-01)
-    | 'create';
+    | 'create'
+    // Phase 08.3 Plan 07 — enclave carve op (CARVE-ENCLAVE-01)
+    | 'carve';
   ts: number;
   vertexIds?: string[];
   lat?: number;

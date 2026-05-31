@@ -24,6 +24,10 @@ export interface BaronyRender {
   // Optional so existing consumers (InspectorSidebar, BaronyLayer, tests)
   // typecheck unchanged (additive field, D-03).
   geoRing?: [number, number][]
+  // Phase 08.3 Plan 07: raster index (bi in canvas_sidecars.py enumerate(bars)).
+  // Used as parent_id in carve op payload — backend compute() resolves by this index.
+  // Optional for backward compatibility (old cached baronies.geojson may lack it).
+  barony_idx?: number
 }
 
 export interface TerritoryMetadataCondado {
@@ -87,6 +91,9 @@ interface BaronyFeature {
     condado_idx?: number
     duchy_id?: string
     kingdom_id?: string
+    // Phase 08.3 Plan 07: raster index (bi in canvas_sidecars.py enumerate(bars)).
+    // Optional — old cached artifacts may lack this field.
+    barony_idx?: number
   }
 }
 
@@ -216,6 +223,7 @@ export function useCanvasArtifacts(
               points: geoRingToKonvaPoints(ring, projection),
               centroid: f.properties.centroid,  // D-03: pass through if present
               geoRing: ring,
+              barony_idx: f.properties.barony_idx,  // Phase 08.3-07: raster index for carve parent_id
             }
           })
         },

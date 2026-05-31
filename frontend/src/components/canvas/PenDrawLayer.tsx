@@ -94,6 +94,8 @@ export interface BaronyRenderForSnap {
   kingdom_id?: string
   centroid?: [number, number]
   geoRing?: [number, number][]
+  // Phase 08.3 Plan 07: raster index for carve parent_id resolution
+  barony_idx?: number
 }
 
 /** Union of the two accepted neighbor-candidate shapes. */
@@ -157,6 +159,25 @@ function ringAreaPx2(pts: Array<{ x: number; y: number }>): number {
   return Math.abs(area) / 2
 }
 
+// ── Point-in-polygon (ray-casting) for carve interior-loop detection ─────────
+// Works in geo (lon/lat) space. Ring is [lon, lat][] (exterior only).
+// Returns true if (lon, lat) lies strictly inside the ring.
+
+function pointInRing(lon: number, lat: number, ring: number[][]): boolean {
+  const n = ring.length
+  if (n < 3) return false
+  let inside = false
+  for (let i = 0, j = n - 1; i < n; j = i++) {
+    const xi = ring[i]?.[0] ?? 0, yi = ring[i]?.[1] ?? 0
+    const xj = ring[j]?.[0] ?? 0, yj = ring[j]?.[1] ?? 0
+    const intersect =
+      yi > lat !== yj > lat &&
+      lon < ((xj - xi) * (lat - yi)) / (yj - yi) + xi
+    if (intersect) inside = !inside
+  }
+  return inside
+}
+
 // ── Normalize candidate to a common shape for snap building ──────────────────
 
 interface NormalizedCandidate {
@@ -165,6 +186,8 @@ interface NormalizedCandidate {
   condado_idx?: number
   duchy_id?: string
   kingdom_id?: string
+  // Phase 08.3 Plan 07: raster index for carve parent_id (backend compute() int index)
+  barony_idx?: number
 }
 
 function normalizeCandidate(c: AnyBaronyCandidate): NormalizedCandidate {
@@ -187,6 +210,7 @@ function normalizeCandidate(c: AnyBaronyCandidate): NormalizedCandidate {
     condado_idx: r.condado_idx,
     duchy_id: r.duchy_id,
     kingdom_id: r.kingdom_id,
+    barony_idx: r.barony_idx,
   }
 }
 
@@ -454,22 +478,63 @@ export const PenDrawLayer: React.FC<PenDrawLayerProps> = ({
     [eventToWorld, projection, vertexCandidates, edgeCandidates, safeScale],
   )
 
-  // ── Commit CREATE op (internal) ───────────────────────────────────────────
+  // ── Commit CREATE or CARVE op (internal) ─────────────────────────────────
+  // Carve detection (D-19 note): if ring centroid falls INSIDE an existing
+  // barony's exterior ring, this is an enclave CARVE (N = drawn∩parent, parent'
+  // = parent−N) NOT a plain CREATE. The parent's condado_idx is used as default
+  // (D-26 default-to-parent assignment). Plan 08.3-07 scope.
   const commitCreate = useCallback(
     async (closedAnchors: PenAnchor[], neighborBaronyId: string | null) => {
       const ring = flattenPenPath(closedAnchors, projection)
       if (ring.length < 3) return
 
-      // Compute centroid of ring for /editor/country
+      // Compute centroid of ring for /editor/country + carve detection
       const avgLat = ring.reduce((s, p) => s + p.lat, 0) / ring.length
       const avgLon = ring.reduce((s, p) => s + p.lon, 0) / ring.length
 
-      // Inherit hierarchy from snap-neighbor barony
+      // ── Carve detection: check if centroid is inside any existing barony ──
+      // Uses exterior ring only (normalizeCandidate reads coordinates[0]).
+      // Containment test does NOT need interior rings — see D-25 hop disposition (b).
+      let containingParent: NormalizedCandidate | null = null
+      for (const candidate of neighborCandidates) {
+        const n = normalizeCandidate(candidate)
+        if (!n.ring || n.ring.length < 3) continue
+        if (pointInRing(avgLon, avgLat, n.ring)) {
+          containingParent = n
+          break
+        }
+      }
+      // DEV probe: expose last commit info for Playwright diagnostics
+      if (import.meta.env.DEV) {
+        ;(window as unknown as {
+          __forgeLastCommit?: { avgLat: number; avgLon: number; isCarve: boolean; parentName: string | null; parentRasterIdx: number | null; ringLen: number }
+        }).__forgeLastCommit = {
+          avgLat,
+          avgLon,
+          isCarve: containingParent !== null,
+          parentName: containingParent?.id ?? null,
+          parentRasterIdx: containingParent?.barony_idx ?? null,
+          ringLen: ring.length,
+        }
+      }
+
+      // Inherit hierarchy from containing parent (carve) or snap-neighbor (create)
       let condado_idx = 0
       let duchy_id = ''
       let kingdom_id = ''
+      // parent_id is the raster index (barony_idx from canvas_sidecars.py bi), NOT the name.
+      // barony_idx is emitted by canvas_sidecars.py Phase 08.3-07 addition.
+      let parentRasterIdx: number | null = null
 
-      if (neighborBaronyId) {
+      if (containingParent) {
+        // CARVE: inherit from the parent being carved
+        // Use barony_idx (raster index) as parent_id — backend compute() resolves by int index.
+        parentRasterIdx = containingParent.barony_idx ?? null
+        condado_idx = containingParent.condado_idx ?? 0
+        duchy_id = containingParent.duchy_id ?? ''
+        kingdom_id = containingParent.kingdom_id ?? ''
+      } else if (neighborBaronyId) {
+        // CREATE: inherit from snap-neighbor
         const neighbor = neighborCandidates.find((f) => {
           const n = normalizeCandidate(f)
           return n.id === neighborBaronyId
@@ -506,25 +571,52 @@ export const PenDrawLayer: React.FC<PenDrawLayerProps> = ({
         country,
       }
 
-      // Single store write (WARNING-6 chokepoint)
+      // Single store write.
+      // For CARVE: use op:'carve' + parent_id so the snapshot's edit_log carries the
+      // carve op that compute() needs to replay (compute() dispatches on op.op, not op_type).
+      // For CREATE: keep op:'create' (unchanged D-13 path).
+      const isCarveOp = containingParent !== null && parentRasterIdx !== null
       const currentVertices = useEditorStore.getState().vertices
-      useEditorStore.getState().setVerticesAndLog(currentVertices, {
-        op: 'create',
-        ts: Date.now(),
-        ring,
-        allocated_original_idx: null,
-        barony_meta,
-      })
+      useEditorStore.getState().setVerticesAndLog(currentVertices, isCarveOp
+        ? {
+            op: 'carve',
+            ts: Date.now(),
+            parent_id: parentRasterIdx,
+            ring,
+            allocated_original_idx: null,
+            barony_meta,
+          }
+        : {
+            op: 'create',
+            ts: Date.now(),
+            ring,
+            allocated_original_idx: null,
+            barony_meta,
+          }
+      )
 
-      // POST /editor/apply + patch editLog[-1].allocated_original_idx (mirrors split 277-289)
+      // POST /editor/apply with op_type:'carve' or 'create' depending on detection
       if (projectId && branchId) {
         try {
+          // isCarve requires both: (a) containingParent found AND (b) barony_idx available.
+          // barony_idx is the raster index emitted by canvas_sidecars.py Phase 08.3-07.
+          // Without it, fall back to 'create' (old cached baronies.geojson may lack barony_idx).
+          const isCarve = containingParent !== null && parentRasterIdx !== null
+          const payload = isCarve
+            ? {
+                parent_id: parentRasterIdx,   // raster int index (not the name string)
+                ring,
+                barony_meta,
+                branch_id: branchId,
+              }
+            : { ring, barony_meta, branch_id: branchId }
+
           const resp = await fetch(`/api/v3/projects/${projectId}/editor/apply`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              op_type: 'create',
-              payload: { ring, barony_meta, branch_id: branchId },
+              op_type: isCarve ? 'carve' : 'create',
+              payload,
               branch_id: branchId,
             }),
           })
@@ -745,6 +837,12 @@ export const PenDrawLayer: React.FC<PenDrawLayerProps> = ({
       isDrawing: anchorsRef.current.length > 0,
       extendMode: extendModeRef.current,
       editLogLength: useEditorStore.getState().editLog.length,
+      // DEV-only diagnostic: neighbor candidate ring coverage (for carve detection debugging)
+      neighborCount: neighborCandidatesRef.current.length,
+      ringsPresent: neighborCandidatesRef.current.filter((c) => {
+        const n = normalizeCandidate(c)
+        return n.ring && n.ring.length >= 3
+      }).length,
     })
 
     // Place a straight anchor at geo coordinates (lat, lon). Returns true on success.
