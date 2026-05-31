@@ -36,7 +36,7 @@ Plans:
 
 **Requirements**: PEN-CREATE-01 (new barony via pen path), PEN-EXTEND-01 (extend existing barony contour), PEN-CURVE-01 (mixed straight anchors + Bézier curve handles, Photoshop-style click vs click-drag), PEN-ASSIGN-01 (new/extended geometry assigned via per-country Voronoi/KD-tree + hierarchy + original_idx stability), PEN-CONV-01 (converges to colored map + 12-file export via 08.2 replay/cascade), PEN-PARITY-01 (Iberia 10/10 parity unchanged on zero-edit path), PEN-UAT-01 (real-mouse: draw new barony to fill a gap → appears colored + in export + survives reload) — DRAFT spine, to be formalized in /gsd-discuss-phase + /gsd-plan-phase.
 **Depends on:** Phase 08.2
-**Plans:** 6/6 plans complete
+**Plans:** 7 plans (6 complete; 08.3-07 added 2026-05-31)
 Plans:
 - [x] 08.3-01-PLAN.md — Wave 1 (tdd): backend CREATE convergence — THE CRUX. Fix BUG1 (high-water aliasing, seed min_floor=nb — split path too) + BUG2 (hierarchy coverage gap, extend bars/bc/bd/bk/nb before build_hierarchy_maps); create op = raster OVERPAINT (D-11 deviation, not KD-tree) with clip + largest-component guard; compute() returns tuple; identity/Iberia parity byte-equal [PEN-CREATE-01, PEN-CONV-01, PEN-ASSIGN-01, PEN-EXTEND-01, PEN-PARITY-01]
 - [x] 08.3-02-PLAN.md — Wave 1: emit condado_idx/duchy_id/kingdom_id on baronies.geojson + BaronyFeature type (resolves RESEARCH Q1 — D-09 inherit-from-neighbor needs these) [PEN-ASSIGN-01]
@@ -44,3 +44,4 @@ Plans:
 - [x] 08.3-04-PLAN.md — Wave 2: editor.py create handler (allocate min_floor=nb + persist ring/meta + DoS cap) + split min_floor fix (latent bug) + GET /editor/country (D-08, resolves RESEARCH Q2) [PEN-CREATE-01, PEN-ASSIGN-01]
 - [x] 08.3-05-PLAN.md — Wave 3: PenDrawLayer (Konva z=6, component-local) + snapToEdge + penFlatten; draw state machine, vertex+edge snap, D-17 validation, single create-op commit (CREATE) / vertex-graft (EXTEND), country+hierarchy inherit; CanvasViewer/WorkspaceToolbar wiring [PEN-CURVE-01, PEN-CREATE-01, PEN-EXTEND-01, PEN-ASSIGN-01]
 - [x] 08.3-06-PLAN.md — Wave 4: Playwright UAT (draw gap-filling barony → colored + in export + survives reload) + end-to-end parity-identity gate + human pen-feel checkpoint [PEN-UAT-01, PEN-PARITY-01]
+- [ ] 08.3-07-PLAN.md — Wave 1 (tdd, ADDENDUM D-23/24/25/27): enclave CARVE — drawn loop inside barony X → new barony N=drawn∩parent, parent reshaped to polygon-with-hole (parent−N); new op_type:carve in manual_edit.compute() (NOT the create clip) + editor.py carve handler (allocate min_floor=barony_floor, condado inherit default-to-parent); RED→GREEN round-trip pytest proves hole survives reload + carve-then-parent-edit re-Apply; real-mouse Playwright carve persistence UAT [CARVE-ENCLAVE-01, CARVE-HOLE-RT-01]
