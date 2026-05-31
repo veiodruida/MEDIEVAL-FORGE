@@ -21,6 +21,7 @@ import type { Project } from '../../api/client'
 import {
   buildProjectionConfig,
   computeFitToView,
+  geoToCanvas,
   type ProjectionConfig,
 } from '../../lib/projection'
 import {
@@ -439,6 +440,57 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
     setMinScale(scale)
     setCurrentScale(scale)
   }, [projection, viewportW, viewportH])
+
+  // Phase 08.3 (UAT fix C): auto-zoom to a barony when it is selected for editing.
+  // Small baronies render their ~5 Bézier anchors in an overlapping ~20px cluster at
+  // fit zoom — impossible to grab. This frames the selected barony at ~half the viewport
+  // (clamped to the wheel zoom range) so the anchors separate. Imperative scale/position
+  // mirrors fitToView; it does NOT touch minScale, so Fit-to-view / Ctrl+0 still resets
+  // to the whole map. Only currentScale syncs (drives screen-space handle sizing).
+  const zoomToBarony = useCallback(
+    (ring: [number, number][]) => {
+      const stage = stageRef.current
+      if (!stage || !projection || ring.length === 0) return
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+      for (const [lon, lat] of ring) {
+        const [x, y] = geoToCanvas(lon, lat, projection)
+        if (x < minX) minX = x
+        if (y < minY) minY = y
+        if (x > maxX) maxX = x
+        if (y > maxY) maxY = y
+      }
+      const bw = maxX - minX
+      const bh = maxY - minY
+      if (bw <= 0 || bh <= 0) return
+      // Frame the barony at ~half the viewport so there is surrounding context.
+      const target = Math.min((viewportW * 0.5) / bw, (viewportH * 0.5) / bh)
+      const maxScale = minScale * MAX_SCALE_MULTIPLIER
+      const scale = Math.max(minScale, Math.min(target, maxScale))
+      const cx = (minX + maxX) / 2
+      const cy = (minY + maxY) / 2
+      stage.scale({ x: scale, y: scale })
+      stage.position({ x: viewportW / 2 - cx * scale, y: viewportH / 2 - cy * scale })
+      stage.batchDraw()
+      setCurrentScale(scale)
+    },
+    [projection, viewportW, viewportH, minScale],
+  )
+
+  // Fire zoomToBarony only when the selected barony actually CHANGES (not on every
+  // re-render / baronies refetch) so it never clobbers the user's manual zoom mid-edit.
+  const prevZoomedBaronyRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (activeTerritoryId === null || editableLayer !== 'baronies' || activeTool === 'P') {
+      prevZoomedBaronyRef.current = null
+      return
+    }
+    if (prevZoomedBaronyRef.current === activeTerritoryId) return
+    const b = effectiveBaronies?.find((x) => x.id === activeTerritoryId)
+    if (!b?.geoRing || b.geoRing.length === 0) return
+    prevZoomedBaronyRef.current = activeTerritoryId
+    zoomToBarony(b.geoRing)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTerritoryId, editableLayer, activeTool, effectiveBaronies, zoomToBarony])
 
   // D-01 (Phase 04.1): stable projection-bounds key prevents fitToView from
   // re-firing when a slider triggers a metadata refetch → new projection
