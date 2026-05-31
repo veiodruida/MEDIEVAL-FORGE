@@ -12,6 +12,9 @@
  * D-28: Snap target indicator = yellow circle #eab308 radius=8 stroke=2.
  */
 
+import { geoToCanvas, canvasToGeo } from './projection';
+import type { ProjectionConfig } from './projection';
+
 export interface SnapCandidate {
   id: string;
   lat: number;
@@ -148,4 +151,82 @@ export function snapToEdge(
 
   if (!best) return null;
   return { lat: best.lat, lon: best.lon, edgeEndpointIds: [best.id1, best.id2] };
+}
+
+/**
+ * Resolved pen-anchor snap: the (possibly snapped) world point plus which
+ * primitive it snapped to (if any). Structurally matches PenDrawLayer's local
+ * SnapVertexResult / SnapEdgeResultLocal shapes.
+ */
+export interface PenSnapResolution {
+  lat: number;
+  lon: number;
+  snapVertex?: { lat: number; lon: number; id: string };
+  snapEdge?: SnapEdgeResult;
+}
+
+/**
+ * Resolve a pen-tool anchor drop, performing snap in MAP-PIXEL space (08.3-07 UAT fix).
+ *
+ * Bug this fixes: snapToNeighbour / snapToEdge are euclidean primitives whose
+ * tolerance is `radiusPx / stageScale`, expressed in MAP-PIXEL units (the snap.ts
+ * contract: "5 screen-px = 0.5 world-units at 10× zoom"). PenDrawLayer originally
+ * fed them lat/lon DEGREES, so a degree distance (√(dLat²+dLon²) ≈ small fractions
+ * for Iberia) was compared against a pixel-derived tolerance (~12). The effective
+ * snap radius became ~the whole peninsula: every interior click snapped to the
+ * nearest parent-barony edge, and the close gesture snapped the closing click to
+ * the border instead of the first anchor (territory could not be closed).
+ *
+ * Fix: convert the cursor and every candidate vertex/edge to map-pixels via
+ * geoToCanvas, run the euclidean snap with the screen-px radius (now correctly
+ * map-px after the internal /stageScale), then convert the snapped point back to
+ * lat/lon. Map→screen is a uniform scale, so the tolerance is isotropic in screen
+ * space (degrees are NOT isotropic — lon and lat have different px/degree, which is
+ * exactly why a scalar degree tolerance would be wrong).
+ *
+ * @param world           Cursor position in world coords (lat/lon degrees).
+ * @param vertexCandidates Vertex snap targets in lat/lon degrees.
+ * @param edgeCandidates   Edge snap targets in lat/lon degrees.
+ * @param projection       Affine projection for geo↔map-pixel conversion.
+ * @param stageScale       Konva stage zoom (stage.scaleX()); screen-px per map-px.
+ * @param altHeld          When true, snap disabled (D-28); returns world unchanged.
+ * @param radiusPx         Snap radius in SCREEN pixels (12 for pen, D-16).
+ */
+export function resolvePenSnap(
+  world: { lat: number; lon: number },
+  vertexCandidates: SnapCandidate[],
+  edgeCandidates: SnapEdge[],
+  projection: ProjectionConfig,
+  stageScale: number,
+  altHeld: boolean,
+  radiusPx: number,
+): PenSnapResolution {
+  if (altHeld) return { lat: world.lat, lon: world.lon };
+
+  // Cursor → map-pixels. SnapCandidate uses {lat,lon}; we pack {lat: y, lon: x}.
+  const [wx, wy] = geoToCanvas(world.lon, world.lat, projection);
+  const cursorPx = { lat: wy, lon: wx };
+
+  const vPx: SnapCandidate[] = vertexCandidates.map((c) => {
+    const [x, y] = geoToCanvas(c.lon, c.lat, projection);
+    return { id: c.id, lat: y, lon: x };
+  });
+  const vSnap = snapToNeighbour(cursorPx, vPx, stageScale, false, radiusPx);
+  if (vSnap) {
+    const [lon, lat] = canvasToGeo(vSnap.lon, vSnap.lat, projection);
+    return { lat, lon, snapVertex: { lat, lon, id: vSnap.id } };
+  }
+
+  const ePx: SnapEdge[] = edgeCandidates.map((e) => {
+    const [ax, ay] = geoToCanvas(e.a.lon, e.a.lat, projection);
+    const [bx, by] = geoToCanvas(e.b.lon, e.b.lat, projection);
+    return { id1: e.id1, id2: e.id2, a: { lat: ay, lon: ax }, b: { lat: by, lon: bx } };
+  });
+  const eSnap = snapToEdge(cursorPx, ePx, stageScale, false, radiusPx);
+  if (eSnap) {
+    const [lon, lat] = canvasToGeo(eSnap.lon, eSnap.lat, projection);
+    return { lat, lon, snapEdge: { lat, lon, edgeEndpointIds: eSnap.edgeEndpointIds } };
+  }
+
+  return { lat: world.lat, lon: world.lon };
 }

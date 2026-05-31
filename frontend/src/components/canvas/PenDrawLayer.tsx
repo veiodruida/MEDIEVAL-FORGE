@@ -30,7 +30,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import type Konva from 'konva'
 import { Layer, Group, Line, Circle, Rect, Text } from 'react-konva'
 import { useEditorStore } from '../../stores/useEditorStore'
-import { snapToNeighbour, snapToEdge } from '../../lib/snap'
+import { resolvePenSnap } from '../../lib/snap'
 import type { SnapCandidate, SnapEdge } from '../../lib/snap'
 import { flattenPenPath, flattenPenPathOpen } from '../../lib/penFlatten'
 import type { PenAnchor } from '../../lib/penFlatten'
@@ -374,21 +374,13 @@ export const PenDrawLayer: React.FC<PenDrawLayerProps> = ({
   // ── Snap resolution (used on anchor drop) ────────────────────────────────
   const resolveSnap = useCallback(
     (worldPt: { lat: number; lon: number }): { lat: number; lon: number; snapVertex?: SnapVertexResult; snapEdge?: SnapEdgeResultLocal } => {
-      if (altRef.current) return worldPt
-
-      const vSnap = snapToNeighbour(worldPt, vertexCandidates, safeScale, false, PEN_SNAP_PX)
-      if (vSnap) {
-        return { lat: vSnap.lat, lon: vSnap.lon, snapVertex: { lat: vSnap.lat, lon: vSnap.lon, id: vSnap.id } }
-      }
-
-      const eSnap = snapToEdge(worldPt, edgeCandidates, safeScale, false, PEN_SNAP_PX)
-      if (eSnap) {
-        return { lat: eSnap.lat, lon: eSnap.lon, snapEdge: eSnap as SnapEdgeResultLocal }
-      }
-
-      return worldPt
+      // 08.3-07 UAT fix: snap runs in MAP-PIXEL space (resolvePenSnap). Feeding the
+      // euclidean snap primitives lat/lon degrees made the 12-screen-px radius behave
+      // like ~12 degrees (the whole peninsula) — every interior click snapped to the
+      // parent's border and the close gesture never reached the first anchor.
+      return resolvePenSnap(worldPt, vertexCandidates, edgeCandidates, projection, safeScale, altRef.current, PEN_SNAP_PX)
     },
-    [vertexCandidates, edgeCandidates, safeScale],
+    [vertexCandidates, edgeCandidates, projection, safeScale],
   )
 
   // ── Canvas coordinate helper ──────────────────────────────────────────────
@@ -458,21 +450,20 @@ export const PenDrawLayer: React.FC<PenDrawLayerProps> = ({
       const [cx, cy] = geoToCanvas(world.lon, world.lat, projection)
       setCursorPos({ x: cx, y: cy })
 
-      // Show snap markers on hover
-      const vSnap = snapToNeighbour(world, vertexCandidates, safeScale, altRef.current, PEN_SNAP_PX)
-      if (vSnap) {
-        const [sx, sy] = geoToCanvas(vSnap.lon, vSnap.lat, projection)
+      // Show snap markers on hover (08.3-07 UAT fix: resolve in map-pixel space so the
+      // 12-screen-px radius is honored — hover markers now match anchor-drop snapping).
+      const snap = resolvePenSnap(world, vertexCandidates, edgeCandidates, projection, safeScale, altRef.current, PEN_SNAP_PX)
+      if (snap.snapVertex) {
+        const [sx, sy] = geoToCanvas(snap.snapVertex.lon, snap.snapVertex.lat, projection)
         setSnapVertexMarker({ x: sx, y: sy })
         setSnapEdgeMarker(null)
+      } else if (snap.snapEdge) {
+        setSnapVertexMarker(null)
+        const [ax, ay] = geoToCanvas(snap.snapEdge.lon, snap.snapEdge.lat, projection) // nearest edge point
+        setSnapEdgeMarker({ x1: ax - 4, y1: ay - 4, x2: ax + 4, y2: ay + 4 })
       } else {
         setSnapVertexMarker(null)
-        const eSnap = snapToEdge(world, edgeCandidates, safeScale, altRef.current, PEN_SNAP_PX)
-        if (eSnap) {
-          const [ax, ay] = geoToCanvas(eSnap.lon, eSnap.lat, projection) // approximate snap point
-          setSnapEdgeMarker({ x1: ax - 4, y1: ay - 4, x2: ax + 4, y2: ay + 4 })
-        } else {
-          setSnapEdgeMarker(null)
-        }
+        setSnapEdgeMarker(null)
       }
     },
     [eventToWorld, projection, vertexCandidates, edgeCandidates, safeScale],
@@ -741,10 +732,12 @@ export const PenDrawLayer: React.FC<PenDrawLayerProps> = ({
       const resolved = resolveSnap(world)
 
       // Close gesture: press on/near the first anchor (≥2 anchors placed).
+      // fx/fy and cx/cy are MAP-pixels, so the screen-px radius must be divided by
+      // safeScale (08.3-07 UAT fix — the raw PEN_SNAP_PX was only correct at scale 1).
       if (cur.length >= 2) {
         const [fx, fy] = geoToCanvas(cur[0].lon, cur[0].lat, projection)
         const [cx, cy] = geoToCanvas(resolved.lon, resolved.lat, projection)
-        if (Math.hypot(cx - fx, cy - fy) <= PEN_SNAP_PX) {
+        if (Math.hypot(cx - fx, cy - fy) <= PEN_SNAP_PX / safeScale) {
           pendingCloseRef.current = true
           return
         }
@@ -930,6 +923,8 @@ export const PenDrawLayer: React.FC<PenDrawLayerProps> = ({
     anchors.length > 0 ? geoToCanvas(anchors[0].lon, anchors[0].lat, projection) : null
 
   // Is cursor close enough to first anchor to close? (pulse trigger)
+  // Map-px distance vs screen-px radius → divide by safeScale (08.3-07 UAT fix) so the
+  // amber pulse fires exactly when the close gesture (handleMouseDown) would.
   const closeableHover =
     anchors.length >= 2 &&
     cursorPos !== null &&
@@ -937,7 +932,7 @@ export const PenDrawLayer: React.FC<PenDrawLayerProps> = ({
     Math.sqrt(
       Math.pow(cursorPos.x - firstAnchorPx[0], 2) +
       Math.pow(cursorPos.y - firstAnchorPx[1], 2),
-    ) <= PEN_SNAP_PX
+    ) <= PEN_SNAP_PX / safeScale
 
   return (
     <Layer>
