@@ -124,6 +124,8 @@ def compute(input_array: np.ndarray, cfg: RegionConfig,
     vertex_ops_present = any(op.get("op") in _VERTEX_OPS for op in edit_log)
     # Phase 08.3 Plan 01: 'create' ops must enter rasterisation even without vertex ops.
     create_ops_present = any(op.get("op") == "create" for op in edit_log)
+    # Phase 08.3 Plan 07: 'carve' ops must also enter rasterisation regardless of vertex ops.
+    carve_ops_present = any(op.get("op") == "carve" for op in edit_log)
 
     # 1) Vectorise int16 raster into per-barony polygons.
     #    Use an affine derived from the raster dimensions — pipeline operates in
@@ -238,6 +240,72 @@ def compute(input_array: np.ndarray, cfg: RegionConfig,
                     _geometry_modified = True
             except Exception:  # noqa: BLE001 — degenerate ring; skip silently
                 continue
+        elif op_type == "carve":
+            # Phase 08.3 Plan 07: enclave carve — N = drawn∩parent, parent' = parent−N.
+            # MUST NOT call .difference(neighbours_union) on N (that is the 'create' D-07 clip
+            # which subtracts the parent and would clip N to empty for an interior loop).
+            parent_idx = int(op["parent_id"])
+            new_idx = int(op["allocated_original_idx"])
+            ring_coords = op.get("ring", [])
+            if len(ring_coords) < 3:
+                continue
+
+            # Resolve parent polygon (may already carry interiors from a prior carve)
+            parents = polygons_by_id.get(parent_idx, [])
+            if not parents:
+                continue
+            parent = parents[0]
+
+            # Build drawn loop using _lonlat_to_rasterio_xy (A1 contract: round() not int())
+            pixel_coords = [
+                _lonlat_to_rasterio_xy(p["lon"], p["lat"], cfg, W, H)
+                for p in ring_coords
+            ]
+            try:
+                drawn = Polygon(pixel_coords)
+                if not drawn.is_valid:
+                    drawn = drawn.buffer(0)
+                    # buffer(0) may fragment — largest-area guard PRESERVES interiors
+                    if isinstance(drawn, MultiPolygon):
+                        parts = [g for g in drawn.geoms if g.area > 0]
+                        if not parts:
+                            continue
+                        drawn = max(parts, key=lambda g: g.area)
+
+                # D-24 CARVE FORMULA: N = drawn∩parent (clip to parent — N⊆parent guaranteed)
+                # parent.difference(N) produces the donut (polygon-with-hole)
+                N = drawn.intersection(parent)
+                if isinstance(N, MultiPolygon):
+                    parts = [g for g in N.geoms if g.area > 0]
+                    N = max(parts, key=lambda g: g.area) if parts else N
+
+                parent_prime = parent.difference(N)
+                if isinstance(parent_prime, MultiPolygon):
+                    # Largest-area guard WITHOUT discarding interior rings:
+                    # unary_union can introduce MultiPolygon when the donut exterior
+                    # is split; take max-area component but preserve its interiors.
+                    parts = [g for g in parent_prime.geoms if g.area > 0]
+                    parent_prime = max(parts, key=lambda g: g.area) if parts else parent_prime
+
+                # Degenerate guard: drawn was outside or tangent to parent
+                if N.is_empty or N.area <= 0 or parent_prime.is_empty:
+                    continue
+
+                polygons_by_id[parent_idx] = [parent_prime]   # polygon-with-hole
+                polygons_by_id[new_idx] = [N]
+
+                barony_meta = op.get("barony_meta", {})
+                new_barony_meta.append({
+                    "original_idx": new_idx,
+                    "name": barony_meta.get("name", f"Baronato-{new_idx}"),
+                    "condado_idx": barony_meta.get("condado_idx", -1),
+                    "duchy_id": barony_meta.get("duchy_id", ""),
+                    "kingdom_id": barony_meta.get("kingdom_id", ""),
+                })
+                _geometry_modified = True
+            except Exception:  # noqa: BLE001 — degenerate geometry; skip silently
+                continue
+
         # vertex-level ops (move/add/delete/multi_delete) are handled via
         # ring re-rasterisation AFTER this loop (they carry no usable geometry
         # in the op payload — the full ring is in snapshot.vertices).
@@ -256,6 +324,35 @@ def compute(input_array: np.ndarray, cfg: RegionConfig,
             replay_vertex_ring(bname, barony_name_to_idx, vertices_dict,
                                polygons_by_id, cfg, W, H)
         _geometry_modified = True
+
+    # D-25 LOAD-BEARING FIX (test_carve_then_parent_edit_does_not_refill_hole):
+    # replay_vertex_ring rebuilds a parent barony from exterior-only vertices_dict keys
+    # (format "<baronyName>#<index>"), which OVERWRITES polygons_by_id[parent_idx] with
+    # a plain exterior Polygon — silently refilling any interior ring (hole) that was
+    # carved into that parent by a prior carve op in this same edit_log replay.
+    #
+    # Fix: after the replay_vertex_ring loop, re-subtract every carved N polygon from
+    # its parent so the hole is reapplied to the rebuilt exterior.
+    # Guard: skip if either polygon is missing (carve op may have been degenerate/skipped).
+    # Citing: D-25 part b, test_carve_then_parent_edit_does_not_refill_hole.
+    if carve_ops_present:
+        for op in edit_log:
+            if op.get("op") != "carve":
+                continue
+            p_idx = int(op.get("parent_id", -1))
+            n_idx = int(op.get("allocated_original_idx", -1))
+            if p_idx < 0 or n_idx < 0:
+                continue
+            parent_polys = polygons_by_id.get(p_idx, [])
+            n_polys = polygons_by_id.get(n_idx, [])
+            if not parent_polys or not n_polys:
+                continue
+            try:
+                reapplied = parent_polys[0].difference(n_polys[0])
+                if not reapplied.is_empty and reapplied.area > 0:
+                    polygons_by_id[p_idx] = [reapplied]
+            except Exception:  # noqa: BLE001 — degenerate; skip silently
+                continue
 
     # Short-circuit: if no op modified geometry (e.g. landmask-only branch with
     # non-empty hash — Pitfall 4 / BEZ-CONV-04), return input byte-identical.
