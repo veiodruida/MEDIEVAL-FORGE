@@ -519,4 +519,36 @@ describe('PenDrawLayer (PEN-CURVE-01, PEN-CREATE-01, PEN-EXTEND-01, PEN-ASSIGN-0
     )
     expect(createCalls).toHaveLength(0)
   })
+
+  // T9: right-click removes the last placed anchor (component-local, no store write).
+  // With 2 anchors the closeable first-anchor highlight (pen-first-anchor) renders;
+  // after one right-click only 1 anchor remains so the highlight disappears.
+  it('T9: right-click (contextmenu) removes last anchor; no store write', async () => {
+    const { getByTestId, queryByTestId } = render(
+      <PenDrawLayer
+        projection={PROJECTION}
+        currentScale={1}
+        neighborCandidates={[]}
+        onPathClosed={vi.fn()}
+        onDrawingStateChange={vi.fn()}
+      />,
+    )
+    const layer = getByTestId('pen-draw-layer')
+
+    await act(async () => {
+      fireEvent.click(layer, { clientX: 400, clientY: 400 }) // anchor 0
+      fireEvent.click(layer, { clientX: 600, clientY: 400 }) // anchor 1
+    })
+    // 2 anchors → closeable highlight present
+    expect(queryByTestId('pen-first-anchor')).not.toBeNull()
+
+    // Right-click → remove last anchor → 1 anchor left → highlight gone
+    await act(async () => {
+      fireEvent.contextMenu(layer, { clientX: 600, clientY: 400 })
+    })
+    expect(queryByTestId('pen-first-anchor')).toBeNull()
+
+    // Pure local edit — never touches the store / zundo
+    expect(mockSetVerticesAndLog).not.toHaveBeenCalled()
+  })
 })

@@ -283,6 +283,21 @@ export const PenDrawLayer: React.FC<PenDrawLayerProps> = ({
     return () => { window.removeEventListener('keydown', down); window.removeEventListener('keyup', up) }
   }, [])
 
+  // ── Remove last placed anchor (component-local only, never zundo) ─────────
+  // Shared by Ctrl+Z mid-draw (D-12) and right-click (user request 2026-05-31).
+  const removeLastAnchor = useCallback(() => {
+    setValidationError(null)
+    setAnchors((prev) => {
+      const next = prev.slice(0, -1)
+      if (next.length === 0) {
+        setExtendMode(false)
+        setExtendBaronyId(null)
+        setFirstAnchorSnap(null)
+      }
+      return next
+    })
+  }, [])
+
   // ── Keyboard shortcuts (Ctrl+Z mid-draw, Esc) ─────────────────────────────
   useEffect(() => {
     if (!isDrawing) return
@@ -302,20 +317,12 @@ export const PenDrawLayer: React.FC<PenDrawLayerProps> = ({
       if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
         e.stopPropagation()
         e.preventDefault()
-        setAnchors((prev) => {
-          const next = prev.slice(0, -1)
-          if (next.length === 0) {
-            setExtendMode(false)
-            setExtendBaronyId(null)
-            setFirstAnchorSnap(null)
-          }
-          return next
-        })
+        removeLastAnchor()
       }
     }
     window.addEventListener('keydown', handler, true) // capture phase — runs before global shortcuts
     return () => window.removeEventListener('keydown', handler, true)
-  }, [isDrawing, onDrawingStateChange])
+  }, [isDrawing, onDrawingStateChange, removeLastAnchor])
 
   // ── Build snap candidates ─────────────────────────────────────────────────
   const vertexCandidates = buildVertexCandidates(neighborCandidates)
@@ -748,6 +755,13 @@ export const PenDrawLayer: React.FC<PenDrawLayerProps> = ({
         data-testid="pen-draw-layer"
         onClick={handleClick}
         onMouseMove={handleMouseMove}
+        onContextMenu={(e) => {
+          // Right-click deletes the last placed anchor (user request 2026-05-31).
+          // Suppress the browser context menu so right-click is a pure edit gesture.
+          e.evt?.preventDefault?.()
+          e.cancelBubble = true
+          removeLastAnchor()
+        }}
       >
         {/* Phase 08.3 (UAT fix): full map-space hit Rect. Konva only bubbles pointer events
             to this Group when a child SHAPE is the hit target — an empty-space click otherwise
