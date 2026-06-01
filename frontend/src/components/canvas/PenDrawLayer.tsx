@@ -59,7 +59,7 @@ const PEN_SNAP_PX = 12  // screen-px snap radius for pen tool
 // previous click closes the contour on the points placed so far — the second click
 // is NOT added as an anchor. This avoids the spurious-anchor / ring self-intersection
 // that a Konva onDblClick handler hits (the dbl's own clicks corrupt the ring).
-const DBLCLICK_MS = 350
+const DBLCLICK_MS = 600  // max ms between the two clicks (OS double-click speed is ~500ms; be forgiving)
 const DBLCLICK_NEAR_PX = 16  // screen-px between the two clicks of a double-click
 
 // ── D-17 area threshold ───────────────────────────────────────────────────────
