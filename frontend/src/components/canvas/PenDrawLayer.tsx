@@ -32,7 +32,7 @@ import { Layer, Group, Line, Circle, Rect, Text } from 'react-konva'
 import { useEditorStore } from '../../stores/useEditorStore'
 import { resolvePenSnap } from '../../lib/snap'
 import type { SnapCandidate, SnapEdge } from '../../lib/snap'
-import { flattenPenPath, flattenPenPathOpen } from '../../lib/penFlatten'
+import { flattenPenPath, flattenPenPathOpen, sampleAndSimplifyFreehand } from '../../lib/penFlatten'
 import type { PenAnchor } from '../../lib/penFlatten'
 import { geoToCanvas, canvasToGeo } from '../../lib/projection'
 import type { ProjectionConfig } from '../../lib/projection'
@@ -123,6 +123,29 @@ export interface PenDrawLayerProps {
   projectId?: string
   /** Branch id for POST /editor/apply */
   branchId?: string | null
+  /**
+   * Phase 08.3 Plan 08 (D-19): called after commitCreate resolves with the name
+   * generated for the new barony (Baronato-${Date.now()}). CanvasViewer uses this
+   * to set pendingSelectName for the post-refetch auto-select watcher.
+   * Fires BEFORE selectTool('V') so CanvasViewer's state is set before PenDrawLayer unmounts.
+   */
+  onCreated?: (name: string) => void
+  /**
+   * Phase 08.3 Plan 08 (D-21): callback registration for the DOM action-bar buttons.
+   * CanvasViewer calls this once PenDrawLayer mounts so the action-bar DOM buttons can
+   * call closePath, cancelPath, removeLastAnchor, and setFreehandMode directly.
+   * The handlers live in PenDrawLayer (Konva-land); the buttons live in CanvasViewer (DOM-land).
+   */
+  onHandlersReady?: (handlers: PenDrawHandlers) => void
+}
+
+/** Handlers exposed to CanvasViewer's DOM action-bar (D-21). */
+export interface PenDrawHandlers {
+  closePath: () => Promise<boolean>
+  cancelPath: () => void
+  removeLastAnchor: () => void
+  setFreehandMode: (active: boolean) => void
+  getFreehandMode: () => boolean
 }
 
 // ── Self-intersection check (inline cross-product) ────────────────────────────
@@ -267,6 +290,8 @@ export const PenDrawLayer: React.FC<PenDrawLayerProps> = ({
   onDrawingStateChange,
   projectId,
   branchId,
+  onCreated,
+  onHandlersReady,
 }) => {
   const safeScale = currentScale > 0 ? currentScale : 1
 
@@ -284,6 +309,18 @@ export const PenDrawLayer: React.FC<PenDrawLayerProps> = ({
   const [cursorPos, setCursorPos] = useState<{ x: number; y: number } | null>(null)
   const [extendMode, setExtendMode] = useState(false)
   const [extendBaronyId, setExtendBaronyId] = useState<string | null>(null)
+
+  // ── Freehand (lasso) mode state (D-20) ───────────────────────────────────
+  // When freehandMode is on, a mouse-press+drag+release accumulates raw geo points
+  // that are simplified via sampleAndSimplifyFreehand and fed into commitCreate
+  // (the SAME carve detection path as the click-pen — no duplication).
+  const [freehandMode, setFreehandMode] = useState(false)
+  const freehandPointsRef = useRef<Array<{ lat: number; lon: number }>>([])
+  const isFreehandDraggingRef = useRef(false)
+  // Live freehand preview points in canvas-px for rendering (updated on every mousemove)
+  const [freehandPreviewPts, setFreehandPreviewPts] = useState<number[]>([])
+  // Timestamp of last mousemove throttle (16ms / ~3px cadence)
+  const lastFreehandMoveRef = useRef<number>(0)
   // firstAnchorSnap stored for EXTEND-mode detection; value not rendered directly
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [_firstAnchorSnap, setFirstAnchorSnap] = useState<SnapVertexResult | null>(null)
@@ -324,12 +361,12 @@ export const PenDrawLayer: React.FC<PenDrawLayerProps> = ({
   const pendingCloseRef = useRef(false)
   const DRAG_THRESHOLD_PX = 4
 
-  const isDrawing = anchors.length > 0
+  const isDrawing = anchors.length > 0 || isFreehandDraggingRef.current
 
   // Notify parent on isDrawing changes
   useEffect(() => {
-    onDrawingStateChange?.(isDrawing)
-  }, [isDrawing, onDrawingStateChange])
+    onDrawingStateChange?.(anchors.length > 0)
+  }, [anchors.length, onDrawingStateChange])
 
   // ── Alt key tracking ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -356,18 +393,16 @@ export const PenDrawLayer: React.FC<PenDrawLayerProps> = ({
   }, [])
 
   // ── Keyboard shortcuts (Ctrl+Z mid-draw, Esc) ─────────────────────────────
+  // cancelPath is declared below (after closePath which it shares logic with);
+  // we use a stable ref here so the keyboard handler always calls the fresh version.
+  const cancelPathRef = useRef<(() => void) | null>(null)
   useEffect(() => {
     if (!isDrawing) return
     const handler = (e: KeyboardEvent) => {
-      // Esc → discard path
+      // Esc → discard path (routes through shared cancelPath via ref)
       if (e.key === 'Escape') {
         e.stopPropagation()
-        setAnchors([])
-        setExtendMode(false)
-        setExtendBaronyId(null)
-        setFirstAnchorSnap(null)
-        setValidationError(null)
-        onDrawingStateChange?.(false)
+        cancelPathRef.current?.()
         return
       }
       // Ctrl+Z mid-draw → remove last anchor (component-local ONLY, no zundo)
@@ -379,7 +414,31 @@ export const PenDrawLayer: React.FC<PenDrawLayerProps> = ({
     }
     window.addEventListener('keydown', handler, true) // capture phase — runs before global shortcuts
     return () => window.removeEventListener('keydown', handler, true)
-  }, [isDrawing, onDrawingStateChange, removeLastAnchor])
+  }, [isDrawing, removeLastAnchor])
+
+  // ── Register handlers with CanvasViewer for DOM action-bar buttons (D-21) ──
+  // cancelPath, closePath, removeLastAnchor are all stable useCallback refs.
+  // freehandMode is a state value; use a getter ref so the action bar always
+  // reads the live value (avoids stale closure in the DOM button onClick).
+  // NOTE: closePathRef is initialized without a value here (closePath is declared
+  // below via useCallback) and updated after closePath is in scope.
+  const closePathRef = useRef<(() => Promise<boolean>) | null>(null)
+  const removeLastAnchorRef2 = useRef<(() => void) | null>(null)
+  const freehandModeStateRef = useRef(freehandMode)
+  freehandModeStateRef.current = freehandMode
+
+  useEffect(() => {
+    if (!onHandlersReady) return
+    onHandlersReady({
+      closePath: () => closePathRef.current?.() ?? Promise.resolve(false),
+      cancelPath: () => cancelPathRef.current?.(),
+      removeLastAnchor: () => removeLastAnchorRef2.current?.(),
+      setFreehandMode: (active: boolean) => setFreehandMode(active),
+      getFreehandMode: () => freehandModeStateRef.current,
+    })
+  // Register once on mount; refs always hold the latest values.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onHandlersReady])
 
   // ── Build snap candidates ─────────────────────────────────────────────────
   const vertexCandidates = buildVertexCandidates(neighborCandidates)
@@ -433,6 +492,37 @@ export const PenDrawLayer: React.FC<PenDrawLayerProps> = ({
     (e: Konva.KonvaEventObject<MouseEvent>) => {
       const world = eventToWorld(e)
       if (!world) return
+
+      // Freehand drag: accumulate points while mouse button is held (D-20).
+      // eventToWorld uses getRelativePointerPosition (map-space) — NEVER clientX/Y.
+      if (freehandMode && isFreehandDraggingRef.current) {
+        const now = typeof performance !== 'undefined' ? performance.now() : Date.now()
+        const [cx, cy] = geoToCanvas(world.lon, world.lat, projection)
+        const pts = freehandPointsRef.current
+        // Throttle: skip if < 16ms since last sample OR < 3px from last point
+        if (now - lastFreehandMoveRef.current >= 16) {
+          const last = pts[pts.length - 1]
+          if (!last) {
+            pts.push(world)
+            lastFreehandMoveRef.current = now
+          } else {
+            const [lx, ly] = geoToCanvas(last.lon, last.lat, projection)
+            if (Math.hypot(cx - lx, cy - ly) >= 3) {
+              pts.push(world)
+              lastFreehandMoveRef.current = now
+              // Update live preview polyline (canvas-px flat array)
+              const preview: number[] = []
+              for (const p of pts) {
+                const [px, py] = geoToCanvas(p.lon, p.lat, projection)
+                preview.push(px, py)
+              }
+              setFreehandPreviewPts(preview)
+            }
+          }
+        }
+        setCursorPos({ x: cx, y: cy })
+        return
+      }
 
       // Dragging out a curve anchor's tangent handles (Photoshop pen, PEN-CURVE-01).
       if (isPointerDownRef.current && pendingAnchorRef.current) {
@@ -647,10 +737,15 @@ export const PenDrawLayer: React.FC<PenDrawLayerProps> = ({
         }
       }
 
+      // D-19 (Plan 08): fire onCreated BEFORE selectTool('V') so CanvasViewer captures
+      // the pending name while PenDrawLayer is still mounted. selectTool('V') at the
+      // next line causes an unmount — onCreated must run first.
+      onCreated?.(barony_meta.name)
+
       // D-04: switch to V tool → PenDrawLayer unmounts → BezierEditLayer activates
       useEditorStore.getState().selectTool('V')
     },
-    [projection, neighborCandidates, projectId, branchId],
+    [projection, neighborCandidates, projectId, branchId, onCreated],
   )
 
   // ── Commit EXTEND (graft arc into existing barony) ────────────────────────
@@ -677,9 +772,14 @@ export const PenDrawLayer: React.FC<PenDrawLayerProps> = ({
   )
 
   // ── D-17 validation ───────────────────────────────────────────────────────
+  // [Rule 1 fix 08.3-08]: validate() must check pts.length (the explicit set passed in),
+  // NOT anchorsRef.current.length. closePath(explicitAnchors) passes the freehand-sampled
+  // ring as explicitAnchors; anchorsRef.current stays [] throughout freehand draw (points
+  // accumulate in freehandPointsRef, not anchors state). Using anchorsRef here silently
+  // rejected every valid freehand close with "Mínimo de 3 pontos".
   const validate = useCallback(
     (pts: Array<{ x: number; y: number }>): string | null => {
-      if (anchorsRef.current.length < 3) return 'Mínimo de 3 pontos para fechar o contorno.'
+      if (pts.length < 3) return 'Mínimo de 3 pontos para fechar o contorno.'
       if (hasSelfIntersection(pts)) return 'O contorno se cruza — ajuste os pontos e tente fechar novamente.'
       if (ringAreaPx2(pts) < MIN_AREA_PX2) return 'Área muito pequena — o baronato seria removido na limpeza. Amplie o contorno.'
       return null
@@ -739,11 +839,44 @@ export const PenDrawLayer: React.FC<PenDrawLayerProps> = ({
     [projection, validate, onPathClosed, commitExtend, commitCreate, neighborCandidates],
   )
 
+  // Update closePathRef now that closePath is in scope
+  closePathRef.current = closePath
+
+  // ── cancelPath: shared by Esc handler AND the "Cancelar" DOM button (D-21) ──
+  // Placed AFTER closePath so there is no forward-reference issue.
+  // Extracting the Esc body here prevents logic divergence between keyboard and button.
+  const cancelPath = useCallback(() => {
+    setAnchors([])
+    setExtendMode(false)
+    setExtendBaronyId(null)
+    setFirstAnchorSnap(null)
+    setValidationError(null)
+    setFreehandPreviewPts([])
+    freehandPointsRef.current = []
+    isFreehandDraggingRef.current = false
+    onDrawingStateChange?.(false)
+  }, [onDrawingStateChange])
+  // Keep the cancelPathRef up-to-date so the keyboard handler can call the fresh version
+  cancelPathRef.current = cancelPath
+  // Keep removeLastAnchorRef2 up-to-date for the action-bar "Desfazer último ponto" button
+  removeLastAnchorRef2.current = removeLastAnchor
+
   // ── Pointer-down: begin an anchor (close gesture, or start press/drag) ────
   const handleMouseDown = useCallback(
     (e: Konva.KonvaEventObject<MouseEvent>) => {
       const world = eventToWorld(e)
       if (!world) return
+
+      // Freehand mode: begin accumulating drag samples (D-20).
+      // Clear any stale points, record the first sample, set dragging flag.
+      if (freehandMode) {
+        freehandPointsRef.current = [world]
+        isFreehandDraggingRef.current = true
+        lastFreehandMoveRef.current = typeof performance !== 'undefined' ? performance.now() : Date.now()
+        setFreehandPreviewPts([])
+        return
+      }
+
       const cur = anchorsRef.current
       const resolved = resolveSnap(world)
       const [rx, ry] = geoToCanvas(resolved.lon, resolved.lat, projection)
@@ -798,6 +931,40 @@ export const PenDrawLayer: React.FC<PenDrawLayerProps> = ({
   // ── Pointer-up: commit the pending anchor (straight or curve) or close ────
   const handleMouseUp = useCallback(
     async (e: Konva.KonvaEventObject<MouseEvent>) => {
+      // Freehand mode: mouse-up ends the drag. Simplify accumulated points and
+      // feed into the EXISTING commitCreate carve detection path (D-20).
+      // eventToWorld is used throughout — NEVER clientX/Y (T-08.3-08-04 mitigation).
+      if (freehandMode && isFreehandDraggingRef.current) {
+        isFreehandDraggingRef.current = false
+        setFreehandPreviewPts([])
+
+        // Append the final mouse-up position to ensure the ring touches the release point
+        const world = eventToWorld(e)
+        if (world) freehandPointsRef.current.push(world)
+
+        const raw = freehandPointsRef.current
+        freehandPointsRef.current = []
+
+        const geoRing = sampleAndSimplifyFreehand(raw, projection)
+        if (geoRing.length < 3) {
+          setValidationError('Mínimo de 3 pontos para fechar o contorno.')
+          return
+        }
+
+        // Convert simplified geo ring back to PenAnchor[] (straight type, no handles).
+        // Drop the closing duplicate (last === first) so closePath does not double-close.
+        const ringAnchors: PenAnchor[] = geoRing
+          .slice(0, -1) // remove closing point — closePath/flattenPenPath adds it
+          .map((p) => ({ lat: p.lat, lon: p.lon, type: 'straight' as const }))
+
+        // Route through the EXISTING closePath/commitCreate carve detection path (08.3-07).
+        // closePath(explicitAnchors) bypasses the anchors state (which stays []) and uses
+        // the provided ring directly. The carve detection (centroid-in-parent) runs in
+        // commitCreate unchanged — no new backend call added here.
+        await closePath(ringAnchors)
+        return
+      }
+
       // Close gesture queued on the matching mouse-down.
       if (pendingCloseRef.current) {
         pendingCloseRef.current = false
@@ -1197,18 +1364,43 @@ export const PenDrawLayer: React.FC<PenDrawLayerProps> = ({
           />
         )}
 
-        {/* Status hint */}
-        {cursorPos && (
-          <Text
-            x={cursorPos.x + 8 / safeScale}
-            y={cursorPos.y + 12 / safeScale}
-            text="Clique: âncora reta — Arraste: curva Bézier"
-            fontSize={textSize}
-            fill={STATUS_FILL}
-            opacity={0.75}
+        {/* Freehand (lasso) live preview — dashed green line while dragging (D-20) */}
+        {freehandPreviewPts.length >= 4 && (
+          <Line
+            points={freehandPreviewPts}
+            stroke={CURVE_STROKE}
+            strokeWidth={curveWidth}
+            dash={[6, 3]}
             listening={false}
+            data-testid="pen-freehand-preview"
           />
         )}
+
+        {/* Status hint (D-22): per-state PT-BR contextual text */}
+        {cursorPos && (() => {
+          let hintText: string
+          if (freehandMode && isFreehandDraggingRef.current) {
+            hintText = 'Solte para fechar o contorno livre'
+          } else if (freehandMode) {
+            hintText = 'Arraste para desenhar o contorno livre — solte para fechar'
+          } else if (anchors.length >= 1) {
+            hintText = 'Clique no primeiro ponto para fechar — Botão direito: desfazer último ponto — Esc: cancelar'
+          } else {
+            hintText = 'Clique: âncora reta — Arraste: curva Bézier — Botão direito: desfazer ponto'
+          }
+          return (
+            <Text
+              x={cursorPos.x + 8 / safeScale}
+              y={cursorPos.y + 12 / safeScale}
+              text={hintText}
+              fontSize={textSize}
+              fill={STATUS_FILL}
+              opacity={0.75}
+              listening={false}
+              data-testid="pen-status-hint"
+            />
+          )
+        })()}
       </Group>
     </Layer>
   )
