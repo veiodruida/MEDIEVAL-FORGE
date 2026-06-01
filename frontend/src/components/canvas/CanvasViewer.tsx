@@ -650,6 +650,49 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
     }
   }, [currentScale])
 
+  // Phase 08.3 Plan 11 (UAT fix): expose the pending ring's SCREEN positions to
+  // Playwright so drag-gesture anchors land exactly on the rendered shape.
+  //
+  // Returns an array of {x, y} in canvas-container-relative pixels (i.e., relative
+  // to the top-left of the data-testid="canvas-stage" div).  Add stageBox.x/y in
+  // the spec to convert to absolute page coordinates.
+  //
+  // Read-only — never used as input.  All gestures stay real page.mouse.
+  useEffect(() => {
+    if (!import.meta.env.DEV) return
+    const w = window as unknown as Record<string, unknown>
+    w.__forgePendingRingScreen = () => {
+      const stage = stageRef.current
+      const proj = projection
+      if (!stage || !proj) return null
+      const log = useEditorStore.getState().editLog
+      let ring: Array<{ lat: number; lon: number }> | null = null
+      for (let i = log.length - 1; i >= 0; i--) {
+        const op = log[i]
+        if ((op.op === 'create' || op.op === 'carve') && op.ring && op.ring.length >= 3) {
+          ring = op.ring
+          break
+        }
+      }
+      if (!ring) return null
+      const scale = stage.scaleX()
+      const pos = stage.position()
+      return ring.map((pt: { lat: number; lon: number }) => {
+        const [cx, cy] = geoToCanvas(pt.lon, pt.lat, proj)
+        return {
+          x: pos.x + cx * scale,
+          y: pos.y + cy * scale,
+        }
+      })
+    }
+    return () => {
+      delete w.__forgePendingRingScreen
+    }
+  // projection and stageRef.current are stable after initial mount; currentScale
+  // changes on zoom but the hatch reads live from stage.scaleX() so no dep needed.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projection])
+
   // Pan canvas to center the newly selected territory (D-15 single-select pan).
   // Read scale live from stage.scaleX() — DO NOT add currentScale or
   // viewportW/H to the dep array (would re-trigger pan on every wheel tick or
