@@ -8,6 +8,11 @@ export interface TerritoryRender {
   name: string
   points: number[]
   neighbors: string[]  // required string[] — populated by Task 1 territories.geojson emission
+  // Phase 08.3 Plan 09 (D-26): additive condado picker fields.
+  // Optional: old artifacts on disk pre-09 lack idx; mirrors the existing `centroid?` additive pattern.
+  idx?: number
+  duchy_id?: string
+  kingdom_id?: string
 }
 
 export interface BaronyRender {
@@ -66,7 +71,17 @@ interface CondadoFeature {
   geometry:
     | { type: 'Polygon'; coordinates: [number, number][][] }
     | { type: 'MultiPolygon'; coordinates: [number, number][][][] }
-  properties: { id: string; name: string; neighbors: string[] }
+  properties: {
+    id: string
+    name: string
+    neighbors: string[]
+    // Phase 08.3 Plan 09 (D-26): additive fields emitted by canvas_sidecars.py Task 1.
+    // Optional: old artifacts on disk pre-09 may lack them (additive pattern).
+    idx?: number
+    duchy_id?: string
+    kingdom_id?: string
+    centroid?: [number, number]
+  }
 }
 
 interface BaronyFeature {
@@ -192,6 +207,12 @@ export function useCanvasArtifacts(
                 name: f.properties.name,
                 points: geoRingToKonvaPoints(ring, projection),
                 neighbors: f.properties.neighbors,
+                // Phase 08.3 Plan 09 (D-26): additive condado picker fields.
+                // A MultiPolygon condado emits multiple rings — all carry the same
+                // idx/duchy_id/kingdom_id (the picker de-dupes by id).
+                idx: f.properties.idx,
+                duchy_id: f.properties.duchy_id,
+                kingdom_id: f.properties.kingdom_id,
               })
             }
           }
@@ -224,6 +245,13 @@ export function useCanvasArtifacts(
               centroid: f.properties.centroid,  // D-03: pass through if present
               geoRing: ring,
               barony_idx: f.properties.barony_idx,  // Phase 08.3-07: raster index for carve parent_id
+              // Phase 08.3 Plan 09 Task 4 step 2a (Rule-2 correctness fix):
+              // Map condado_idx/duchy_id/kingdom_id so PenDrawLayer.commitCreate
+              // containingParent.condado_idx resolves to the REAL parent's condado,
+              // not always-0 (barony_idx was mapped but these hierarchy fields were not).
+              condado_idx: f.properties.condado_idx,
+              duchy_id: f.properties.duchy_id,
+              kingdom_id: f.properties.kingdom_id,
             }
           })
         },
