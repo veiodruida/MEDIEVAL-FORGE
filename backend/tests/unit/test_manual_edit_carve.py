@@ -406,6 +406,102 @@ class TestCarveCreatesNoInteriorSentinel:
 
 
 # ===========================================================================
+# Regression — carve N, then edit N's OWN contour (user UAT 2026-06-01)
+# ===========================================================================
+
+@pytest.mark.unit
+class TestCarveThenEnclaveEdit:
+    """Regression (user UAT 2026-06-01): carve N, then edit N's OWN contour (vertex op on N),
+    then re-Apply. Plan-08 auto-select drops the user straight into editing the freshly-carved
+    enclave, so this is the immediate next gesture. Observed defect: the enclave vanished and an
+    unfilled (-1) hole was left in the parent. compute() must keep N AND leave no sentinel."""
+
+    def test_carve_then_enclave_vertex_edit_keeps_N_and_no_sentinel(self):
+        from medieval_forge.services.pipeline.manual_edit import compute
+
+        carve_op = _make_carve_op()  # N = rows 20-29 cols 20-29, idx 1, name "Carved-1"
+
+        # Edit N's own contour: move N's bottom-right vertex outward (still inside parent X).
+        # Mirrors the user dragging a Bézier handle of the freshly-carved enclave.
+        move_op = {
+            "op": "move",
+            "ts": 1,
+            "baronyName": "Carved-1",
+            "vertexIndex": 2,            # bottom-right corner (was row29,col29)
+            "lat": float(H - 35),        # row 35 — enlarge N downward (still inside parent 10-49)
+            "lon": float(35),           # col 35 — and rightward
+        }
+
+        # N's exterior ring in vertices_dict so replay_vertex_ring can rebuild N.
+        n_vertices = {
+            "Carved-1#0": _pixel_to_lonlat(CARVE_ROW_MIN, CARVE_COL_MIN),  # (20,20)
+            "Carved-1#1": _pixel_to_lonlat(CARVE_ROW_MIN, CARVE_COL_MAX),  # (20,29)
+            "Carved-1#2": _pixel_to_lonlat(CARVE_ROW_MAX, CARVE_COL_MAX),  # (29,29) → moved to (35,35)
+            "Carved-1#3": _pixel_to_lonlat(CARVE_ROW_MAX, CARVE_COL_MIN),  # (29,20)
+        }
+
+        edit_log = [carve_op, move_op]
+        cfg = _make_cfg(edit_log, extra_vertices=n_vertices)
+        barony_name_to_idx = {"Parent-0": PARENT_IDX, "Carved-1": CARVE_NEW_IDX}
+        merge_raster = _make_raster()
+
+        result, _ = compute(merge_raster, cfg, barony_name_to_idx=barony_name_to_idx)
+
+        # (a) N must still have pixels — the enclave must not vanish when its own contour is edited.
+        n_pixels = int(np.sum(result == CARVE_NEW_IDX))
+        assert n_pixels > 0, (
+            f"N (idx={CARVE_NEW_IDX}) vanished after editing its OWN contour. "
+            f"replay_vertex_ring rebuilt the carve-born enclave empty/wrong (matches user UAT: enclave gone)."
+        )
+
+        # (b) No -1/9999 sentinel inside parent X's original footprint (D-27).
+        x_interior = result[
+            PARENT_ROW_MIN : PARENT_ROW_MAX + 1, PARENT_COL_MIN : PARENT_COL_MAX + 1
+        ]
+        ocean_inside = int(np.sum(x_interior == -1))
+        ignore_inside = int(np.sum(x_interior == 9999))
+        assert ocean_inside == 0 and ignore_inside == 0, (
+            f"Sentinel hole inside parent after carve+enclave-edit: "
+            f"{ocean_inside} ocean(-1), {ignore_inside} ignore(9999). "
+            f"N's edited contour left an unfilled hole (matches user UAT: enclave gone + hole)."
+        )
+
+    def test_carve_then_enclave_edit_WITHOUT_N_vertices_still_no_hole(self):
+        """Diagnostic: the same carve+N-edit, but N's exterior ring is NOT in vertices_dict
+        (the likely real frontend state — a freshly-carved enclave has no persisted contour for
+        the Bézier editor to populate). If replay_vertex_ring cannot rebuild N's ring, N may be
+        dropped → the parent's hole stays an unfilled -1 sentinel. This pins whether a missing-N
+        guard is needed in compute() (the user-observed 'enclave gone + hole')."""
+        from medieval_forge.services.pipeline.manual_edit import compute
+
+        carve_op = _make_carve_op()
+        move_op = {
+            "op": "move",
+            "ts": 1,
+            "baronyName": "Carved-1",
+            "vertexIndex": 2,
+            "lat": float(H - 35),
+            "lon": float(35),
+        }
+        # NOTE: no extra_vertices — N's ring is absent from vertices_dict.
+        cfg = _make_cfg([carve_op, move_op])
+        barony_name_to_idx = {"Parent-0": PARENT_IDX, "Carved-1": CARVE_NEW_IDX}
+
+        result, _ = compute(_make_raster(), cfg, barony_name_to_idx=barony_name_to_idx)
+
+        n_pixels = int(np.sum(result == CARVE_NEW_IDX))
+        x_interior = result[
+            PARENT_ROW_MIN : PARENT_ROW_MAX + 1, PARENT_COL_MIN : PARENT_COL_MAX + 1
+        ]
+        ocean_inside = int(np.sum(x_interior == -1))
+        assert n_pixels > 0 and ocean_inside == 0, (
+            f"carve+N-edit with N absent from vertices_dict: N pixels={n_pixels}, "
+            f"ocean(-1) inside parent={ocean_inside}. A missing-N vertex op must not drop N "
+            f"or leave a sentinel hole."
+        )
+
+
+# ===========================================================================
 # Test 5 — zero-edit path is byte-identical (PEN-PARITY-01 guard)
 # ===========================================================================
 
