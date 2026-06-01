@@ -502,6 +502,207 @@ class TestCarveThenEnclaveEdit:
 
 
 # ===========================================================================
+# Regression — carve N + edit N, but barony_name_to_idx built WITHOUT N
+# (the REAL orchestrator path: __init__.py line 428 builds the map from bars[]
+# BEFORE compute() runs, so a freshly-carved N is never in the map)
+# ===========================================================================
+
+@pytest.mark.unit
+class TestCarveThenEnclaveEditOrchestratorBuiltMap:
+    """Regression (2026-06-01 bug report 'carve-enclave-edit-leaves-hole'):
+    carve N + edit N's contour via op:'move', but barony_name_to_idx is built
+    from pre-carve bars[] (WITHOUT "Carved-1") — mirroring __init__.py line 428.
+
+    Real orchestrator code:
+        barony_name_to_idx = {b["name"]: i for i, b in enumerate(bars)}
+        result, new_entries = compute(result, cfg, barony_name_to_idx=barony_name_to_idx)
+        # bars is extended AFTER compute() returns (lines 441-463) — too late for replay
+
+    Expected behaviour after fix: compute() must merge new_barony_meta into
+    barony_name_to_idx internally (after the op loop, before the vertex-ring replay
+    loop) so a freshly-carved enclave can receive vertex ops in the same Apply pass.
+
+    Current behaviour (RED): barony_name_to_idx["Carved-1"] = None → silent return
+    → N not rebuilt → but N still exists from the carve op. However the D-25 re-apply
+    re-subtracts N's ORIGINAL (un-moved) ring from parent, so parent has a hole
+    matching the original carve, and N's edited ring is NOT what was committed in
+    vertices_dict → shape reverts (user symptom: "voltou ao 0").
+    """
+
+    def test_carve_then_enclave_edit_orchestrator_built_map_no_sentinel(self):
+        """barony_name_to_idx excludes "Carved-1" (mirrors real __init__.py line 428).
+
+        After fix: N must still have pixels AND no ocean(-1) sentinel inside parent X.
+        Currently RED because replay_vertex_ring("Carved-1") finds None in the map →
+        N's edited ring not rasterised → if the move op accidentally triggers vertex_ops_present
+        the D-25 re-subtract may leave N as the original smaller ring while the sentinel
+        check shows 0 pixels only because N is still present from the carve op.
+
+        The actual RED failure point: N's edited (larger) ring MUST be used.
+        We verify N covers the ENLARGED area (rows 20-35, cols 20-35 after the move).
+        With the broken map, replay_vertex_ring skips → N keeps original 10×10 area.
+        """
+        from medieval_forge.services.pipeline.manual_edit import compute
+
+        carve_op = _make_carve_op()  # N = rows 20-29 cols 20-29, idx 1, name "Carved-1"
+
+        move_op = {
+            "op": "move",
+            "ts": 1,
+            "baronyName": "Carved-1",
+            "vertexIndex": 2,
+            "lat": float(H - 35),   # row 35 — enlarge N downward
+            "lon": float(35),        # col 35 — and rightward
+        }
+
+        # N's exterior ring in vertices_dict (with the updated bottom-right vertex)
+        n_vertices = {
+            "Carved-1#0": _pixel_to_lonlat(CARVE_ROW_MIN, CARVE_COL_MIN),   # (20,20)
+            "Carved-1#1": _pixel_to_lonlat(CARVE_ROW_MIN, CARVE_COL_MAX),   # (20,29)
+            "Carved-1#2": _pixel_to_lonlat(35, 35),                          # enlarged: (35,35)
+            "Carved-1#3": _pixel_to_lonlat(CARVE_ROW_MAX, CARVE_COL_MIN),   # (29,20)
+        }
+
+        edit_log = [carve_op, move_op]
+        cfg = _make_cfg(edit_log, extra_vertices=n_vertices)
+
+        # CRITICAL: barony_name_to_idx does NOT include "Carved-1" — this mirrors
+        # __init__.py line 428 where bars[] is the PRE-CARVE list.
+        barony_name_to_idx_without_n = {"Parent-0": PARENT_IDX}
+
+        result, _ = compute(_make_raster(), cfg, barony_name_to_idx=barony_name_to_idx_without_n)
+
+        # (a) N must still have pixels after the carve+edit (not vanish)
+        n_pixels = int(np.sum(result == CARVE_NEW_IDX))
+        assert n_pixels > 0, (
+            f"N (idx={CARVE_NEW_IDX}) vanished after carve+enclave-edit with orchestrator-built map. "
+            f"barony_name_to_idx excluded 'Carved-1' (real orchestrator path). This is the reported bug."
+        )
+
+        # (b) No sentinel (-1/9999) inside parent X's original footprint
+        x_interior = result[
+            PARENT_ROW_MIN : PARENT_ROW_MAX + 1, PARENT_COL_MIN : PARENT_COL_MAX + 1
+        ]
+        ocean_inside = int(np.sum(x_interior == -1))
+        ignore_inside = int(np.sum(x_interior == 9999))
+        assert ocean_inside == 0 and ignore_inside == 0, (
+            f"Sentinel hole inside parent after carve+enclave-edit (orchestrator-built map): "
+            f"{ocean_inside} ocean(-1), {ignore_inside} ignore(9999). "
+            f"Matches user UAT: 'enclave gone + unfilled hole in parent'."
+        )
+
+        # (c) N's pixels must cover the ENLARGED area (not the original 10×10).
+        # After the fix, replay_vertex_ring should rebuild N using the updated vertex
+        # at (row=35, col=35), so N covers rows 20-35, cols 20-35 (approximately 256 pixels).
+        # With the broken map, N keeps the original 10×10 = 100 pixels.
+        # We assert N's pixel count is LARGER than the original 100 px area.
+        original_area_px = (CARVE_ROW_MAX - CARVE_ROW_MIN + 1) * (CARVE_COL_MAX - CARVE_COL_MIN + 1)
+        assert n_pixels > original_area_px, (
+            f"N must cover the ENLARGED area after vertex edit. "
+            f"Expected > {original_area_px} pixels (original carve area), got {n_pixels}. "
+            f"replay_vertex_ring('Carved-1') was skipped because 'Carved-1' was not in "
+            f"barony_name_to_idx (orchestrator-built map). Fix: merge new_barony_meta into "
+            f"barony_name_to_idx after the op loop, before the vertex-ring replay loop."
+        )
+
+
+# ===========================================================================
+# Regression — carve N + SHRINK N's contour → D-25 re-apply must not orphan pixels
+# (invariant: parent_final ∪ N_final == parent_original, i.e. no -1 ocean gap)
+# ===========================================================================
+
+@pytest.mark.unit
+class TestCarveThenShrinkEnclaveNoOrphanPixels:
+    """Regression (2026-06-01): carve N, then SHRINK N's contour (not enlarge).
+
+    When N is shrunk (N_edited ⊊ N_original), the D-25 re-apply formula
+    `parent'.difference(N_edited)` is applied to parent' which already has the
+    N_original hole. This widens the hole: region `N_original − N_edited` belongs
+    to neither parent' (already excluded) nor N_edited → falls through to ocean (-1).
+
+    Invariant to enforce: parent_final ∪ N_final == parent_original.
+    Equivalently: no -1 sentinel pixel may exist inside parent's original footprint
+    (rows 10-49, cols 10-49) after the carve+shrink-N pass.
+
+    Fix direction: the D-25 re-apply must restore parent from N_edited, not from N_original.
+    Correct formula: `parent_final = parent_original.difference(N_edited)` where
+    `parent_original = parent' ∪ N_original` (reconstruct the pre-carve parent, then
+    subtract the FINAL N).
+    """
+
+    def test_shrink_enclave_no_orphan_ocean_pixels(self):
+        """carve N (rows 20-29, cols 20-29), then shrink N to (rows 21-28, cols 21-28).
+
+        After compute(), no pixel inside parent X's original footprint (rows 10-49, cols 10-49)
+        should be -1 (ocean). The annulus between the original N (20-29) and the shrunk N (21-28)
+        must belong to parent X — not to ocean.
+
+        Numeric fixture: 60×60, parent rows 10-49 cols 10-49, carve 20-29/20-29, shrink to 21-28/21-28.
+        """
+        from medieval_forge.services.pipeline.manual_edit import compute
+
+        carve_op = _make_carve_op()  # N = rows 20-29 cols 20-29, idx 1, name "Carved-1"
+
+        # Shrink N: move all four corners inward by 1 pixel
+        # Original: (row=20,col=20), (row=20,col=29), (row=29,col=29), (row=29,col=20)
+        # Shrunk:   (row=21,col=21), (row=21,col=28), (row=28,col=28), (row=28,col=21)
+        n_vertices_shrunk = {
+            "Carved-1#0": _pixel_to_lonlat(21, 21),
+            "Carved-1#1": _pixel_to_lonlat(21, 28),
+            "Carved-1#2": _pixel_to_lonlat(28, 28),
+            "Carved-1#3": _pixel_to_lonlat(28, 21),
+        }
+
+        move_op = {
+            "op": "move",
+            "ts": 1,
+            "baronyName": "Carved-1",
+            "vertexIndex": 0,       # move any vertex — just triggers vertex_ops_present
+            "lat": float(H - 21),
+            "lon": float(21),
+        }
+
+        edit_log = [carve_op, move_op]
+        cfg = _make_cfg(edit_log, extra_vertices=n_vertices_shrunk)
+        # Use orchestrator-built map (WITH "Carved-1" since our previous fix merges new_barony_meta)
+        barony_name_to_idx = {"Parent-0": PARENT_IDX}  # "Carved-1" absent — will be added by fix
+        merge_raster = _make_raster()
+
+        result, _ = compute(merge_raster, cfg, barony_name_to_idx=barony_name_to_idx)
+
+        # (a) No -1 sentinel inside parent X's original footprint
+        x_interior = result[
+            PARENT_ROW_MIN : PARENT_ROW_MAX + 1, PARENT_COL_MIN : PARENT_COL_MAX + 1
+        ]
+        ocean_inside = int(np.sum(x_interior == -1))
+        assert ocean_inside == 0, (
+            f"Found {ocean_inside} ocean(-1) pixels inside parent X's footprint after carve+shrink-N. "
+            f"Annulus between original N (rows 20-29) and shrunk N (rows 21-28) must belong to parent X. "
+            f"D-25 re-apply used parent' (already has original hole) → widened hole. "
+            f"Fix: parent_final = (parent' ∪ N_original).difference(N_edited). "
+            f"This is the 'enclave gone + unfilled hole' user UAT symptom."
+        )
+
+        # (b) N must still have pixels (shrunk, but not gone)
+        n_pixels = int(np.sum(result == CARVE_NEW_IDX))
+        assert n_pixels > 0, (
+            f"N (idx={CARVE_NEW_IDX}) has no pixels after shrink. N must survive even when shrunk."
+        )
+
+        # (c) Invariant: parent_final pixels + N_final pixels >= parent_original pixels
+        #     (all pixels in the carved area must be accounted for)
+        original_carved_area = int(np.sum(_make_raster() == PARENT_IDX))
+        parent_final_pixels = int(np.sum(result == PARENT_IDX))
+        n_final_pixels = int(np.sum(result == CARVE_NEW_IDX))
+        total_final = parent_final_pixels + n_final_pixels
+        assert total_final >= original_carved_area * 0.95, (
+            f"Coverage invariant failed: parent_final({parent_final_pixels}) + "
+            f"N_final({n_final_pixels}) = {total_final} < 95% of original "
+            f"parent area ({original_carved_area}). Pixels were orphaned to ocean."
+        )
+
+
+# ===========================================================================
 # Test 5 — zero-edit path is byte-identical (PEN-PARITY-01 guard)
 # ===========================================================================
 

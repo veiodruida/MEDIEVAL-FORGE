@@ -47,6 +47,51 @@ function snapshotUrl(projectId: string, branchId: string): string {
 // Core apply function (shared by manual + auto-immediate paths)
 // ---------------------------------------------------------------------------
 
+/**
+ * For each carve/create op in editLog that has a `ring` and `barony_meta.name`,
+ * ensure the snapshot vertices contain the ring vertices as `${name}#0`…`${name}#N-1`.
+ *
+ * This fixes BUG A ("carve-enclave-edit-leaves-hole" 2026-06-01): SelectionBridge
+ * overwrites store.vertices with the currently-selected barony's ring whenever the user
+ * clicks a different barony. If the user navigates away from the freshly-carved enclave N
+ * before clicking Apply, N's vertex keys are gone from store.vertices. Without them,
+ * replay_vertex_ring on the backend silently skips N's ring (no keys → no rebuild).
+ *
+ * Fix: synthesize fallback vertices for each carve/create op's ring so the backend
+ * always has at least the committed ring to work from.  If the user DID edit N and those
+ * vertices are still in `currentVertices`, they take precedence (we only fill in missing
+ * keys — never overwrite live edits).
+ *
+ * Does NOT affect the T-08.2-01 cap guard: synthesized entries are only added for ops
+ * already in editLog; ring length is already capped by T-08.3-01 validation.
+ */
+function enrichVerticesFromEditLog(
+  currentVertices: Record<string, { lat: number; lon: number }>,
+  editLog: import('../stores/useEditorStore').EditOp[],
+): Record<string, { lat: number; lon: number }> {
+  let enriched: Record<string, { lat: number; lon: number }> | null = null
+
+  for (const op of editLog) {
+    if ((op.op !== 'carve' && op.op !== 'create') || !op.ring || op.ring.length < 3) continue
+    const name = (op.barony_meta as { name?: string } | undefined)?.name
+    if (!name) continue
+
+    // Check if ANY key for this barony already exists in the working vertices dict
+    const working = enriched ?? currentVertices
+    const hasKeys = Object.keys(working).some(k => k.startsWith(name + '#'))
+    if (hasKeys) continue  // user's live edits are present — do not overwrite
+
+    // Synthesize ring vertices as fallback (only fills missing keys)
+    if (!enriched) enriched = { ...currentVertices }
+    const ring = op.ring as Array<{ lat: number; lon: number }>
+    for (let i = 0; i < ring.length; i++) {
+      enriched[`${name}#${i}`] = { lat: ring[i].lat, lon: ring[i].lon }
+    }
+  }
+
+  return enriched ?? currentVertices
+}
+
 async function runApply(
   projectId: string,
   branchId: string,
@@ -62,6 +107,10 @@ async function runApply(
     return
   }
 
+  // Enrich vertices with ring fallbacks for any carve/create ops whose enclave
+  // vertices were wiped by SelectionBridge navigation (BUG A fix 2026-06-01).
+  const snapshotVertices = enrichVerticesFromEditLog(vertices, editLog)
+
   // Step 1: POST snapshot
   // Payload uses edit_log (snake_case) — NOT camelCase editLog (Pitfall 0 / T-08.2-05)
   // barony_name_to_idx is NOT included (constraint #5 — backend builds from bars)
@@ -71,7 +120,7 @@ async function runApply(
       geojson: {},
       region_config: {},
       edit_log: editLog,
-      vertices,
+      vertices: snapshotVertices,
     },
   }
 

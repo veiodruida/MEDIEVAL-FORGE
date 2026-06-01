@@ -150,6 +150,11 @@ def compute(input_array: np.ndarray, cfg: RegionConfig,
     #    exception here is a bug — propagate it.
     _geometry_modified = False  # tracks whether any op mutated polygons_by_id
     new_barony_meta: list[dict] = []  # Phase 08.3: metadata for CREATE/split children
+    # FIX (2026-06-01 "carve-enclave-edit-leaves-hole", part 2 — shrink-N orphan pixels):
+    # Snapshot of N's polygon AS SET BY THE CARVE OP (before any vertex-ring replay).
+    # Used in the D-25 re-apply loop to reconstruct parent_original correctly when N is
+    # later shrunk by a vertex op.  Key: (parent_idx, n_idx), value: N_original Polygon.
+    _carve_n_original: dict[tuple[int, int], Polygon] = {}
     for op in edit_log:
         op_type = op["op"]
         if op_type == "split":
@@ -293,6 +298,9 @@ def compute(input_array: np.ndarray, cfg: RegionConfig,
 
                 polygons_by_id[parent_idx] = [parent_prime]   # polygon-with-hole
                 polygons_by_id[new_idx] = [N]
+                # Snapshot N as set by THIS carve op (before any vertex-ring replay).
+                # D-25 fix part 2: needed to reconstruct parent_original in the re-apply loop.
+                _carve_n_original[(parent_idx, new_idx)] = N
 
                 barony_meta = op.get("barony_meta", {})
                 new_barony_meta.append({
@@ -317,6 +325,27 @@ def compute(input_array: np.ndarray, cfg: RegionConfig,
     # (Pitfall 4 / BEZ-CONV-04).
     # Phase 08.3: create_ops_present does NOT require ring re-rasterisation — the
     # create branch above already handled rasterisation directly in the loop.
+    #
+    # FIX (2026-06-01 "carve-enclave-edit-leaves-hole"):
+    # barony_name_to_idx is built from bars[] BEFORE compute() is called (orchestrator
+    # __init__.py line 428).  A freshly-carved enclave N is appended to bars[] only
+    # AFTER compute() returns (lines 441-463) — so "Baronato-<ts>" is never in the
+    # caller-supplied map.  If the user edits N's contour in the same Apply pass
+    # (carve op + move op on N's vertices), replay_vertex_ring("Baronato-<ts>") finds
+    # None → silent return → N keeps the original intersection ring, not the edited one.
+    #
+    # Fix: after the op loop, extend barony_name_to_idx with every entry in
+    # new_barony_meta (name → original_idx).  The caller's map is immutable, so we
+    # make a local copy.  This is safe because new_barony_meta only covers baronies
+    # allocated in THIS compute() call — no pre-existing entry is overwritten.
+    if barony_name_to_idx is not None and new_barony_meta:
+        barony_name_to_idx = dict(barony_name_to_idx)  # local copy — do not mutate caller's map
+        for entry in new_barony_meta:
+            bname = entry.get("name")
+            bidx = entry.get("original_idx")
+            if bname and bidx is not None and bname not in barony_name_to_idx:
+                barony_name_to_idx[bname] = bidx
+
     vertices_dict = snapshot.get("vertices") or {}
     if vertex_ops_present and barony_name_to_idx and vertices_dict:
         barony_names = {k.split("#")[0] for k in vertices_dict if "#" in k}
@@ -331,10 +360,22 @@ def compute(input_array: np.ndarray, cfg: RegionConfig,
     # a plain exterior Polygon — silently refilling any interior ring (hole) that was
     # carved into that parent by a prior carve op in this same edit_log replay.
     #
-    # Fix: after the replay_vertex_ring loop, re-subtract every carved N polygon from
-    # its parent so the hole is reapplied to the rebuilt exterior.
+    # Fix: after the replay_vertex_ring loop, re-derive parent_final from the FINAL N.
+    # Invariant: parent_final ∪ N_final == parent_original  (no orphan pixels).
+    #
+    # Original D-25 formula (broken for shrink case):
+    #   reapplied = parent'[after replay].difference(N_final)
+    # parent' already has the N_original hole.  When N_final ⊊ N_original (user shrunk N),
+    # the annulus N_original − N_final belongs to neither → falls through to ocean (-1).
+    #
+    # Corrected formula:
+    #   parent_original = parent'[after replay] ∪ N_original   (restore the carve-era parent)
+    #   parent_final    = parent_original.difference(N_final)   (re-apply hole with FINAL N)
+    #
+    # _carve_n_original[(p_idx, n_idx)] was captured immediately after the carve op set
+    # polygons_by_id[n_idx] = N (before any vertex-ring replay modified it).
     # Guard: skip if either polygon is missing (carve op may have been degenerate/skipped).
-    # Citing: D-25 part b, test_carve_then_parent_edit_does_not_refill_hole.
+    # Citing: D-25 part b + 2026-06-01 shrink-N regression.
     if carve_ops_present:
         for op in edit_log:
             if op.get("op") != "carve":
@@ -348,7 +389,17 @@ def compute(input_array: np.ndarray, cfg: RegionConfig,
             if not parent_polys or not n_polys:
                 continue
             try:
-                reapplied = parent_polys[0].difference(n_polys[0])
+                n_final = n_polys[0]
+                n_original = _carve_n_original.get((p_idx, n_idx))
+                if n_original is not None and not n_original.equals(n_final):
+                    # N was edited (vertex replay changed it): reconstruct parent_original
+                    # first, then subtract the FINAL N to avoid orphan pixels.
+                    parent_rebuilt = parent_polys[0].union(n_original)
+                    reapplied = parent_rebuilt.difference(n_final)
+                else:
+                    # N unchanged (no vertex op on N, or no snapshot available):
+                    # original D-25 formula is correct — parent already has the right hole.
+                    reapplied = parent_polys[0].difference(n_final)
                 if not reapplied.is_empty and reapplied.area > 0:
                     polygons_by_id[p_idx] = [reapplied]
             except Exception:  # noqa: BLE001 — degenerate; skip silently
