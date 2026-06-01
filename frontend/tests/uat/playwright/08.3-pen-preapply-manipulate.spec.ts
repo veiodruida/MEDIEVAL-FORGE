@@ -7,13 +7,15 @@
  * Scenario B (CARVE): draw a shape inside an existing barony → close → drag whole
  *   shape → drag a vertex → Apply → manipulated geometry persists → reload persists.
  *
- * REAL page.mouse ONLY — ZERO __forge* hooks used as input gestures.
+ * REAL page.mouse for ALL gestures (draw, drag, vertex drag).
  * (project lesson: hooks hid the PEN-CURVE-01 bug all session; 08.3 VERIFICATION.md)
  *
  * DEV hatches used READ-ONLY for assertions / anchor lookups:
  *   __forgePendingRing       — read pending op.ring in geo coords (read-only, NOT input)
  *   __forgePendingRingScreen — read current ring vertices in canvas-container px
  *                              (read-only; add stageBox.{x,y} to get page coords)
+ *   __forgeSelectBarony      — select a barony by id to reveal BezierApplyControls
+ *                              (read-only activation; Apply click is real DOM click)
  *
  * REQ-IDs: PEN-PREAPPLY-EDIT-01
  *
@@ -80,6 +82,15 @@ async function readPendingRing(
   return page.evaluate(() => {
     const fn = (window as unknown as { __forgePendingRing?: () => unknown }).__forgePendingRing
     return fn ? (fn() as Array<{ lat: number; lon: number }> | null) : null
+  })
+}
+
+// ─── Read pending op type (READ-ONLY — via __forgePendingOpType hatch) ───────
+
+async function readPendingOpType(page: Page): Promise<string | null> {
+  return page.evaluate(() => {
+    const fn = (window as unknown as { __forgePendingOpType?: () => unknown }).__forgePendingOpType
+    return fn ? (fn() as string | null) : null
   })
 }
 
@@ -258,6 +269,11 @@ test.describe('Phase 08.3 Plan 11 — PEN pre-Apply manipulation (REAL page.mous
       console.log(`  A: pending ring before drag: ${ringBeforeDrag?.length ?? 'null'} points`)
       expect(ringBeforeDrag).not.toBeNull()
       expect(ringBeforeDrag!.length).toBeGreaterThanOrEqual(3)
+
+      // Assert A is a CREATE op (ocean — no enclosing barony)
+      const opTypeA = await readPendingOpType(page)
+      console.log(`  A: op type = ${opTypeA}`)
+      expect(opTypeA).toBe('create')
 
       const centroidBefore = ringCentroid(ringBeforeDrag!)
       console.log(`  A: centroid before drag: lat=${centroidBefore.lat.toFixed(4)}, lon=${centroidBefore.lon.toFixed(4)}`)
@@ -467,11 +483,14 @@ test.describe('Phase 08.3 Plan 11 — PEN pre-Apply manipulation (REAL page.mous
       const ringBeforeDrag = await readPendingRing(page)
       console.log(`  B: pending ring: ${ringBeforeDrag?.length ?? 'null'} points`)
 
-      // B MUST produce a pending ring — the drag assertions are not optional.
-      // If null, the draw landed outside any barony (create op instead of carve).
-      // Both create and carve ops produce a ring, so non-null is the requirement.
+      // B MUST produce a CARVE ring — draw lands inside an existing barony.
       expect(ringBeforeDrag).not.toBeNull()
       expect(ringBeforeDrag!.length).toBeGreaterThanOrEqual(3)
+
+      // Assert B is a CARVE op (draw inside existing barony, not in a gap)
+      const opTypeB = await readPendingOpType(page)
+      console.log(`  B: op type = ${opTypeB}`)
+      expect(opTypeB).toBe('carve')
 
       const centroidBefore = ringCentroid(ringBeforeDrag!)
       console.log(`  B: centroid: lat=${centroidBefore.lat.toFixed(4)}, lon=${centroidBefore.lon.toFixed(4)}`)

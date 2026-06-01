@@ -102,6 +102,10 @@ export function PenShapeManipulateLayer({ projection, currentScale }: Props): Re
   const bodyLastCanvasPosRef = useRef<{ x: number; y: number } | null>(null)
   const vertexLastCanvasPosRef = useRef<{ x: number; y: number } | null>(null)
 
+  // Esc-cancellation flag: when Esc fires mid-drag, onDragEnd should NOT commit.
+  // Konva fires onDragEnd even after stopDrag(), so we gate commitRing on this flag.
+  const dragCancelledRef = useRef(false)
+
   // ── Inert when no pending op ───────────────────────────────────────────────
   if (pendingOpIdx < 0 || !committedRing) return null
 
@@ -171,6 +175,7 @@ export function PenShapeManipulateLayer({ projection, currentScale }: Props): Re
   // accumulates in e.target.x() / e.target.y().
 
   const handleBodyDragStart = useCallback((e: Konva.KonvaEventObject<DragEvent>) => {
+    dragCancelledRef.current = false
     // Record start position for jsdom fallback (Konva resets node.x/y to 0 on
     // drag start, so we only need this for the test environment where clientX/Y
     // are absolute canvas-space coords and we need to compute the delta ourselves).
@@ -234,6 +239,8 @@ export function PenShapeManipulateLayer({ projection, currentScale }: Props): Re
     const tPos = e.target as unknown as { position?: (p: { x: number; y: number }) => void }
     if (typeof tPos.position === 'function') tPos.position({ x: 0, y: 0 })
     bodyDragStartCanvasRef.current = null
+    // Esc during drag set dragCancelledRef — discard without committing (FACT 6b)
+    if (dragCancelledRef.current) { dragCancelledRef.current = false; setLiveRing(null); return }
     if (!committed) { setLiveRing(null); return }
     const [lon0, lat0] = canvasToGeo(0, 0, projection)
     const [lon1, lat1] = canvasToGeo(dCanvasX, dCanvasY, projection)
@@ -257,6 +264,7 @@ export function PenShapeManipulateLayer({ projection, currentScale }: Props): Re
     e: Konva.KonvaEventObject<DragEvent>,
     vIdx: number,
   ) => {
+    dragCancelledRef.current = false
     e.cancelBubble = true
     vertexLastCanvasPosRef.current = null
     setActiveVertexIdx(vIdx)
@@ -285,21 +293,28 @@ export function PenShapeManipulateLayer({ projection, currentScale }: Props): Re
     // Fall back to current pointer position if no dragMove was seen.
     const lastPos = vertexLastCanvasPosRef.current ?? pointerCanvasPos(e)
     vertexLastCanvasPosRef.current = null
-    const [lon, lat] = canvasToGeo(lastPos.x, lastPos.y, projection)
     setActiveVertexIdx(-1)
     setLiveRing(null)
+    // Esc during drag set dragCancelledRef — discard without committing (FACT 6b)
+    if (dragCancelledRef.current) { dragCancelledRef.current = false; return }
     if (!committed) return
+    const [lon, lat] = canvasToGeo(lastPos.x, lastPos.y, projection)
     const finalRing = moveRingVertex(committed, vIdx, lat, lon)
     commitRing(finalRing)
   }, [projection]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Esc handler: discard in-progress manipulation (FACT 6b / D-03) ─────────
+  // Sets dragCancelledRef so onDragEnd (which Konva fires even after stopDrag)
+  // knows to bail without committing.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return
       e.stopPropagation()
+      dragCancelledRef.current = true
       setActiveVertexIdx(-1)
       setLiveRing(null)
+      bodyLastCanvasPosRef.current = null
+      vertexLastCanvasPosRef.current = null
       // Do NOT write to store — discard the in-progress drag (FACT 6b)
     }
     window.addEventListener('keydown', handler, true) // capture phase
@@ -333,6 +348,17 @@ export function PenShapeManipulateLayer({ projection, currentScale }: Props): Re
         const op = log[i]
         if ((op.op === 'create' || op.op === 'carve') && op.ring && op.ring.length >= 3) {
           return [...op.ring]
+        }
+      }
+      return null
+    }
+    // Read-only: returns 'create' | 'carve' | null for the pending op (for UAT assertion).
+    w.__forgePendingOpType = () => {
+      const log = useEditorStore.getState().editLog
+      for (let i = log.length - 1; i >= 0; i--) {
+        const op = log[i]
+        if ((op.op === 'create' || op.op === 'carve') && op.ring && op.ring.length >= 3) {
+          return op.op
         }
       }
       return null

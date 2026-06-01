@@ -300,15 +300,16 @@ describe('PenShapeManipulateLayer', () => {
     fireEvent(bodyEl, new MouseEvent('dragstart', { bubbles: true, ...geoPxToEvent(40, -5) }))
     fireEvent(bodyEl, new MouseEvent('dragmove', { bubbles: true, ...geoPxToEvent(41, -4) }))
 
-    // Fire Esc — should discard
+    // Fire Esc — should discard and set dragCancelledRef
     fireEvent.keyDown(window, { key: 'Escape', bubbles: true, cancelable: true })
 
     // Should NOT have written to store
     expect(mockSetState).not.toHaveBeenCalled()
 
-    // Confirm no write on dragEnd either (Esc already cleared liveRing, but dragEnd
-    // can still fire in real Konva — it should still commit the final position if called)
-    // In this test we simply verify Esc alone produces no write.
+    // CRITICAL: Konva fires dragEnd even after Esc.  The component must NOT commit
+    // on this subsequent dragEnd (dragCancelledRef gates it — FACT 6b).
+    fireEvent(bodyEl, new MouseEvent('dragend', { bubbles: true, ...geoPxToEvent(41, -4) }))
+    expect(mockSetState).not.toHaveBeenCalled()
   })
 
   // ── T6: carve op behaves identically to create op (FACT 4 symmetry) ───────
