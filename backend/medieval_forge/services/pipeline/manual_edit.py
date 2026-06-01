@@ -442,6 +442,49 @@ def compute(input_array: np.ndarray, cfg: RegionConfig,
     ignore_mask = (input_array == 9999)
     out[ocean_mask] = -1
     out[ignore_mask] = 9999
+
+    # D-27 gap-fill: vacated land must NEVER become the ocean sentinel (-1).
+    # When a barony's ring is shrunk via a vertex op, the vacated pixels receive
+    # fill=-1 from rasterize. The ocean_mask restore above only catches pixels
+    # where input_array was already -1 — vacated pixels had a real barony idx in
+    # input_array, so they are NOT restored and stay -1 → ocean hole (user's "buraco").
+    #
+    # Fix: after the sentinel restores, find vacated-land pixels (was real land in
+    # input, is -1 in out) and reassign each to the nearest ELIGIBLE barony in out.
+    # ELIGIBLE = present in out (>= 0, != 9999), AND NOT one of the edited baronies
+    # whose rings were replayed via replay_vertex_ring (derived from vertices_dict
+    # keys). Excluding the edited barony forces the strip to extend the NEIGHBOUR
+    # rather than snap back to the shrunk barony, which would silently undo the edit.
+    # NEVER touch genuine ocean (input_array == -1) or 9999-ignore pixels.
+    #
+    # Edge case: coastal shrink where only ocean is adjacent → no eligible pixel
+    # exists → leave as ocean (acceptable; only interior shared-border repro is pinned
+    # by the RED test). The `eligible.any()` guard prevents a crash in that case.
+    vacated = (input_array >= 0) & (input_array != 9999) & (out == -1)
+    if vacated.any():
+        from scipy.ndimage import distance_transform_edt  # lazy: only import when needed
+
+        # Derive the set of edited-barony raster indices to exclude from fill sources.
+        edited_indices: set[int] = set()
+        if vertices_dict and barony_name_to_idx:
+            for vname in {k.split("#")[0] for k in vertices_dict if "#" in k}:
+                bidx = barony_name_to_idx.get(vname)
+                if bidx is not None:
+                    edited_indices.add(bidx)
+
+        eligible = (out >= 0) & (out != 9999)
+        for eidx in edited_indices:
+            eligible &= (out != eidx)
+
+        if eligible.any():
+            # distance_transform_edt(~eligible) → for each pixel in ~eligible find
+            # the nearest ELIGIBLE pixel (where eligible==True == background==0).
+            # return_indices=True gives the (row, col) of the nearest eligible source.
+            _unused_dist, indices = distance_transform_edt(
+                ~eligible, return_distances=True, return_indices=True
+            )
+            out[vacated] = out[indices[0][vacated], indices[1][vacated]]
+
     # Phase 08.3 Plan 01: return tuple (array, sorted new_barony_entries).
     # Sorted by original_idx so orchestrator extension loop is always sequential
     # (Q3 / Assumption A4 — two CREATEs before one Apply land at correct indices).
