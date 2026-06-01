@@ -139,6 +139,13 @@ def build_territories_geojson_sidecar(
                 "centroid": [c[2], c[3]],   # (lon, lat) from territory_data
                 "kingdom_id": kingdom_id,
                 "duchy_id": duchy_id,
+                # Phase 08.3 Plan 09 (D-26): additive enumerate index.
+                # ci is the ORIGINAL enumerate index from `for ci, c in enumerate(condados)`
+                # which equals cfg.condados[condado_idx] used by the baronies emitter —
+                # same index space by construction. Parity-safe: territories.geojson is a
+                # Phase-03 canvas sidecar (not in the 12-file Unity contract); the only
+                # parity assertion checks type+len, not field shape.
+                "idx": ci,
             },
         })
 
