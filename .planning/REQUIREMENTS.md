@@ -126,3 +126,12 @@ Source: `.planning/phases/08.3-pen-tool-barony-contour-authoring/08.3-CONTEXT.md
 |----|-------------|------------------|
 | CARVE-ENCLAVE-01 | A closed loop drawn fully inside barony X becomes a new barony N = drawn ∩ X, with X reshaped to a polygon-with-hole (X − N); N inherits X's condado/duchy/kingdom and a server-allocated original_idx (never reused, >= barony_floor) | D-23, D-24, D-26, D-27 |
 | CARVE-HOLE-RT-01 | The parent's interior ring (hole) survives the full round-trip store → reload → re-Apply (both pure-carve and carve+parent-Bézier-edit), and no -1/9999 sentinel is created inside X's exterior by the difference() operation | D-25, D-27 |
+
+### Draw UX + Condado Assignment
+
+| ID | Description | Source Decisions |
+|----|-------------|------------------|
+| FREEHAND-DRAW-01 | A freehand (lasso) drag inside a barony is sampled, Douglas-Peucker simplified + smoothed into a closed ring that feeds the existing carve commit path | D-20, D-21 |
+| DRAW-BUTTONS-01 | On-canvas action bar (Fechar / Transformar em baronia / Cancelar / Desfazer) + per-state PT-BR hints drive the pen/freehand flow from the DOM overlay | D-22 |
+| POSTCLOSE-SELECT-01 | After a carve closes + Apply refetch carries the new barony NAME, the new enclave is auto-selected (non-optimistic watcher in CanvasViewer) | D-19 |
+| CONDADO-PICK-01 | A dropdown (sourced from territories.geojson's additive idx field) lets the user assign the carved enclave's condado; unset defaults to the parent's condado_idx; a chosen condado recomputes duchy/kingdom transitively; the choice survives reload and keeps Iberia parity green | D-26 |
