@@ -12,6 +12,7 @@ import { VertexEditLayer } from './VertexEditLayer'
 import { BezierEditLayer } from './BezierEditLayer'
 import { PenDrawLayer } from './PenDrawLayer'
 import type { PenDrawHandlers } from './PenDrawLayer'
+import { PenShapeManipulateLayer } from './PenShapeManipulateLayer'
 import { CondadoPicker } from './CondadoPicker'
 import type { CondadoPickerValue, CondadoPickerCondado } from './CondadoPicker'
 import { CoordTooltip } from './CoordTooltip'
@@ -943,13 +944,22 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
             onLandmaskCoordsChange={handleLandmaskCoordsChange}
           />
         )}
-        {/* Phase 08.3 Plan 08 (user request): ghost overlay — semi-transparent dashed ring
-            of the most-recent pending create/carve op, visible while pendingSelectName is set
-            (i.e., between commit and Apply+render+refetch settling). Gives the user confidence
-            that the drawn shape was captured before "Aplicar edições" renders it for real.
-            Cleared automatically when pendingSelectName clears (resolveAutoSelect matched). */}
-        {pendingSelectName && (() => {
-          // Find the most-recent editLog op that has a ring (create or carve)
+        {/* Phase 08.3 Plan 08 (user request): pending create/carve ring overlay.
+            Plan 11: when activeTool!=='P' and a pending ring exists, mount the interactive
+            PenShapeManipulateLayer so the user can drag the shape and edit vertices pre-Apply.
+            The interactive layer SUPERSEDES the static ghost (never both rendered — FACT 5).
+            Static ghost is the at-rest fallback only when PenShapeManipulateLayer is not active
+            (e.g. if activeTool==='P' while a ring is pending from a prior close — edge case).
+            Both are gated on pendingSelectName (set by onCreated, cleared by resolveAutoSelect). */}
+        {pendingSelectName && projection && activeTool !== 'P' && (
+          <PenShapeManipulateLayer
+            projection={projection}
+            currentScale={currentScale}
+          />
+        )}
+        {pendingSelectName && activeTool === 'P' && (() => {
+          // Static ghost fallback: pen tool still active (edge case — should not normally occur
+          // since PenDrawLayer calls selectTool('V') on close, but kept for robustness).
           const lastOpWithRing = [...editLog].reverse().find((op) => op.ring && op.ring.length >= 3)
           if (!lastOpWithRing?.ring || !projection) return null
           const pts: number[] = []
