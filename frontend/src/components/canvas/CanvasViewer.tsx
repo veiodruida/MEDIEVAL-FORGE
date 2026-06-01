@@ -1,6 +1,6 @@
 import Konva from 'konva'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Stage } from 'react-konva'
+import { Layer, Line, Stage } from 'react-konva'
 import { BackgroundLayer } from './BackgroundLayer'
 import { TerritoryLayer } from './TerritoryLayer'
 import { BaronyLayer } from './BaronyLayer'
@@ -11,6 +11,7 @@ import { InteractionLayer } from './InteractionLayer'
 import { VertexEditLayer } from './VertexEditLayer'
 import { BezierEditLayer } from './BezierEditLayer'
 import { PenDrawLayer } from './PenDrawLayer'
+import type { PenDrawHandlers } from './PenDrawLayer'
 import { CoordTooltip } from './CoordTooltip'
 import { FitToViewButton } from './FitToViewButton'
 import { HoverTooltip } from './HoverTooltip'
@@ -38,6 +39,20 @@ import { usePipelineParams } from '../../stores/usePipelineParams'
 import { useRunStore } from '../../stores/useRunStore'
 import { useEditorStore } from '../../stores/useEditorStore'
 import type { ViewportBBox } from './VertexEditLayer'
+import type { BaronyRender } from '../../hooks/useCanvasArtifacts'
+
+// ── Phase 08.3 Plan 08 (D-19): resolveAutoSelect ──────────────────────────────
+// Pure helper: matches the pending barony name against the refetched baronies array.
+// Exact id equality (NOT substring). Exported for the postCloseAutoSelect vitest spec.
+// Returns the matching name (to call selectBarony with) or null if not yet present.
+export function resolveAutoSelect(
+  pendingName: string,
+  baronies: BaronyRender[],
+): string | null {
+  if (!pendingName) return null
+  const found = baronies.find((b) => b.id === pendingName)
+  return found ? found.id : null
+}
 
 interface CanvasViewerProps {
   projectId: string
@@ -181,6 +196,12 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
   // suppress BezierEditLayer while the pen tool is active).
   const activeTool = useEditorStore((s) => s.activeTool)
 
+  // Phase 08.3 Plan 08 (user request): ghost overlay ring — the most-recent pending
+  // create/carve op ring from the editLog. Rendered as a semi-transparent dashed overlay
+  // while pendingSelectName is active (between commit and Apply+refetch settling).
+  // Cleared when pendingSelectName clears (the real enclave appears after Apply).
+  const editLog = useEditorStore((s) => s.editLog)
+
   // Phase 08.1 (BEZ-UAT-01): z=5 mutual-exclusion gate. When a barony is selected on
   // the baronies layer, mount BezierEditLayer (curve anchors) instead of VertexEditLayer
   // (raw vertex handles). BezierEditLayer self-gates on the V tool internally and renders
@@ -198,6 +219,36 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
     },
     [onPenDrawingChange],
   )
+
+  // Phase 08.3 Plan 08 (D-21): action-bar handlers registered by PenDrawLayer on mount.
+  // PenDrawLayer lives inside the Konva tree; DOM buttons live in CanvasViewer.
+  // Handlers are registered via onHandlersReady callback and stored in a ref.
+  const penHandlersRef = useRef<PenDrawHandlers | null>(null)
+  const handlePenHandlersReady = useCallback((handlers: PenDrawHandlers) => {
+    penHandlersRef.current = handlers
+  }, [])
+
+  // Phase 08.3 Plan 08 (D-21): freehand toggle state mirrored in CanvasViewer so the
+  // DOM button label can show the current mode (active/inactive) and the action bar can
+  // show the correct button label (Modo livre vs click-pen).
+  const [freehandActive, setFreehandActive] = useState(false)
+  const handleFreehandToggle = useCallback(() => {
+    const handlers = penHandlersRef.current
+    if (!handlers) return
+    const next = !handlers.getFreehandMode()
+    handlers.setFreehandMode(next)
+    setFreehandActive(next)
+  }, [])
+
+  // Phase 08.3 Plan 08 (D-19): pendingSelectName — set when PenDrawLayer fires onCreated.
+  // The auto-select watcher effect (keyed on effectiveBaronies) fires selectBarony(name)
+  // only AFTER the baroniesQ refetch carries the new barony — never optimistically.
+  const [pendingSelectName, setPendingSelectName] = useState<string | null>(null)
+  const handlePenCreated = useCallback((name: string) => {
+    setPendingSelectName(name)
+    setFreehandActive(false) // reset freehand toggle after commit
+  }, [])
+
   // Suppress unused-var: penDrawing kept for future CanvasViewer-local gate use
   void penDrawing
 
@@ -387,6 +438,22 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
   const effectiveBaronies = baroniesQ.data ?? lastGoodBaroniesRef.current
   const effectiveCondadoColors = condadoColorsQ.data ?? lastGoodCondadoColorsRef.current
   const effectiveBaronyColors = baronyColorsQ.data ?? lastGoodBaronyColorsRef.current
+
+  // Phase 08.3 Plan 08 (D-19): post-close auto-select watcher.
+  // effectiveBaronies is now in scope — this effect fires on every baroniesQ refetch.
+  // When the refetched array contains a feature with id === pendingSelectName,
+  // selectBarony(name) fires and the watcher clears. Never optimistic.
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  useEffect(() => {
+    if (!pendingSelectName) return
+    const match = resolveAutoSelect(pendingSelectName, effectiveBaronies ?? [])
+    if (match) {
+      useUIStore.getState().selectBarony(match)
+      setPendingSelectName(null)
+    }
+  // effectiveBaronies reference change = new refetch data arrived — that is the trigger
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingSelectName, effectiveBaronies])
 
   // Build projection when metadata loads OR when metadata bounds change.
   // Phase 04.1 D-01: previously this effect ran `if (metaQ.data && !projection)`
@@ -864,10 +931,41 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
             onLandmaskCoordsChange={handleLandmaskCoordsChange}
           />
         )}
+        {/* Phase 08.3 Plan 08 (user request): ghost overlay — semi-transparent dashed ring
+            of the most-recent pending create/carve op, visible while pendingSelectName is set
+            (i.e., between commit and Apply+render+refetch settling). Gives the user confidence
+            that the drawn shape was captured before "Aplicar edições" renders it for real.
+            Cleared automatically when pendingSelectName clears (resolveAutoSelect matched). */}
+        {pendingSelectName && (() => {
+          // Find the most-recent editLog op that has a ring (create or carve)
+          const lastOpWithRing = [...editLog].reverse().find((op) => op.ring && op.ring.length >= 3)
+          if (!lastOpWithRing?.ring || !projection) return null
+          const pts: number[] = []
+          for (const p of lastOpWithRing.ring) {
+            const [x, y] = geoToCanvas(p.lon, p.lat, projection)
+            pts.push(x, y)
+          }
+          return (
+            <Layer listening={false}>
+              <Line
+                points={pts}
+                closed
+                fill="rgba(34, 197, 94, 0.12)"
+                stroke="#22c55e"
+                strokeWidth={2 / currentScale}
+                dash={[8 / currentScale, 4 / currentScale]}
+                opacity={0.8}
+                listening={false}
+                data-testid="pen-ghost-overlay"
+              />
+            </Layer>
+          )
+        })()}
         {/* Phase 08.3 Plan 05: PenDrawLayer at z=6 — mounted ONLY when activeTool==='P'.
             Mutually exclusive with BezierEditLayer's active editing state: after path close,
             activeTool returns to 'V' and PenDrawLayer unmounts → BezierEditLayer activates (D-04).
-            They are never mounted simultaneously. */}
+            They are never mounted simultaneously.
+            Plan 08: onHandlersReady + onCreated wired for action-bar (D-21) + auto-select (D-19). */}
         {activeTool === 'P' && (
           <PenDrawLayer
             projection={projection}
@@ -877,6 +975,8 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
             onDrawingStateChange={handlePenDrawingChange}
             projectId={projectId}
             branchId={activeBranchId}
+            onHandlersReady={handlePenHandlersReady}
+            onCreated={handlePenCreated}
           />
         )}
       </Stage>
@@ -919,6 +1019,113 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
           }}
         >
           Anterior
+        </div>
+      )}
+      {/* Phase 08.3 Plan 08 (D-21): on-canvas action bar — visible while Pen tool is active.
+          DOM overlay (absolute-positioned) so buttons are real DOM elements Playwright can click.
+          HOST DECISION: PenDrawLayer returns <Layer>…</Layer>; react-konva rejects DOM children.
+          Buttons call PenDrawLayer handlers via the penHandlersRef registered by onHandlersReady. */}
+      {activeTool === 'P' && (
+        <div
+          data-testid="pen-action-bar"
+          style={{
+            position: 'absolute',
+            top: 12,
+            right: 12,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 6,
+            zIndex: 20,
+            pointerEvents: 'auto',
+          }}
+        >
+          {/* Freehand mode toggle */}
+          <button
+            data-testid="pen-freehand-toggle"
+            onClick={handleFreehandToggle}
+            style={{
+              padding: '4px 10px',
+              background: freehandActive ? 'var(--accent-9)' : 'var(--gray-4)',
+              color: freehandActive ? 'var(--accent-1)' : 'var(--gray-12)',
+              border: '1px solid var(--gray-6)',
+              borderRadius: 4,
+              fontSize: 12,
+              fontWeight: 500,
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {freehandActive ? 'Modo livre (ativo)' : 'Modo livre (lasso)'}
+          </button>
+          {/* Fechar contorno */}
+          <button
+            data-testid="pen-btn-close"
+            onClick={() => void penHandlersRef.current?.closePath()}
+            style={{
+              padding: '4px 10px',
+              background: 'var(--gray-4)',
+              color: 'var(--gray-12)',
+              border: '1px solid var(--gray-6)',
+              borderRadius: 4,
+              fontSize: 12,
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            Fechar contorno
+          </button>
+          {/* Transformar em baronia */}
+          <button
+            data-testid="pen-btn-commit"
+            onClick={() => void penHandlersRef.current?.closePath()}
+            style={{
+              padding: '4px 10px',
+              background: 'var(--accent-9)',
+              color: 'var(--accent-1)',
+              border: '1px solid var(--accent-7)',
+              borderRadius: 4,
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            Transformar em baronia
+          </button>
+          {/* Cancelar */}
+          <button
+            data-testid="pen-btn-cancel"
+            onClick={() => penHandlersRef.current?.cancelPath()}
+            style={{
+              padding: '4px 10px',
+              background: 'var(--gray-4)',
+              color: 'var(--red-11)',
+              border: '1px solid var(--red-7)',
+              borderRadius: 4,
+              fontSize: 12,
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            Cancelar
+          </button>
+          {/* Desfazer último ponto */}
+          <button
+            data-testid="pen-btn-undo"
+            onClick={() => penHandlersRef.current?.removeLastAnchor()}
+            style={{
+              padding: '4px 10px',
+              background: 'var(--gray-4)',
+              color: 'var(--gray-12)',
+              border: '1px solid var(--gray-6)',
+              borderRadius: 4,
+              fontSize: 12,
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            Desfazer último ponto
+          </button>
         </div>
       )}
       <span data-testid="territory-layer-ready" hidden />
