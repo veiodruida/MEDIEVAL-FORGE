@@ -12,6 +12,8 @@ import { VertexEditLayer } from './VertexEditLayer'
 import { BezierEditLayer } from './BezierEditLayer'
 import { PenDrawLayer } from './PenDrawLayer'
 import type { PenDrawHandlers } from './PenDrawLayer'
+import { CondadoPicker } from './CondadoPicker'
+import type { CondadoPickerValue, CondadoPickerCondado } from './CondadoPicker'
 import { CoordTooltip } from './CoordTooltip'
 import { FitToViewButton } from './FitToViewButton'
 import { HoverTooltip } from './HoverTooltip'
@@ -247,6 +249,16 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
   const handlePenCreated = useCallback((name: string) => {
     setPendingSelectName(name)
     setFreehandActive(false) // reset freehand toggle after commit
+    setPickedCondado(null)   // reset picker for next draw (09 D-26 reset on commit)
+  }, [])  // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Phase 08.3 Plan 09 (D-26): CondadoPicker state.
+  // pickedCondado: the user's explicit condado override; null = inherit from parent (07 default).
+  // parentCondadoIdx: the enclosing barony's condado_idx as the cursor moves, for the picker label.
+  const [pickedCondado, setPickedCondado] = useState<CondadoPickerValue | null>(null)
+  const [parentCondadoIdx, setParentCondadoIdx] = useState<number | null>(null)
+  const handleParentCondadoChange = useCallback((idx: number | null) => {
+    setParentCondadoIdx(idx)
   }, [])
 
   // Suppress unused-var: penDrawing kept for future CanvasViewer-local gate use
@@ -977,6 +989,8 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
             branchId={activeBranchId}
             onHandlersReady={handlePenHandlersReady}
             onCreated={handlePenCreated}
+            onParentCondadoChange={handleParentCondadoChange}
+            pickedCondado={pickedCondado}
           />
         )}
       </Stage>
@@ -1039,6 +1053,33 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
             pointerEvents: 'auto',
           }}
         >
+          {/* Phase 08.3 Plan 09 (D-26): CondadoPicker — DOM overlay, keyed on activeTool==='P'.
+              De-dupe effectiveTerritories by id (MultiPolygon condados emit multiple TerritoryRender rows).
+              parentCondadoIdx defaults to -1 when no enclosing barony found yet (cursor over ocean). */}
+          {(() => {
+            const seenIds = new Set<string>()
+            const condadoList: CondadoPickerCondado[] = []
+            for (const t of (effectiveTerritories ?? [])) {
+              if (!seenIds.has(t.id) && t.idx !== undefined) {
+                seenIds.add(t.id)
+                condadoList.push({
+                  id: t.id,
+                  name: t.name,
+                  idx: t.idx,
+                  duchy_id: t.duchy_id,
+                  kingdom_id: t.kingdom_id,
+                })
+              }
+            }
+            return (
+              <CondadoPicker
+                condados={condadoList}
+                value={pickedCondado?.condado_idx ?? null}
+                parentCondadoIdx={parentCondadoIdx ?? 0}
+                onChange={setPickedCondado}
+              />
+            )
+          })()}
           {/* Freehand mode toggle */}
           <button
             data-testid="pen-freehand-toggle"
@@ -1095,7 +1136,7 @@ export function CanvasViewer({ projectId, width = 800, height = 600, cacheVersio
           {/* Cancelar */}
           <button
             data-testid="pen-btn-cancel"
-            onClick={() => penHandlersRef.current?.cancelPath()}
+            onClick={() => { penHandlersRef.current?.cancelPath(); setPickedCondado(null) }}
             style={{
               padding: '4px 10px',
               background: 'var(--gray-4)',

@@ -137,6 +137,20 @@ export interface PenDrawLayerProps {
    * The handlers live in PenDrawLayer (Konva-land); the buttons live in CanvasViewer (DOM-land).
    */
   onHandlersReady?: (handlers: PenDrawHandlers) => void
+  /**
+   * Phase 08.3 Plan 09 (D-26): called whenever the in-progress ring's enclosing-barony
+   * condado_idx changes (or becomes null when cursor is over ocean / no enclosing barony).
+   * CanvasViewer uses this to update `parentCondadoIdx` shown in the CondadoPicker's
+   * "Herdar do pai" default-option label.
+   */
+  onParentCondadoChange?: (condadoIdx: number | null) => void
+  /**
+   * Phase 08.3 Plan 09 (D-26): condado override from the CondadoPicker.
+   * When non-null, commitCreate replaces barony_meta.condado_idx/duchy_id/kingdom_id
+   * with the picked values (transitive D-26 recompute). When null, the parent-derived
+   * defaults are used unchanged (07 default path).
+   */
+  pickedCondado?: { condado_idx: number; duchy_id: string; kingdom_id: string } | null
 }
 
 /** Handlers exposed to CanvasViewer's DOM action-bar (D-21). */
@@ -292,6 +306,8 @@ export const PenDrawLayer: React.FC<PenDrawLayerProps> = ({
   branchId,
   onCreated,
   onHandlersReady,
+  onParentCondadoChange,
+  pickedCondado,
 }) => {
   const safeScale = currentScale > 0 ? currentScale : 1
 
@@ -339,6 +355,16 @@ export const PenDrawLayer: React.FC<PenDrawLayerProps> = ({
 
   const anchorsRef = useRef<PenAnchor[]>([])
   anchorsRef.current = anchors
+
+  // Phase 08.3 Plan 09 (D-26): pickedCondado ref — avoids stale closure in commitCreate.
+  // commitCreate is a useCallback; reading the prop directly risks a stale value if
+  // pickedCondado changes between renders. The ref is always current (synced each render).
+  const pickedCondadoRef = useRef(pickedCondado ?? null)
+  pickedCondadoRef.current = pickedCondado ?? null
+
+  // Phase 08.3 Plan 09 (D-26): last-known parent condado_idx for onParentCondadoChange.
+  // Tracked to avoid firing the callback on every mousemove when value didn't change.
+  const lastParentCondadoIdxRef = useRef<number | null | undefined>(undefined)
 
   // Double-click-to-close detection (manual): timestamp + map-px position of the
   // last anchor-placing click, so the next rapid+nearby click closes instead of
@@ -569,8 +595,27 @@ export const PenDrawLayer: React.FC<PenDrawLayerProps> = ({
         setSnapVertexMarker(null)
         setSnapEdgeMarker(null)
       }
+
+      // Phase 08.3 Plan 09 (D-26): fire onParentCondadoChange when the enclosing barony
+      // (and thus its condado_idx) changes as the cursor moves. This keeps the CondadoPicker's
+      // "Herdar do pai" label up-to-date. Deduped by ref to avoid thrashing on every move.
+      if (onParentCondadoChange) {
+        let enclosingCondadoIdx: number | null = null
+        for (const candidate of neighborCandidates) {
+          const n = normalizeCandidate(candidate)
+          if (!n.ring || n.ring.length < 3) continue
+          if (pointInRing(world.lon, world.lat, n.ring)) {
+            enclosingCondadoIdx = n.condado_idx ?? null
+            break
+          }
+        }
+        if (enclosingCondadoIdx !== lastParentCondadoIdxRef.current) {
+          lastParentCondadoIdxRef.current = enclosingCondadoIdx
+          onParentCondadoChange(enclosingCondadoIdx)
+        }
+      }
     },
-    [eventToWorld, projection, vertexCandidates, edgeCandidates, safeScale],
+    [eventToWorld, projection, vertexCandidates, edgeCandidates, safeScale, onParentCondadoChange, neighborCandidates],
   )
 
   // ── Commit CREATE or CARVE op (internal) ─────────────────────────────────
@@ -656,6 +701,18 @@ export const PenDrawLayer: React.FC<PenDrawLayerProps> = ({
         } catch {
           // Fall back to 'PT' if fetch fails (best-effort)
         }
+      }
+
+      // Phase 08.3 Plan 09 (D-26): CondadoPicker override.
+      // When pickedCondado is set, replace the parent-derived condado_idx/duchy_id/kingdom_id
+      // with the user's explicit choice (transitive — the CHOSEN condado's own hierarchy).
+      // Read via ref to avoid stale closure (commitCreate is a useCallback).
+      // When null/unset, the parent-derived defaults above are used unchanged (07 path).
+      const picked = pickedCondadoRef.current
+      if (picked !== null) {
+        condado_idx = picked.condado_idx
+        duchy_id = picked.duchy_id
+        kingdom_id = picked.kingdom_id
       }
 
       const barony_meta = {
