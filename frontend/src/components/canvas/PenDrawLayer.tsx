@@ -34,6 +34,7 @@ import { resolvePenSnap } from '../../lib/snap'
 import type { SnapCandidate, SnapEdge } from '../../lib/snap'
 import { flattenPenPath, flattenPenPathOpen, sampleAndSimplifyFreehand } from '../../lib/penFlatten'
 import type { PenAnchor } from '../../lib/penFlatten'
+import { spliceExtendRing, buildExtendVerticesMap } from '../../lib/extendGraft'
 import { geoToCanvas, canvasToGeo } from '../../lib/projection'
 import type { ProjectionConfig } from '../../lib/projection'
 
@@ -806,26 +807,62 @@ export const PenDrawLayer: React.FC<PenDrawLayerProps> = ({
   )
 
   // ── Commit EXTEND (graft arc into existing barony) ────────────────────────
+  // PEN-EXTEND-01 (Plan 10): replaces the no-op stub.
+  // Uses flattenPenPathOpen (OPEN arc, not closed ring) so arc[0] and arc[last]
+  // are the two distinct contact points on the contour.
   const commitExtend = useCallback(
-    (closedAnchors: PenAnchor[], _targetBaronyId: string) => {
-      // Flatten the drawn arc (excluding first/last anchors which are on the contour)
-      const ring = flattenPenPath(closedAnchors, projection)
-      if (ring.length < 2) return
+    (closedAnchors: PenAnchor[], targetBaronyId: string) => {
+      // 1. Flatten the drawn path as an OPEN arc (first and last = contact points).
+      //    flattenPenPathOpen does NOT append a duplicate closing point, so
+      //    arc[0] ≠ arc[last] and both contact indices are distinct.
+      const arc = flattenPenPathOpen(closedAnchors, projection)
+      if (arc.length < 2) return
 
-      // Standard vertex add/move ops on the existing barony (no new 'create' op)
-      // RESEARCH Target 5: choose shorter arc between the two contact points (Assumption A3)
-      // Implementation: add the intermediate ring points as new vertices via op:'add'
+      // 2. Read the target barony's current contour from neighborCandidates.
+      //    This is ALWAYS present during a draw (neighborCandidates is a prop).
+      //    normalizeCandidate(f).id === barony name (= extendBaronyId).
+      //    ring is [lon,lat][] (GeoJSON convention) — convert to {lat,lon}[].
+      let contour: Array<{ lat: number; lon: number }> | null = null
+      for (const f of neighborCandidates) {
+        const n = normalizeCandidate(f)
+        if (n.id === targetBaronyId && n.ring) {
+          contour = n.ring.map((pt) => ({
+            lat: (pt as number[])[1] as number,
+            lon: (pt as number[])[0] as number,
+          }))
+          break
+        }
+      }
+      if (!contour) {
+        setValidationError('Contorno do baronato não encontrado.')
+        return
+      }
+
+      // 3. Splice the drawn arc into the contour (shorter-arc replacement, Assumption A3).
+      const spliced = spliceExtendRing(contour, arc)
+
+      // 4. Build the next vertices map: delete all stale ${targetBaronyId}#* keys,
+      //    then write the new contiguous #0..#N (stale-key trap guard, FACT 2).
       const currentVertices = useEditorStore.getState().vertices
-      useEditorStore.getState().setVerticesAndLog(currentVertices, {
+      const nextVertices = buildExtendVerticesMap(currentVertices, targetBaronyId, spliced)
+
+      // 5. Write to store and log a real vertex op (op:'add') so vertex_ops_present=true.
+      //    The backend's replay_vertex_ring selects which barony to rebuild by the
+      //    ${name}#i keys in the vertices dict — NOT by op.baronyName (FACT 1).
+      useEditorStore.getState().setVerticesAndLog(nextVertices, {
         op: 'add',
         ts: Date.now(),
-        vertexIds: ring.map((_, i) => `extend-${i}`),
+        vertexIds: spliced.map((_, i) => `${targetBaronyId}#${i}`),
       })
 
-      // D-04: return to V tool
+      // 6. Fire onCreated with the EXISTING barony name (not a new Baronato-*).
+      //    This triggers D-19 auto-select so the extended barony is re-selectable.
+      onCreated?.(targetBaronyId)
+
+      // D-04: switch to V tool → PenDrawLayer unmounts → BezierEditLayer activates
       useEditorStore.getState().selectTool('V')
     },
-    [projection],
+    [projection, neighborCandidates, onCreated],
   )
 
   // ── D-17 validation ───────────────────────────────────────────────────────
