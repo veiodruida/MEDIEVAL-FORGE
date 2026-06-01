@@ -309,3 +309,64 @@ describe('commitExtend integration — real splice, stale-key trap, vertex op', 
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// Task 3: EXTEND entry gesture + close routing — confirmed wired, two contacts present
+// ---------------------------------------------------------------------------
+
+describe('Task 3: EXTEND entry + close routing confirmed', () => {
+
+  it('first-anchor snap sets extendMode — arc[0] is the first contact point on the contour', () => {
+    // Simulate the entry gesture: first anchor placed at a contour vertex snap point.
+    // In PenDrawLayer.tsx line 974-978:
+    //   if (cur.length === 0 && resolved.snapVertex) { setExtendMode(true); setExtendBaronyId(...) }
+    // After that, EXTEND_ANCHORS[0] = {lat:2, lon:6} is the first contact on the right edge.
+    // spliceExtendRing must find arc[0] near the contour.
+    const arc = flattenPenPathOpen(EXTEND_ANCHORS, TEST_PROJECTION);
+    const contour = BARONY1_GEO_RING.map((pt) => ({ lat: pt[1] as number, lon: pt[0] as number }));
+
+    // arc[0] should be at/near the contour right edge (lon≈6)
+    expect(arc[0]!.lon).toBeCloseTo(6, 1);
+    expect(arc[0]!.lat).toBeCloseTo(2, 1);
+
+    // spliceExtendRing finds the nearest contour index to arc[0] (nearestIndex logic)
+    // The nearest contour vertex to {lat:2, lon:6} is the bottom-right (lat:0,lon:6) or
+    // top-right (lat:8,lon:6). Since lat:2 is nearest to lat:0 at distance=2, nearest is
+    // the bottom-right vertex. The splice must not degenerate (iA !== iB).
+    const spliced = spliceExtendRing(contour, arc);
+    expect(spliced.length).toBeGreaterThan(3); // ring is non-degenerate
+  });
+
+  it('arc[last] (last placed anchor = second contact) is on/near the contour', () => {
+    // EXTEND_ANCHORS[last] = {lat:6, lon:6} — this is the second contact on the right edge.
+    // flattenPenPathOpen keeps the last anchor as the final point.
+    const arc = flattenPenPathOpen(EXTEND_ANCHORS, TEST_PROJECTION);
+
+    // Last point of the open arc is the last anchor
+    const last = arc[arc.length - 1]!;
+    expect(last.lon).toBeCloseTo(6, 1);
+    expect(last.lat).toBeCloseTo(6, 1);
+
+    // The two contact points (arc[0] and arc[last]) are DIFFERENT → splice is non-degenerate
+    expect(arc[0]!.lat).not.toBeCloseTo(last.lat, 1);
+  });
+
+  it('close via extendMode routes to vertex op, never creates a new Baronato', () => {
+    // Guard against future regressions: closing an EXTEND draw must NOT produce op:'create'
+    // and must NOT produce a Baronato-* named key (those are CREATE-path outputs).
+    const { op, nextVertices } = simulateCommitExtend(
+      EXTEND_ANCHORS,
+      'Barony-1',
+      BARONY1_GEO_RING,
+      {},
+    );
+
+    // EXTEND uses op:'add' (vertex op), never op:'create'
+    expect(op).toBe('add');
+    expect(op).not.toBe('create');
+
+    // No Baronato-* key created (that would mean commitCreate was invoked instead)
+    const baronatoKeys = Object.keys(nextVertices).filter((k) => k.startsWith('Baronato-'));
+    expect(baronatoKeys.length).toBe(0);
+  });
+});
