@@ -681,6 +681,92 @@ class TestExtendViaVertexRing:
         new_idx_pixels = np.sum(result == 3)
         assert new_idx_pixels == 0, "EXTEND should not create new barony at idx=3"
 
+    def test_extend_grows_barony_into_ocean_no_sentinel(self):
+        """Extended barony-1 ring grows rightward into ocean — no -1/9999 introduced,
+        neighbours (0 and 2) pixel-counts unchanged.
+
+        Numeric fixture: same _make_raster() (barony-1 at rows 10-19, cols 20-29 = 100px).
+        Grown ring extends col_max to 35 (cols 20-35, rows 10-19 → ~160px in col range 20-34).
+        In rasterio pixel coords (lon=col, lat=H-row):
+          corners (20,30),(35,30),(35,21),(20,21)
+        After compute() via replay_vertex_ring:
+          - new_barony_entries == []  (EXTEND never allocates new idx)
+          - barony-1 pixel count STRICTLY GREATER than original 100
+          - barony-0 pixel count UNCHANGED == 100  (cols 10-19)
+          - barony-2 pixel count UNCHANGED == 200  (rows 20-29, cols 10-29)
+          - (result == -1).sum() STRICTLY LESS than input (growth consumed some ocean)
+          - (result == 9999).sum() == 0 (none existed, none created)
+        """
+        from medieval_forge.services.pipeline.manual_edit import compute
+
+        # Raster with known barony-0/1/2 pixel counts:
+        raster = _make_raster()
+        pre_barony0 = int(np.sum(raster == 0))   # 100
+        pre_barony1 = int(np.sum(raster == 1))   # 100
+        pre_barony2 = int(np.sum(raster == 2))   # 200
+        pre_ocean = int(np.sum(raster == -1))    # everything else
+
+        # Grown ring: barony-1 cols 20-35, rows 10-19.
+        # In rasterio coords (lon=col, lat=rasterio_y):
+        #   rasterio_y of numpy row center r is H - (r + 0.5).
+        #   For rows 10-19 to be fully INSIDE the polygon we need:
+        #     bottom boundary at lat=20  (center of row 19 is at 20.5 > 20 → inside)
+        #     top    boundary at lat=31  (center of row 10 is at 30.5 < 31 → inside)
+        #   Using exact row-boundary values (lat=21 / lat=30) causes the rasterio
+        #   cell-centroid test to place pixel centers exactly ON the boundary and
+        #   rasterize omits them, creating vacated pixels that confuse the EDT fill.
+        #   Using lat=20/31 ensures all centres are strictly within the polygon.
+        grown_corners = [
+            {"lon": 20, "lat": 31},
+            {"lon": 35, "lat": 31},
+            {"lon": 35, "lat": 20},
+            {"lon": 20, "lat": 20},
+        ]
+        grown_vertices: dict[str, dict] = {}
+        for i, corner in enumerate(grown_corners):
+            grown_vertices[f"Barony-1#{i}"] = corner
+
+        # A move op triggers vertex_ops_present=True (mirror sibling test)
+        move_op = {"op": "move", "ts": 0, "baronyName": "Barony-1",
+                   "vertexIndex": 1, "lat": 31, "lon": 35}
+
+        cfg = _make_cfg(edit_log=[move_op], extra_vertices=grown_vertices)
+        barony_name_to_idx = {"Barony-0": 0, "Barony-1": 1, "Barony-2": 2}
+
+        result, new_barony_entries = compute(raster, cfg, barony_name_to_idx=barony_name_to_idx)
+
+        # EXTEND never allocates a new barony entry
+        assert new_barony_entries == [], (
+            f"EXTEND must not produce new_barony_entries, got {new_barony_entries}"
+        )
+
+        # Barony-1 GREW: pixel count strictly greater than original 100
+        post_barony1 = int(np.sum(result == 1))
+        assert post_barony1 > pre_barony1, (
+            f"Barony-1 must grow: was {pre_barony1}, got {post_barony1}"
+        )
+
+        # Neighbours UNTOUCHED: barony-0 and barony-2 pixel counts identical
+        post_barony0 = int(np.sum(result == 0))
+        post_barony2 = int(np.sum(result == 2))
+        assert post_barony0 == pre_barony0, (
+            f"Barony-0 must not change: was {pre_barony0}, got {post_barony0}"
+        )
+        assert post_barony2 == pre_barony2, (
+            f"Barony-2 must not change: was {pre_barony2}, got {post_barony2}"
+        )
+
+        # No new -1 pixels introduced (growth consumed ocean, not the reverse)
+        post_ocean = int(np.sum(result == -1))
+        assert post_ocean < pre_ocean, (
+            f"Ocean must decrease after EXTEND (growth into ocean): was {pre_ocean}, got {post_ocean}"
+        )
+
+        # No 9999 sentinel created (none existed in input, none should exist in output)
+        assert int(np.sum(result == 9999)) == 0, (
+            "EXTEND must not introduce 9999 sentinel pixels"
+        )
+
 
 # ===========================================================================
 # T7 — Split: existing child allocation still works after signature change
